@@ -102,7 +102,10 @@
   #viewNote .step { display: flex; gap: 8px; align-items: baseline; }
   #viewNote .step b { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--line); color: var(--text); font-size: 12px; display: inline-grid; place-items: center; }
   #viewNote .key { display: flex; flex-wrap: wrap; gap: 6px 18px; }
-  #viewNote .key span::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; background: currentColor; }
+  #viewNote .key button { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 7px 13px; font-size: 14px; font-weight: 600; }
+  #viewNote .key button b { margin-left: 7px; font-variant-numeric: tabular-nums; }
+  #viewNote .key button[aria-pressed="true"] { background: #1d1d27; border-color: currentColor; }
+  #viewNote .key .near::before, #viewNote .key .far::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; background: currentColor; }
   #viewNote .near { color: #6cc4dc; } #viewNote .far { color: #f0a868; }
   #viewNote .got { color: var(--ok); font-weight: 600; }
   h3 { font-size: 15px; font-weight: 600; color: var(--dim); margin: 28px 0 8px; display: flex; justify-content: space-between; align-items: center; }
@@ -491,10 +494,12 @@ function draw() {
       : 'The next sync looks for these, one at a time.')]
     : view === 'miss'
     ? [line('lead', 'Searched on Soulseek: no top-quality copy yet.'),
-      el('div', { className: 'key' },
-        el('span', { className: 'near', textContent: 'On Soulseek, sharers away: tried again next sync' }),
-        el('span', { className: 'far', textContent: 'Not on Soulseek: buy it or ask the artist' })),
-      line('', 'Mostly remixes and flips that only live on SoundCloud.'), line('', auto)]
+      el('div', { className: 'key' }, ...MISS.map(([k, label]) => {
+        const b = el('button', { className: k }, label, el('b', { textContent: count(missBy(miss, k), missBy(missAll, k)) }));
+        b.setAttribute('aria-pressed', missView === k);
+        b.onclick = () => { missView = k; try { localStorage.setItem('crateMiss', k); } catch (e) {} draw(); };
+        return b; })),
+      line('', MISS_NOTE[missView]), line('', auto)]
     : [line('lead', 'Free from the artist, in three steps:'),
       step('1', 'Tap Free Download and do what the page asks (often a follow).'),
       step('2', 'Leave the file in Downloads.'),
@@ -506,12 +511,21 @@ function draw() {
     ...(t.state === 'queued' ? [el('span', { className: 'state' }, el('i', { className: 'dot' }), 'Next up')] : []),
     ...(s.soulseekReady ? [] : shopLinks(t)));
   const byTurn = l => l.sort((a, b) => (b.state === 'queued') - (a.state === 'queued'));
-  const rows = view === 'wait' ? byTurn(wait).map(waitRow) : view === 'miss' ? miss.map(missRow) : free.map(missRow);
+  const rows = view === 'wait' ? byTurn(wait).map(waitRow) : view === 'miss' ? missBy(miss, missView).map(missRow) : free.map(missRow);
   const none = !s.buy.length ? 'Nothing left to get. Every track is on your Mac.' : q ? 'No match.'
     : view === 'wait' ? 'Nothing waiting: every track still to get has been searched.'
     : view === 'free' ? 'No free links among the tracks still to get.' : 'Nothing here.';
   $('buy').replaceChildren(...(rows.length ? rows : [el('div', { className: 'empty', textContent: none })]));
 }
+// Not found, split two ways: shared on Soulseek but the sharers were away (it'll likely come), or not there at all.
+const MISS = [['all', 'All'], ['near', 'On Soulseek, sharers away'], ['far', 'Not on Soulseek']];
+const MISS_NOTE = { all: 'Mostly remixes and flips that only live on SoundCloud.',
+  near: 'Someone shares it, but they were offline or busy: tried again next sync.',
+  far: 'No top-quality copy on Soulseek: buy it or ask the artist.' };
+const missBy = (l, k) => k === 'all' ? l : l.filter(t => (/^On Soulseek/.test(t.why) ? 'near' : 'far') === k);
+let missView = 'all';
+try { missView = localStorage.getItem('crateMiss') || 'all'; } catch (e) {}
+if (!MISS.some(([k]) => k === missView)) missView = 'all';
 let view = 'free';
 try { view = localStorage.getItem('crateView') || 'free'; } catch (e) {}
 if (!['free', 'wait', 'miss'].includes(view)) view = 'free';
