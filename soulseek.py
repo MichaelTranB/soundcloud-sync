@@ -17,6 +17,8 @@ tracks, and tracks that were there but whose sharers were offline, are searched 
 """
 import csv, os, re, sys, time
 
+# Bumped when the search itself gets better: every track it missed before is then looked for again at once.
+SEARCH = "#search 2 (desperate, artist maybe wrong)\n"
 WAIT_DAYS = (1, 2, 4, 7)  # after 1, 2, 3, 4+ misses in a row
 SLACK = 3600  # a sync at about the same time the next day still counts as a day later
 
@@ -25,6 +27,7 @@ AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus", ".al
 CUT = re.compile(r"\b(?:clip|preview|snippet|teaser)\b", re.I)
 # Promo text uploaders put in titles; Soulseek files never carry it, so it only hurts the search.
 PROMO = re.compile(r"\s*[(\[][^)\]]*\b(?:free|download|dl|out now|premiere|buy|preview|clip|exclusive|support)\b[^)\]]*[)\]]", re.I)
+VERSION = re.compile(r"[(\[][^)\]]*\b(?:remix|flip|edit|bootleg|vip|rework|mashup|refix)\b[^)\]]*[)\]]", re.I)
 PREFIX = re.compile(r"^\s*(?:premiere|free download|free dl|out now)\s*[:|\-]\s*", re.I)
 
 
@@ -45,6 +48,9 @@ def split(name):
     title = PREFIX.sub("", PROMO.sub("", title)).strip(" *|")
     if " - " in title:
         artist, _, track = title.partition(" - ")
+        # "Feel Good Inc (Hairitage Remix) - Gorillaz": the remix tag marks the track, so the halves are swapped.
+        if VERSION.search(artist) and not VERSION.search(track):
+            artist, track = track, artist
         return artist.strip(), track.strip()
     return uploader.strip(), title
 
@@ -123,6 +129,8 @@ def load_missed(d):
     out = {}
     try:
         with open(os.path.join(d, "soulseek-missed.tsv")) as f:
+            if f.readline() != SEARCH:
+                return out  # missed by an older, weaker search: all searched again now
             for line in f:
                 p = line.rstrip("\n").split("\t")
                 if len(p) == 4 and p[2].isdigit():
@@ -182,6 +190,7 @@ def missed(d, slsk):
             new[link] = old[link]  # not searched this sync (still waiting): kept as it was
     tmp = os.path.join(d, "soulseek-missed.tsv.tmp")
     with open(tmp, "w") as f:
+        f.write(SEARCH)
         f.writelines(f"{link}\t{q}\t{n}\t{int(t)}\n" for link, (q, n, t) in new.items())
     os.replace(tmp, os.path.join(d, "soulseek-missed.tsv"))
 
@@ -285,13 +294,13 @@ def progress(d, live):
             m = None
         if live and state in ("searching", "downloading", "queued"):
             out[link] = (state, "")
-        elif state == "failed" and (reason != "no search results" or not m):
+        elif state == "failed" and reason != "no search results":
             out[link] = ("missing", WHY.get(reason, f"Soulseek: {reason}." if reason else "Not found on Soulseek."))
         elif m:  # nothing on Soulseek the last time(s) it looked: when it looks again
             when = next_look(m)
             again = "next sync" if when <= t else "on " + time.strftime("%b %-d", time.localtime(when))
             out[link] = ("missing", f"{WHY['no search results'][:-1]}; looks again {again}.")
-        else:
+        else:  # not looked for yet, or only by an older search (SEARCH): looked for next sync
             out[link] = ("missing", "")
     return out
 

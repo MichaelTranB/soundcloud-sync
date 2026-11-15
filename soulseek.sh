@@ -19,6 +19,10 @@ SPASS="$(security find-generic-password -s "$SERVICE" -w 2>/dev/null)"
 mkdir -p "$SLSK"
 # The safety check first: a file a stopped run left behind is checked before soulseek.py counts it as got.
 prep() { python3 "$DIR/safety.py" check "$DIR" "${SLSK:h}" 2>>"$DIR/safety.log"; python3 "$DIR/soulseek.py" prepare "$DIR" "$SLSK" >>"$LOG" 2>&1 || { say "Soulseek FAILED: could not read the to-get list"; exit 1; }; }
+# Each track is also searched in looser ways (--desperate: the artist or the title alone, then filtered;
+# --artist-maybe-wrong: once without the artist, as a SoundCloud uploader isn't always the artist). The quality, title and length checks
+# below still decide what is taken, so a looser search only finds more, never a worse or wrong file. sockseek's own
+# limit on searches per minute still holds (more searches per track just take longer).
 # Highest quality only. Pass 1: lossless only. Pass 2, for what pass 1 didn't find: MP3 at a confirmed 320 kbps
 # (--strict-conditions drops files whose bitrate the peer doesn't report). Nothing lower is ever taken.
 # Same version only: the file must be within 5 seconds of the SoundCloud track's length (an extended mix is not
@@ -32,7 +36,7 @@ printf 'username = %s\npassword = %s\n' "$SUSER" "$SPASS" >"$CONF"
 get() {
   "$SOCKSEEK" "$DIR/soulseek.csv" --input-type csv --config "$CONF" \
     -o "$SLSK" --index-path "$SLSK/.index.sldl" --name-format '{sartist( - )stitle|slsk-filename}' \
-    --strict-title --length-tol 5 --no-skip-existing --no-progress "$@" >"$DIR/soulseek-pass.log" 2>&1
+    --strict-title --length-tol 5 --desperate --artist-maybe-wrong --no-skip-existing --no-progress "$@" >"$DIR/soulseek-pass.log" 2>&1
   cat "$DIR/soulseek-pass.log" >>"$DIR/soulseek-run.log"
   # Before anything counts as got: a file that isn't real audio (or that the virus scan flags) goes to Quarantine.
   python3 "$DIR/safety.py" check "$DIR" "${SLSK:h}" 2>>"$DIR/safety.log"
