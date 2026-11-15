@@ -115,8 +115,10 @@ def check(d, music):
         try:
             with open(ok_path) as f:
                 for line in f:
-                    p, size, mtime = line.rstrip("\n").split("\t")
-                    ok[p] = (int(size), int(mtime))
+                    p, size, mtime, *scanned = line.rstrip("\n").split("\t")
+                    # an approval from before a virus scanner was installed counts only while there still is none
+                    if scanned == ["1"] or not CLAM:
+                        ok[p] = (int(size), int(mtime))
         except (OSError, ValueError):
             pass
         keep, new, blocked = {}, [], 0
@@ -164,7 +166,7 @@ def check(d, music):
             keep[rel] = sig
         tmp = ok_path + ".tmp"
         with open(tmp, "w") as f:
-            f.writelines(f"{p}\t{s}\t{m}\n" for p, (s, m) in sorted(keep.items()))
+            f.writelines(f"{p}\t{s}\t{m}\t{1 if CLAM else 0}\n" for p, (s, m) in sorted(keep.items()))
         os.replace(tmp, ok_path)
         if new or blocked:
             log(f"checked {len(new) + blocked} new: {len(new) - sum(1 for _, p, _ in new if p in found)} kept, "
