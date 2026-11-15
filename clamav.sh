@@ -42,7 +42,7 @@ fi
 # Short names the rest of The Crate uses, set to this copy's own virus list and settings. The scanner's name is only
 # made once a virus list is here: without one it can't scan, and the safety check would hold every file back.
 scanner() {
-  [ -n "$(ls "$H"/db/*.c[vl]d 2>/dev/null)" ] || return 0
+  local db=("$H"/db/*.c[vl]d(N)); (( $#db )) || return 0  # (N): no match is quiet in zsh
   printf '#!/bin/sh\nexport CVD_CERTS_DIR="%s/certs"\nexec "%s/bin/clamscan" --database="%s/db" "$@"\n' "$H" "$H" "$H" >"$HOME/.local/bin/clamscan"
   chmod +x "$HOME/.local/bin/clamscan"
 }

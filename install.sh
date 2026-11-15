@@ -15,20 +15,8 @@ if ! command -v yt-dlp >/dev/null; then
     echo "yt-dlp install FAILED (download or checksum)"
   rm -rf "$T"
 fi
-# sockseek (Soulseek downloader, github.com/fiso64/sockseek): pinned release for this Mac's chip, checksum checked.
-SOCKSEEK_VER=3.0.6
-if [ "$(uname -m)" = arm64 ]; then SOCKSEEK_OS=osx-arm64 SOCKSEEK_SHA=b7b9602b3ea0d8724b2a4dd1370c97f2f1f7175f901e7088dad714352c4926d9
-else SOCKSEEK_OS=osx-x64 SOCKSEEK_SHA=6211374e1fca1f0b0bb4bfc6395e493c5969416e116a976f87bac4bdb99320fd; fi
-# Each version gets its own folder and the short name is switched over at the end, so a sync searching Soulseek
-# right now carries on with the copy it started with.
-if [ "$("$HOME/.local/bin/sockseek" --version 2>/dev/null)" != "$SOCKSEEK_VER" ]; then
-  T="$(mktemp -d)"; F="$T/sockseek.tar.gz"; V="$HOME/.local/share/sockseek-$SOCKSEEK_VER"
-  curl -fsSL -o "$F" "https://github.com/fiso64/sockseek/releases/download/v$SOCKSEEK_VER/sockseek_${SOCKSEEK_VER}_${SOCKSEEK_OS}.tar.gz" &&
-    [ "$(shasum -a 256 "$F" | cut -d' ' -f1)" = "$SOCKSEEK_SHA" ] &&
-    mkdir -p "$T/x" "$HOME/.local/bin" && tar xzf "$F" -C "$T/x" && rm -rf "$V" && mv "$T/x" "$V" &&
-    ln -sfn "$V/sockseek" "$HOME/.local/bin/sockseek" || echo "sockseek install FAILED (download or checksum)"
-  rm -rf "$T"
-fi
+# sockseek, the Soulseek downloader (sockseek.sh: pinned release, checksum checked; sync.sh retries it if missing).
+zsh "$DIR/sockseek.sh"
 # ClamAV, the free virus scanner the safety check (safety.py) uses: Homebrew's copy when this Mac has one, else
 # Cisco's own signed package, unpacked into the home folder (clamav.sh; no Homebrew or password needed).
 # Without it the check still blocks anything that isn't real audio; the app's Get started list offers it again.
