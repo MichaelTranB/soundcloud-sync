@@ -862,7 +862,8 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/spotify-songs":
             url = read("playlist.txt")
             if playlists.service(url) != "spotify":
-                return self.send(400, {"error": "Add the Spotify playlist first."})
+                return self.send(400, {"error": "Those are Spotify songs. Add the Spotify playlist link first, then paste "
+                                                "its songs here."})
             n = playlists.paste(DIR, url, str(body.get("text", "")))
             if not n:
                 return self.send(400, {"error": "No Spotify song links in that. In Spotify, click one song, press "
