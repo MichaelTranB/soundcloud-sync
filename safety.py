@@ -203,10 +203,17 @@ def check(d, music):
             if mode & 0o111:
                 os.chmod(p, mode & ~0o111)  # a song never needs to run (this leaves its time unchanged)
             keep[rel] = sig
-        tmp = ok_path + ".tmp"
-        with open(tmp, "w") as f:
-            f.writelines(f"{p}\t{s}\t{m}\t{1 if CLAM else 0}\n" for p, (s, m) in sorted(keep.items()))
-        os.replace(tmp, ok_path)
+        rows = "".join(f"{p}\t{s}\t{m}\t{1 if CLAM else 0}\n" for p, (s, m) in sorted(keep.items()))
+        try:
+            with open(ok_path) as f:
+                same = f.read() == rows
+        except OSError:
+            same = False
+        if not same:  # only when something changed: its time tells the page there's something new for the USB
+            tmp = ok_path + ".tmp"
+            with open(tmp, "w") as f:
+                f.write(rows)
+            os.replace(tmp, ok_path)
         if new or blocked:
             log(f"checked {len(new) + blocked} new: {len(new) - sum(1 for _, p, _ in new if p in found)} kept, "
                 f"{blocked} blocked" + ("" if CLAM else " (no virus scanner installed; audio check only)"))

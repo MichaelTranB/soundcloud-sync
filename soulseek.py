@@ -15,7 +15,7 @@ every sync costs the most and finds the least. So a track Soulseek had nothing a
 both passes) waits before it's searched again: 1 day after the first miss, then 2, 4, and at most 7 days. New
 tracks, and tracks that were there but whose sharers were offline, are searched every sync.
 """
-import csv, os, re, sys, time
+import contextlib, csv, fcntl, os, re, sys, time
 
 # Bumped when the search itself gets better: every track it missed before is then looked for again at once.
 SEARCH = "#search 2 (desperate, artist maybe wrong)\n"
@@ -220,6 +220,14 @@ def finished(slsk):
     return done
 
 
+@contextlib.contextmanager
+def locked(d, name=".to-buy.lock"):
+    """One writer at a time: the sync and the app's Downloads pickup both take tracks off to-buy.tsv."""
+    with open(os.path.join(d, name), "a") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        yield
+
+
 def record(d, slsk):
     """Adds what sockseek got to soulseek.tsv and takes those tracks off to-buy.tsv (got once, never again)."""
     done = finished(slsk)
@@ -232,14 +240,15 @@ def record(d, slsk):
             have.add(link)
     save_got(d, got)
     path = os.path.join(d, "to-buy.tsv")
-    try:
-        with open(path) as f:
-            rows = [l for l in f if l.split("\t")[1:2] and l.split("\t")[1] not in have]
-    except OSError:
-        return
-    with open(path + ".tmp", "w") as f:
-        f.writelines(rows)
-    os.replace(path + ".tmp", path)
+    with locked(d):
+        try:
+            with open(path) as f:
+                rows = [l for l in f if l.split("\t")[1:2] and l.split("\t")[1] not in have]
+        except OSError:
+            return
+        with open(path + ".tmp", "w") as f:
+            f.writelines(rows)
+        os.replace(path + ".tmp", path)
 
 
 

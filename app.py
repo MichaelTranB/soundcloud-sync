@@ -197,6 +197,42 @@ def apply_sync_time():
     _sched["applied"] = t
 
 
+def usb_copy():
+    """The copy to the USB running now (usb.sh writes .usb-copy): its stage ("checking" the files first, then
+    "copying"), the tracks copied so far and how many it's copying. None when no copy runs."""
+    try:
+        pid, stage, total = read(".usb-copy").split()[:3]
+        os.kill(int(pid), 0)
+        total = int(total)
+    except (ValueError, OSError):
+        return None
+    done = sum(1 for l in read(".usb-progress").splitlines() if l and not l.endswith("/"))
+    return {"stage": stage, "done": min(done, total), "total": total}
+
+
+def usb_result(lines):
+    """How the last copy ended (usb.log), for the page: when, whether it worked, and what to say."""
+    for i in range(len(lines) - 1, max(len(lines) - 30, -1), -1):
+        m = re.match(r"(\d{4}-\d\d-\d\d \d\d:\d\d)  (copied to \"(.*)\" \((\d+) new(?:, (\d+) on it)?(, sync still running)?\)"
+                     r"|COPY FAILED to \"(.*?)\"(?:: (.*))?)$", lines[i])
+        if m:
+            at = time.mktime(time.strptime(m.group(1), "%Y-%m-%d %H:%M"))
+            if m.group(3) is not None:
+                n, usb, total, mid = int(m.group(4)), m.group(3), m.group(5), bool(m.group(6))
+                ejected = any("ejected" in l for l in lines[i + 1:])
+                tracks = lambda k: f"{k} new track{'s' if k != 1 else ''}"
+                if mid:  # a sync is still getting tracks: the page copies the next ones over by itself
+                    text = (f"{tracks(n)} copied so far" if n else "Up to date so far") + (f" ({total} on {usb})" if total else "") + \
+                        ". Still syncing: new tracks go on as they arrive, then it's ejected. Keep it plugged in."
+                else:
+                    text = (f"Done: {tracks(n)} copied" + (f"; {usb} has all {total}." if total else f" to {usb}.") if n else
+                            f"Done: {usb} has all {total} tracks." if total else f"{usb} already has every track.") + \
+                        (" Ejected: safe to unplug." if ejected else "")
+                return {"at": at, "ok": True, "mid": mid, "text": text}
+            return {"at": at, "ok": False, "text": f"Couldn't copy to {m.group(7)}: " + (m.group(8) or "something went wrong. Try Copy Now again.")}
+    return None
+
+
 def sync_running():
     """True while sync.sh runs: .running holds its process number (a flag left by a killed sync doesn't count)."""
     try:
@@ -542,11 +578,16 @@ def state():
         "playlist": read("playlist.txt"), "service": svc, "capped": capped, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
         "usbEject": not os.path.exists(os.path.join(DIR, "usb-keep.txt")),
+        "usbCopy": usb_copy(), "usbResult": usb_result(usblog),
+        # new tracks passed the safety check since the last copy: they go on the next time it's plugged in
+        "usbBehind": bool(usb) and newer("safety-ok.tsv", ".usb-done"),
         "running": running, "phase": phase, "syncTime": sync_time(),
         "signIn": sign_in_status(browser()),
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
-        "have": have, "buy": buy,
+        "have": have, "buy": buy, "watching": watching(),
+        "inboxWhy": {k: v.get("text", "") for k, v in freedl.load_json(DIR, freedl.WHY).items() if isinstance(v, dict)},
+        "justGot": [k for k, t in _just_got.items() if time.time() - t < 600],
         "soulseekReady": soulseek_ready(), "soulseekUser": _slsk["user"],
         # the last run's sign-in was turned down (soulseek.sh logs "Soulseek PROBLEM" with the reason)
         "soulseekBad": bool(slsklog) and bool(re.search(r"PROBLEM.*(login|pass)", slsklog[-1], re.I)),
@@ -707,21 +748,74 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(404, {"error": "not found"})
         elif self.path == "/api/signin":  # the sign-in link was used, or the page is back in front
             _login["soon"] = time.time() + 300
+        elif self.path == "/api/watch":
+            link = str(body.get("link", ""))
+            if link:
+                if not any(l.split("\t")[1:2] == [link] for l in read("to-buy.tsv").splitlines()):
+                    return self.send(400, {"error": "That track isn't on the list."})
+                freedl.claim(DIR, link)
+            _watch.set()
         elif self.path == "/api/copy":
-            subprocess.Popen([os.path.join(DIR, "usb.sh")])
-            time.sleep(0.4)
+            usb = read("usb.txt")
+            if not usb or not os.path.isdir(f"/Volumes/{usb}"):
+                return self.send(400, {"error": f"Plug in {usb or 'your USB'} first."})
+            if not usb_copy():  # one already running: the page just shows it
+                subprocess.Popen([os.path.join(DIR, "usb.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+                for _ in range(10):  # until it says it has started, so the page shows it straight away
+                    time.sleep(0.1)
+                    if usb_copy():
+                        break
         else:
             return self.send(404, {"error": "not found"})
         self.send(200, state())
 
 
+_watch = threading.Event()  # set by a Free Download click or the page coming back into view: look now
+_just_got = {}  # name: when, for tracks just picked up from Downloads (the page's "Got it")
+
+
+def watching():
+    """The still-to-get tracks whose Free Download was clicked in the last few minutes."""
+    return list(freedl.claims(DIR))
+
+
+def newer(a, b):
+    """True when file a changed after file b (or b doesn't exist yet)."""
+    try:
+        return os.path.getmtime(os.path.join(DIR, a)) > os.path.getmtime(os.path.join(DIR, b))
+    except FileNotFoundError:
+        return os.path.exists(os.path.join(DIR, a))
+
+
+def usb_follow():
+    """While a sync runs and the USB is plugged in, tracks that passed the safety check since the last copy go on it
+    as they arrive (usb.sh doesn't eject mid-sync; the sync's own last copy does, or this once the sync is over)."""
+    usb = read("usb.txt")
+    if not usb or not os.path.isdir(f"/Volumes/{usb}") or usb_copy():
+        return
+    if sync_running():
+        if not newer("safety-ok.tsv", ".usb-done"):
+            return
+        env = None
+    elif (usb_result(read("usb.log").splitlines()) or {}).get("mid"):
+        env = {**os.environ, "CRATE_FINAL": "1"}  # the sync ended without its last copy (stopped, or an older sync.sh)
+    else:
+        return
+    subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True, env=env,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def watch_downloads():
-    """Every minute: still-to-get tracks bought or unlocked by hand land in Downloads; take them (freedl.inbox),
-    then copy anything new to the USB when it's plugged in."""
+    """Still-to-get tracks bought or unlocked by hand land in Downloads; take them (freedl.inbox), then copy
+    anything new to the USB when it's plugged in. Every minute, or every 3 s for 15 min after a Free Download
+    click. Not while a sync reads SoundCloud (it rewrites the list then); its Soulseek step is fine."""
     while True:
-        time.sleep(60)
-        if sync_running():
-            continue  # a sync is running; it does the same at its end
+        _watch.wait(3 if freedl.claims(DIR) else 30 if sync_running() else 60)
+        _watch.clear()
+        usb_follow()
+        if sync_phase() == "soundcloud":
+            continue
         try:
             got = freedl.inbox(DIR, OUT)
         except Exception as e:  # never stop the page; the error goes to free.log
@@ -729,6 +823,10 @@ def watch_downloads():
             with open(os.path.join(DIR, "free.log"), "a") as f:
                 f.write(f"{time.strftime('%F %R')}  Downloads pickup FAILED: {e!r}\n")
         if got:
+            now = time.time()
+            for k in [k for k, t in _just_got.items() if now - t > 600]:
+                del _just_got[k]
+            _just_got.update({os.path.splitext(os.path.basename(g[2]))[0]: now for g in got})
             with open(os.path.join(DIR, "free.log"), "a") as f:
                 f.writelines(f"{time.strftime('%F %R')}  from Downloads: {os.path.basename(g[2])}\n" for g in got)
             subprocess.Popen([os.path.join(DIR, "usb.sh")])

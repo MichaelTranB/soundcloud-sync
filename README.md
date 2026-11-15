@@ -49,7 +49,7 @@ safety check and Full Disk Access.
 4. **Downloads folder:** got one yourself? A free gate (Hypeddit, Laylo), Bandcamp "name your price", or bought
    it (Beatport, Bandcamp, Traxsource...)? Just leave the file in Downloads. The Crate picks it up within a minute
    if it's on your list, top quality only.
-5. Anything still missing is listed on the page (and in *To Buy.txt* on the USB) with links to get it.
+5. Anything still missing is listed on the page (and in *To Buy.txt* in the music folder on the Mac; only music goes on the USB) with links to get it.
 
 Spotify and Apple Music only stream, so their songs come from Soulseek, Downloads or a shop (steps 3 to 5).
 Never YouTube rips or recorded streams: low quality.
