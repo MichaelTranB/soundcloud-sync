@@ -19,7 +19,6 @@ PROFILE_RE = re.compile(r"^(?:https?://(?:www\.|m\.)?soundcloud\.com/)?([A-Za-z0
 # "none" lists public playlists only; the others borrow the SoundCloud session of that browser.
 BROWSERS = ("chrome", "safari", "brave", "firefox", "edge", "none")
 YTDLP = shutil.which("yt-dlp") or "/opt/homebrew/bin/yt-dlp"
-_signed = {"at": 0.0, "ok": False}
 _slsk = {"at": 0.0, "ok": False}
 _lists = threading.Lock()  # one change to saved.json / playlist.txt at a time (the server is threaded)
 
@@ -39,17 +38,34 @@ def volumes():
         return []
 
 
-def signed_in():
-    # The Keychain read is slow-ish; once a minute is plenty.
-    if time.time() - _signed["at"] > 60:
-        try:
-            r = subprocess.run([os.path.expanduser("~/work-os/bin/api-key"), "get", "soundcloud"],
-                               capture_output=True, text=True, timeout=10)
-            _signed["ok"] = r.returncode == 0 and bool(r.stdout.strip())
-        except (OSError, subprocess.TimeoutExpired):
-            _signed["ok"] = False
-        _signed["at"] = time.time()
-    return _signed["ok"]
+def browser():
+    """The browser whose SoundCloud sign-in the sync borrows: Chrome until he picks another; "none" = no sign-in."""
+    b = read("browser.txt", None)
+    return "chrome" if b is None else (b or "none")
+
+
+# Where each browser keeps its sign-ins. macOS lets the sync read them only after Crate Helper gets Full Disk Access.
+COOKIE_DIRS = {
+    "chrome": "~/Library/Application Support/Google/Chrome",
+    "safari": "~/Library/Containers/com.apple.Safari/Data/Library/Cookies",
+    "brave": "~/Library/Application Support/BraveSoftware/Brave-Browser",
+    "edge": "~/Library/Application Support/Microsoft Edge",
+    "firefox": "~/Library/Application Support/Firefox",
+}
+
+
+def sign_in_status(b):
+    """ok: the sync can read that browser's sign-in. blocked: macOS needs Full Disk Access for Crate Helper.
+    missing: that browser isn't on this Mac. off: no sign-in chosen."""
+    if b not in COOKIE_DIRS:
+        return "off"
+    try:
+        os.listdir(os.path.expanduser(COOKIE_DIRS[b]))
+        return "ok"
+    except PermissionError:
+        return "blocked"
+    except OSError:
+        return "missing"
 
 
 def soulseek_ready():
@@ -117,24 +133,10 @@ def account():
         return {}
 
 
-def token():
-    try:
-        r = subprocess.run([os.path.expanduser("~/work-os/bin/api-key"), "get", "soundcloud"],
-                           capture_output=True, text=True, timeout=10)
-        return r.stdout.strip() if r.returncode == 0 else ""
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-
-
 def connect(profile, browser):
-    """Lists the profile's playlists. Signs in with the SoundCloud key in the Keychain when there is one (macOS
-    blocks other apps from reading Chrome's and Safari's sign-in), else through the chosen browser.
-    Returns an error or None."""
+    """Lists the profile's playlists, signed in through the chosen browser. Returns an error or None."""
     cmd = [YTDLP, "--flat-playlist", "--dump-single-json", f"https://soundcloud.com/{profile}/sets"]
-    tok = token()
-    if tok:
-        cmd[1:1] = ["--username", "oauth", "--password", tok]
-    elif browser != "none":
+    if browser != "none":
         cmd[1:1] = ["--cookies-from-browser", browser]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
@@ -145,25 +147,36 @@ def connect(profile, browser):
     except ValueError:
         err = [l for l in r.stderr.splitlines() if l.startswith("ERROR")]
         if re.search(r"cookies database|operation not permitted|permission denied", r.stderr, re.I):
-            return ("macOS doesn't let this app read your browser's sign-in yet. Paste your playlist link above "
-                    "instead (for a private playlist, its Share link).")
+            return ("macOS doesn't let The Crate read your browser's sign-in yet: turn on Crate Helper in System "
+                    "Settings > Privacy & Security > Full Disk Access. Or paste your playlist link above instead.")
         return (err[-1][7:] if err else "Could not read that profile.")[:300]
     lists = [{"title": e.get("title") or e["url"].rstrip("/").split("/")[-1], "url": e["url"]}
              for e in entries if PLAYLIST_RE.match(str(e.get("url", "")))]
     lists.append({"title": "Liked tracks", "url": f"https://soundcloud.com/{profile}/likes"})
     with open(os.path.join(DIR, "account.json"), "w") as f:
         json.dump({"profile": profile, "browser": browser, "playlists": lists}, f)
-    # sync.sh reads this one line to know which browser session to borrow.
-    with open(os.path.join(DIR, "browser.txt"), "w") as f:
-        f.write("" if browser == "none" else browser + "\n")
+    set_browser(browser)
     return None
+
+
+def set_browser(b):
+    # sync.sh reads this one line to know which browser's sign-in to borrow (empty: none).
+    with open(os.path.join(DIR, "browser.txt"), "w") as f:
+        f.write("" if b == "none" else b + "\n")
 
 
 def problem():
     """One plain line when the last sync could not sign in or reach SoundCloud; empty when fine."""
-    log = read("last-run.log").lower()
-    if "cookies" in log and "error" in log or "only available for registered users" in log or "401" in log:
-        return "SoundCloud sign-in isn't working. Sign in to SoundCloud in your browser, then press Connect again."
+    log = (read("last-run.log") + read("signin.log")).lower()
+    b = browser()
+    name = {"chrome": "Chrome", "safari": "Safari", "brave": "Brave", "edge": "Edge", "firefox": "Firefox"}.get(b, "")
+    if name and ("operation not permitted" in log or "permission denied" in log or sign_in_status(b) == "blocked"):
+        return ("Originals need one switch: System Settings > Privacy & Security > Full Disk Access > turn on "
+                "Crate Helper. Until then, missing tracks come from Soulseek and the shops.")
+    if name and ("cookies" in log and "error" in log or "authorization token is invalid" in log
+                 or "only available for registered users" in log or "401" in log):
+        return (f"SoundCloud's sign-in in {name} has run out (it lasts about a day). Open soundcloud.com in "
+                f"{name} once, then press Sync now to get the originals.")
     if "unable to download" in log and "getaddrinfo" in log or "network is unreachable" in log:
         return "The last sync couldn't reach SoundCloud (no internet). It will try again tonight."
     return ""
@@ -208,8 +221,8 @@ def state():
         "playlist": read("playlist.txt"), "usb": usb, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
         "running": os.path.exists(os.path.join(DIR, ".running")),
-        "signedIn": bool(read("browser.txt")) or signed_in(),
-        "profile": acct.get("profile", ""), "browser": acct.get("browser", "chrome"),
+        "signIn": sign_in_status(browser()),
+        "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
         "have": have, "buy": buy,
         "soulseekReady": soulseek_ready(), "lastSoulseek": slsklog[-1] if slsklog else "",
@@ -270,6 +283,11 @@ class Handler(BaseHTTPRequestHandler):
             err = connect(m.group(1), browser)
             if err:
                 return self.send(400, {"error": err})
+        elif self.path == "/api/browser":
+            b = str(body.get("browser", ""))
+            if b not in BROWSERS:
+                return self.send(400, {"error": "Pick a browser."})
+            set_browser(b)
         elif self.path == "/api/pick":
             url = str(body.get("url", ""))
             known = {p["url"]: p["title"] for p in account().get("playlists", []) + saved()}

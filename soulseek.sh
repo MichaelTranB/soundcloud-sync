@@ -30,8 +30,13 @@ get() {
     --strict-title --length-tol 5 --no-skip-existing --no-progress "$@" >"$DIR/soulseek-pass.log" 2>&1
   cat "$DIR/soulseek-pass.log" >>"$DIR/soulseek-run.log"
   python3 "$DIR/soulseek.py" record "$DIR" "$SLSK" >>"$LOG" 2>&1
-  local c="$(grep -E 'Completed:' "$DIR/soulseek-pass.log" | tail -1 | sed 's/^\[cli\] Completed: //')"
-  echo "${c:-FAILED, see soulseek-run.log}"
+  # sockseek writes one "SongJob: succeeded" line per track it got (a failed try on one peer is only a [warn]).
+  local n=$(( $(wc -l < "$DIR/soulseek.csv") - 1 ))
+  if grep -q 'Job List: ' "$DIR/soulseek-pass.log"; then
+    echo "got $(grep -c '\] SongJob: succeeded:' "$DIR/soulseek-pass.log") of $n"
+  else
+    echo "FAILED, see soulseek-run.log"
+  fi
 }
 rows() { echo $(( $(wc -l < "$DIR/soulseek.csv") - 1 )); }
 : >"$DIR/soulseek-run.log"
@@ -43,7 +48,9 @@ if [ "$(rows)" -gt 0 ]; then
     RESULT="$RESULT; 320 MP3 pass: $(get --format mp3 --min-bitrate 320 --strict-conditions)"
   fi
   say "Soulseek: ${RESULT}"
-  grep -q -i -E 'login failed|invalid pass|exception' "$DIR/soulseek-run.log" && say "Soulseek PROBLEM, see soulseek-run.log: $(grep -i -E 'login failed|invalid pass|exception' "$DIR/soulseek-run.log" | tail -1)"
+  # Only a sign-in or crash is a problem; a peer that doesn't answer is normal (the next one is tried).
+  BAD='login.*(fail|reject|denied)|invalid ?pass|wrong password|unhandled exception'
+  grep -q -i -E "$BAD" "$DIR/soulseek-run.log" && say "Soulseek PROBLEM, see soulseek-run.log: $(grep -i -E "$BAD" "$DIR/soulseek-run.log" | tail -1)"
 else
   say "Soulseek: nothing new to look for"
 fi

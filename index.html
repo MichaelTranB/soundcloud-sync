@@ -167,7 +167,9 @@ function render(s) {
   const b = $('sync'); b.disabled = s.running;
   b.replaceChildren(...(s.running ? [el('span', { className: 'spin' }), 'Syncing'] : ['Sync Now']));
 
-  $('signWord').replaceChildren(el('i', { className: 'dot ' + (s.signedIn ? 'ok' : 'warn') }), s.signedIn ? 'Signed in' : 'Not signed in');
+  const bn = { chrome: 'Chrome', safari: 'Safari', brave: 'Brave', firefox: 'Firefox', edge: 'Edge' }[s.browser] || '';
+  const sw = { ok: ['ok', 'Via ' + bn], blocked: ['warn', 'Needs Full Disk Access'], missing: ['warn', bn + ' not found'], off: ['', 'Off'] }[s.signIn] || ['', 'Off'];
+  $('signWord').replaceChildren(el('i', { className: 'dot ' + sw[0] }), sw[1]);
   $('usbWord').replaceChildren(el('i', { className: 'dot ' + (s.usbPlugged ? 'ok' : s.usb ? 'warn' : '') }),
     !s.usb ? 'No USB chosen' : s.usbPlugged ? s.usb : s.usb + ' (unplugged)');
 
@@ -227,6 +229,7 @@ $('connect').onclick = () => {
     .catch(e => say('profNote', e.message, true))
     .finally(() => { busy = false; $('connect').disabled = false; });
 };
+$('browser').onchange = e => call('/api/browser', { browser: e.target.value }).then(() => say('profNote', e.target.value === 'none' ? 'No sign-in: originals won\'t download.' : 'Syncs use the SoundCloud sign-in in ' + e.target.selectedOptions[0].textContent + '.')).catch(err => say('profNote', err.message, true));
 $('profile').onkeydown = e => { if (e.key === 'Enter') $('connect').click(); };
 $('url').onkeydown = e => { if (e.key === 'Enter') $('saveUrl').click(); };
 $('usb').onchange = e => { e.target.blur(); call('/api/usb', { name: e.target.value }).catch(err => say('usbNote', err.message, true)); };
