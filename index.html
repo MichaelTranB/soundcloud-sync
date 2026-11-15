@@ -9,12 +9,12 @@
 <meta name="theme-color" content="#0c0c12">
 <style>
   :root {
-    --bg: #0c0c12; --panel: #15151d; --line: #282834; --text: #f0eef8; --dim: #8a889c;
+    --bg: #0c0c12; --panel: #15151d; --line: #282834; --text: #f0eef8; --dim: #a4a2b6;
     --hot: #c8102e; --ok: #9be36b; --warn: #ffc24a;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, "Helvetica Neue", sans-serif; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 -apple-system, "Helvetica Neue", sans-serif; }
   main { max-width: 1200px; margin: 0 auto; padding: 56px 40px 96px; }
   header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
   h1 { font-size: 54px; line-height: .95; letter-spacing: -.03em; margin: 0; font-weight: 800; }
@@ -32,82 +32,82 @@
   .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin: 40px 0 28px; }
   .stat { background: var(--panel); padding: 22px 24px; min-width: 0; }
   .stat b { display: block; font-size: 32px; line-height: 1; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-  .stat small { color: var(--dim); font-size: 13px; display: block; margin-top: 10px; }
+  .stat small { color: var(--dim); font-size: 14px; display: block; margin-top: 10px; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; background: var(--dim); }
   .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
-  .stat .word { font: 600 16px/1.3 inherit; letter-spacing: 0; }
+  .stat .word { font: 600 17px/1.3 inherit; letter-spacing: 0; }
 
   .setup { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; margin-bottom: 56px; }
   .field { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; }
-  label { display: block; color: var(--text); font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+  label { display: block; color: var(--text); font-size: 16px; font-weight: 600; margin-bottom: 12px; }
   .row { display: flex; gap: 10px; }
-  input, select { flex: 1; min-width: 0; background: #09090e; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; font: 14px inherit; font-family: inherit; }
+  input, select { flex: 1; min-width: 0; background: #09090e; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font: 15px inherit; font-family: inherit; }
   input:focus, select:focus, button:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
   .lists { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  .lists button { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 8px 14px; font-weight: 600; font-size: 13px; }
+  .lists button { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 9px 15px; font-weight: 600; font-size: 14px; }
   .lists button[aria-pressed="true"] { background: var(--hot); border-color: var(--hot); color: #ffffff; }
   .chip { display: inline-flex; }
   .chip button:first-child { border-radius: 999px 0 0 999px; border-right: 0; }
   .chip button.x { border-radius: 0 999px 999px 0; padding: 8px 11px; color: var(--muted, inherit); }
-  details { margin-top: 12px; color: var(--dim); font-size: 13px; } summary { cursor: pointer; }
-  .pre { flex: 1; min-width: 0; display: flex; align-items: center; background: #09090e; border: 1px solid var(--line); border-radius: 10px; padding-left: 12px; font-size: 14px; color: var(--dim); }
+  details { margin-top: 12px; color: var(--dim); font-size: 14.5px; } summary { cursor: pointer; }
+  .pre { flex: 1; min-width: 0; display: flex; align-items: center; background: #09090e; border: 1px solid var(--line); border-radius: 10px; padding-left: 14px; font-size: 15px; color: var(--dim); }
   .pre:focus-within { outline: 2px solid var(--hot); outline-offset: 2px; }
   .pre input { border: 0; background: transparent; padding-left: 0; outline: 0; }
   .alert { margin-top: 32px; padding: 14px 18px; border: 1px solid var(--warn); border-radius: 12px; color: var(--warn); }
   .alert + .strip { margin-top: 14px; }
-  .note { color: var(--dim); font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .note { color: var(--dim); font-size: 14.5px; margin-top: 10px; min-height: 18px; }
   .note.bad { color: var(--warn); }
 
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; }
-  h2 { font-size: 17px; font-weight: 700; color: var(--text); margin: 0 0 12px; display: flex; justify-content: space-between; align-items: baseline; }
-  h2 em { font-size: 14px; font-weight: 600; color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
+  h2 { font-size: 18px; font-weight: 700; color: var(--text); margin: 0 0 12px; display: flex; justify-content: space-between; align-items: baseline; }
+  h2 em { font-size: 15px; font-weight: 600; color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
   ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
   li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
   /* the name takes the row; the links wrap under it when there isn't room (never a one-letter-wide name) */
   li .n { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
-  .tag { font: 700 11px var(--mono); padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
+  .tag { font: 700 12px var(--mono); padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
   .tag.lossless { color: var(--ok); border-color: #35502a; }
   .tag.low { color: #e0a040; border-color: #6b4a1a; }
-  li a { color: var(--dim); font-size: 12px; text-decoration: none; border-bottom: 1px dotted var(--dim); white-space: nowrap; }
+  li a { color: var(--dim); font-size: 13.5px; text-decoration: none; border-bottom: 1px dotted var(--dim); white-space: nowrap; }
   #buy li .n { flex-basis: 100%; }  /* still to get: the name on its line, the links together under it */
-  li .shops { color: var(--dim); font-size: 12px; margin-left: 8px; }
+  li .shops { color: var(--dim); font-size: 13.5px; margin-left: 8px; }
   li a.free { color: var(--ok); border-bottom-style: solid; border-color: var(--ok); font-weight: 700; }
   li a:hover { color: var(--hot); border-color: var(--hot); }
-  h3 { font-size: 14px; font-weight: 600; color: var(--dim); margin: 28px 0 8px; display: flex; justify-content: space-between; align-items: center; }
-  h3 em { font-size: 13px; color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
+  h3 { font-size: 15px; font-weight: 600; color: var(--dim); margin: 28px 0 8px; display: flex; justify-content: space-between; align-items: center; }
+  h3 em { font-size: 14px; color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
   .find { display: flex; align-items: center; gap: 10px; margin: 0 0 28px; }
   .find input { flex: 1; max-width: 420px; }
-  .find small { color: var(--dim); font-size: 12px; }
-  li .why { flex-basis: 100%; color: var(--dim); font-size: 12.5px; margin-top: -2px; }
+  .find small { color: var(--dim); font-size: 14px; }
+  li .why { flex-basis: 100%; color: var(--dim); font-size: 14px; margin-top: -2px; }
   li .why.act { color: var(--ok); }
-  .state { font: 700 11px var(--mono); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; display: inline-flex; align-items: center; }
+  .state { font: 700 12px var(--mono); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; display: inline-flex; align-items: center; }
   .state .dot { width: 7px; height: 7px; margin-right: 6px; }
   .state.on { color: var(--text); border-color: var(--hot); }
   .dot.live { background: var(--hot); animation: pulse 1.4s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: .3; } }
   @media (prefers-reduced-motion: reduce) { .dot.live { animation: none; } }
-  .phase { color: var(--dim); font-size: 13px; padding: 12px 0; border-bottom: 1px solid var(--line); display: flex; align-items: center; }
+  .phase { color: var(--dim); font-size: 14.5px; padding: 12px 0; border-bottom: 1px solid var(--line); display: flex; align-items: center; }
   .empty { color: var(--dim); padding: 22px 0; border-bottom: 1px solid var(--line); }
   .brand { display: flex; align-items: center; gap: 16px; }
   .brand img { width: 58px; height: 58px; flex: none; }
   .start { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px 26px 12px; margin-top: 40px; }
   .start h2 { align-items: center; margin-bottom: 10px; }
-  .start h2 button { padding: 6px 12px; font-size: 12px; }
+  .start h2 button { padding: 7px 14px; font-size: 14px; }
   .step { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 0; border-top: 1px solid var(--line); }
-  .step .tick { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); flex: none; display: grid; place-items: center; font: 700 12px var(--mono); color: var(--dim); }
+  .step .tick { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); flex: none; display: grid; place-items: center; font: 700 13px var(--mono); color: var(--dim); }
   .step.done .tick { background: var(--ok); border-color: var(--ok); color: var(--bg); }
   .step .t { flex: 1 1 300px; min-width: 0; }
-  .step .t small { display: block; color: var(--dim); font-size: 13px; margin-top: 2px; }
+  .step .t small { display: block; color: var(--dim); font-size: 14.5px; margin-top: 2px; }
   .step.done .t b { color: var(--dim); font-weight: 600; }
-  .step button, a.btn { padding: 9px 18px; font-size: 13px; }
+  .step button, a.btn { padding: 10px 18px; font-size: 14px; }
   a.btn { display: inline-block; border-radius: 999px; background: var(--hot); color: #ffffff; font-weight: 700; text-decoration: none; white-space: nowrap; }
   .step:not(.next) a.btn, .step:not(.next) button { background: transparent; color: var(--text); border: 1px solid var(--line); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-  footer { color: var(--dim); font-size: 13px; margin-top: 56px; }
-  .stat a.inl { color: var(--text); font-size: 13px; text-underline-offset: 3px; }
-  .alert .fix { display: inline-block; margin: 10px 0 0; padding: 9px 18px; font-size: 14px; }
+  footer { color: var(--dim); font-size: 14px; margin-top: 56px; }
+  .stat a.inl { color: var(--text); font-size: 14px; text-underline-offset: 3px; }
+  .alert .fix { display: inline-block; margin: 12px 0 0; padding: 10px 18px; font-size: 15px; }
   #startNote { margin: 0 0 12px; } #startNote:empty { display: none; }
-  .every { color: var(--dim); font-size: 13px; align-self: center; white-space: nowrap; }
+  .every { color: var(--dim); font-size: 14.5px; align-self: center; white-space: nowrap; }
   #syncTime { flex: 0 1 140px; color-scheme: dark; }
   .acts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .ask b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--dim); font-size: 12px; margin-right: 6px; vertical-align: -1px; }
@@ -116,8 +116,9 @@
   .faqTop { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .faqTop h2 { margin: 0; font-size: 24px; letter-spacing: -.02em; text-transform: none; color: var(--text); display: block; }
   .faqTop button { padding: 4px 13px; font-size: 20px; line-height: 1.2; }
-  #faq h3 { font-size: 16px; font-weight: 700; color: var(--text); margin: 26px 0 6px; }
-  #faq p, #faq li { color: #cfcdd9; margin: 0 0 8px; }
+  #faq h3 { font-size: 17px; font-weight: 700; color: #ff5a70; margin: 22px 0 8px; padding-top: 22px; border-top: 1px solid var(--line); }
+  #faq .faqTop + h3 { border-top: 0; padding-top: 0; }
+  #faq p, #faq li { color: #c3c1d0; margin: 0 0 8px; line-height: 1.55; }
   #faq ol { padding-left: 20px; margin: 0 0 8px; }
   #faq li { display: list-item; padding: 0; border: 0; }
   #faq li::marker { color: var(--dim); }
@@ -170,7 +171,7 @@
     <h3>What it uses</h3>
     <p>Free, open-source tools, all running on your Mac: <b>yt-dlp</b> for SoundCloud, <b>sockseek</b> for Soulseek, and <b>ClamAV</b> (from Cisco) for the virus scan. No account with us, no AI, nothing uploaded.</p>
 
-    <h3>Why the first sync is slow</h3>
+    <h3>Why is it taking so long to get my songs?</h3>
     <p>Soulseek only allows so many searches a minute, so a big playlist takes a few hours the first time. After that it only looks for new tracks. Tracks nobody has are tried again after 1, 2, 4, then 7 days.</p>
 
     <h3>Do I need to keep it open?</h3>
@@ -218,7 +219,7 @@
     <div class="field">
       <label for="slskUser">Soulseek</label>
       <div id="slskOk" hidden><span class="dot ok"></span>Signed in as <b id="slskName"></b>
-        <button class="ghost" id="slskChange" style="margin-left:10px;padding:6px 12px;font-size:12px">Change</button>
+        <button class="ghost" id="slskChange" style="margin-left:10px;padding:7px 14px;font-size:14px">Change</button>
         <div class="note">Every sync looks here for what SoundCloud won't give.</div></div>
       <div id="slskForm"><div class="note" id="slskStatus" style="margin:0 0 10px"></div>
       <div class="row"><input id="slskUser" placeholder="Soulseek name" spellcheck="false" autocapitalize="off" autocomplete="off">
