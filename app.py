@@ -20,7 +20,7 @@ PROFILE_RE = re.compile(r"^(?:https?://(?:www\.|m\.)?soundcloud\.com/)?([A-Za-z0
 BROWSERS = ("chrome", "safari", "brave", "firefox", "edge", "none")
 YTDLP = next((p for p in (shutil.which("yt-dlp"), os.path.expanduser("~/.local/bin/yt-dlp"), "/opt/homebrew/bin/yt-dlp",
                           "/usr/local/bin/yt-dlp") if p and os.access(p, os.X_OK)), "yt-dlp")
-_slsk = {"at": 0.0, "ok": False}
+_slsk = {"at": 0.0, "ok": False, "user": ""}
 _lists = threading.Lock()  # one change to saved.json / playlist.txt at a time (the server is threaded)
 
 
@@ -114,8 +114,10 @@ def soulseek_ready():
             r = subprocess.run(["security", "find-generic-password", "-s", "soundcloud-sync-soulseek"],
                                capture_output=True, text=True, timeout=10)
             _slsk["ok"] = r.returncode == 0
+            m = re.search(r'"acct"<blob>="([^"]*)"', r.stdout)  # the saved name; the password is never read
+            _slsk["user"] = m.group(1) if m and r.returncode == 0 else ""
         except (OSError, subprocess.TimeoutExpired):
-            _slsk["ok"] = False
+            _slsk["ok"], _slsk["user"] = False, ""
         _slsk["at"] = time.time()
     return _slsk["ok"]
 
@@ -271,7 +273,10 @@ def state():
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
         "have": have, "buy": buy,
-        "soulseekReady": soulseek_ready(), "lastSoulseek": slsklog[-1] if slsklog else "",
+        "soulseekReady": soulseek_ready(), "soulseekUser": _slsk["user"],
+        # the last run's sign-in was turned down (soulseek.sh logs "Soulseek PROBLEM" with the reason)
+        "soulseekBad": bool(slsklog) and bool(re.search(r"PROBLEM.*(login|pass)", slsklog[-1], re.I)),
+        "lastSoulseek": slsklog[-1] if slsklog else "",
         "lastRun": history[-1] if history else "", "lastUsb": usblog[-1] if usblog else "",
         "safety": {"virusScan": bool(safety.CLAM), "last": safelog[-1] if safelog else "",
                    "blocked": len(os.listdir(qdir)) if os.path.isdir(qdir) else 0},

@@ -122,11 +122,16 @@
       <label class="note"><input type="checkbox" id="eject"> Eject the USB once new tracks are on it, so you can just pull it out</label>
     </div>
     <div class="field">
-      <label for="slskUser">Soulseek <span id="slskState"></span></label>
+      <label for="slskUser">Soulseek</label>
+      <div id="slskOk" hidden><span class="dot ok"></span>Signed in as <b id="slskName"></b>
+        <button class="ghost" id="slskChange" style="margin-left:10px;padding:6px 12px;font-size:12px">Change</button>
+        <div class="note">Tracks SoundCloud won't give are looked for on Soulseek at every sync.</div></div>
+      <div id="slskForm"><div class="note" id="slskStatus" style="margin:0 0 10px"></div>
       <div class="row"><input id="slskUser" placeholder="Soulseek name" spellcheck="false" autocapitalize="off" autocomplete="off">
         <input id="slskPass" type="password" placeholder="Password" autocomplete="new-password">
         <button class="ghost" id="slskSave">Sign in</button></div>
       <div class="note" id="slskNote">Finds the tracks SoundCloud won't let you download. No account yet? Pick a name nobody has and a new password you use nowhere else: Soulseek makes the account the first time. Saved in your Mac's Keychain only.</div>
+      </div>
     </div>
   </section>
 
@@ -219,7 +224,15 @@ function render(s) {
     el('a', { href: search('https://www.qobuz.com/us-en/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Qobuz' })))
     : [el('div', { className: 'empty', textContent: 'Tracks with no artist download show here, with links to the artist\'s page and the shops.' })]));
 
-  $('slskState').textContent = s.soulseekReady ? '· signed in' : '· not set up';
+  // Signed in and working: just the green status. Otherwise the reason and the sign-in boxes.
+  const slskGood = s.soulseekReady && !s.soulseekBad;
+  $('slskOk').hidden = !slskGood || slskEdit;
+  $('slskForm').hidden = slskGood && !slskEdit;
+  $('slskName').textContent = s.soulseekUser || 'your account';
+  $('slskStatus').replaceChildren(el('span', { className: 'dot warn' }), document.createTextNode(
+    s.soulseekBad ? 'Soulseek turned down the saved sign-in. Sign in again.'
+      : slskGood ? 'Signed in as ' + (s.soulseekUser || 'your account') + '. Sign in below to switch accounts.' : 'Not signed in yet.'));
+  if (slskGood && slskEdit) $('slskStatus').firstChild.className = 'dot ok';
   $('foot').textContent = [s.lastRun && 'last sync  ' + s.lastRun, s.lastUsb && 'usb  ' + s.lastUsb,
     s.soulseekReady ? s.lastSoulseek && 'soulseek  ' + s.lastSoulseek.replace(/^\S+ \S+\s+/, '')
       : 'Soulseek not set up yet (sign in above)',
@@ -241,10 +254,12 @@ $('saveUrl').onclick = () => {
     .then(s => { $('url').value = ''; say('urlNote', (s.saved[0] || {}).title + ' saved and set to sync.'); })
     .catch(e => say('urlNote', e.message, true)).finally(() => { $('saveUrl').disabled = false; });
 };
+let slskEdit = false;
+$('slskChange').onclick = () => { slskEdit = true; tick(); };
 $('slskSave').onclick = () => {
   $('slskSave').disabled = true; say('slskNote', 'Checking with Soulseek (up to a minute)…');
   call('/api/soulseek', { user: $('slskUser').value.trim(), pass: $('slskPass').value })
-    .then(() => { $('slskPass').value = ''; say('slskNote', 'Signed in. Tracks SoundCloud won\'t give are looked for on Soulseek at every sync.'); })
+    .then(() => { $('slskPass').value = ''; slskEdit = false; tick(); })
     .catch(e => say('slskNote', e.message, true)).finally(() => { $('slskSave').disabled = false; });
 };
 $('slskPass').onkeydown = e => { if (e.key === 'Enter') $('slskSave').click(); };
