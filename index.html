@@ -381,7 +381,7 @@ function render(s) {
     ...(/signed in to SoundCloud|sign-in in .* has run out/.test(s.problem) ? [el('br'), scLink('Sign in to SoundCloud ↗', 'btn fix')]
       : /Full Disk Access/.test(s.problem) ? [el('br'), el('button', { className: 'fix', textContent: 'Open the setting', onclick: () => openStep('fda') })] : []));
   $('nHave').textContent = s.have.length; $('cHave').textContent = s.have.length || '';
-  const capNote = s.capped && s.service === 'apple' ? 'Apple Music shows only the first 300 songs. Split bigger playlists into parts of 300 or fewer.'
+  const capNote = s.capped && s.service === 'apple' ? 'Apple Music shows only the first 300 songs. To get the rest, see Your playlists.'
     : s.capped && s.service === 'spotify' ? 'Spotify shows only the first 100 songs. To get the rest, see Your playlists.'
     : s.missing ? `${s.missing} song${s.missing > 1 ? 's' : ''} didn't load from Spotify. The next sync tries again.` : '';
   $('unread').hidden = !s.unread && !capNote;
@@ -389,8 +389,10 @@ function render(s) {
     : s.unread ? `Plus ${s.unread} song${s.unread > 1 ? 's' : ''} SoundCloud wouldn't show us yet (it slows down anyone who asks too fast). The next sync asks again.` : '';
   $('nBuy').textContent = s.buy.length;
   if (Date.now() - urlSaid > 12000) say('urlNote', s.service === 'spotify' && s.capped
-      ? 'Spotify shows the first 100 songs. For all of them: in the Spotify app, click a song, press ⌘A, then ⌘C, and paste here.'
+      ? 'Spotify shows the first 100 songs. For all of them: in the Spotify app, click a song, press ⌘A, then ⌘C, and paste here. (Web player: click the first song, Shift-click the last, ⌘C.)'
       : s.service === 'spotify' && s.pasted ? `All ${s.pasted} songs are in. Added more in Spotify? Copy and paste them here again.`
+      : s.service === 'apple' ? (s.capped ? 'Apple Music shows only the first 300 songs. Split bigger playlists into parts of 300 or fewer.'
+        : 'Apple Music playlists: up to 300 songs each.')
       : 'Works with SoundCloud, Spotify and Apple Music. Tap a saved one to sync it.', false, true);
   paintSetup(s); last = s; draw(); paintStart(s); paintHelper();
 }
@@ -778,7 +780,8 @@ $('saveUrl').onclick = () => {
   busyBtn($('saveUrl'), true, 'Adding'); say('urlNote', 'Reading the playlist…');
   const slow = setTimeout(() => say('urlNote', 'Still reading. Big playlists can take a minute.'), 6000);
   call('/api/playlist', { url: $('url').value.trim() })
-    .then(s => { $('url').value = ''; say('urlNote', (s.saved[0] || {}).title + ' saved and set to sync.'); })
+    .then(s => { $('url').value = ''; say('urlNote', (s.saved[0] || {}).title + ' saved and set to sync.' +
+      (s.service === 'apple' ? ' Apple Music reads up to 300 songs a playlist.' : '')); })
     .catch(e => say('urlNote', e.message, true)).finally(() => { clearTimeout(slow); busyBtn($('saveUrl'), false, 'Add'); });
 };
 let slskEdit = false;

@@ -25,7 +25,9 @@ Paste the same line again any time to update. The Crate is also in your **Applic
 The page ticks off each step by itself:
 
 1. **Add a playlist:** in SoundCloud, Spotify or Apple Music, open the playlist, **Share > Copy link**, and paste it.
-   (Spotify and Apple Music: a public playlist. Spotify shows The Crate its first 100 songs.)
+   (Spotify and Apple Music: a public playlist. Spotify shows The Crate its first 100 songs; for the rest, click a
+   song in the Spotify app, press ⌘A then ⌘C, and paste into the same box. In the web player, click the first song
+   and Shift-click the last instead of ⌘A. Apple Music shows up to 300 songs.)
 2. **Turn on Full Disk Access** (SoundCloud playlists only). Why: your browser keeps your SoundCloud sign-in in a
    folder macOS locks, and this switch lets The Crate use it, so you get original files without typing a SoundCloud
    password into it. The sign-in only ever goes to SoundCloud. The button opens System Settings and a Finder window:

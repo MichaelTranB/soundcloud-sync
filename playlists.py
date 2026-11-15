@@ -116,9 +116,10 @@ def spotify(url, d=None):
     ids = pasted(d, url) if d else []
     if not ids:
         return {"title": title, "tracks": tracks, "capped": len(tracks) >= SPOTIFY_CAP}
-    # The pasted list, plus any song in the first 100 it doesn't have (added since it was pasted).
+    # The pasted list is the playlist. (Not merged with the public first 100: Spotify's own playlists differ per
+    # listener, so the two can hold different songs. Songs added later: paste again.)
     known = {t["link"].rpartition("/")[2]: t for t in tracks}
-    order = ids + [i for i in known if i not in set(ids)]
+    order = ids
     cpath = os.path.join(d, ".spotify-cache.json")
     try:
         with open(cpath) as f:
