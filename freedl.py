@@ -12,6 +12,7 @@ opened and only its audio is taken. A link that gave a non-audio or low-quality 
 """
 import os, re, shutil, stat, sys, tempfile, time, urllib.parse, urllib.request, zipfile
 import safety
+from soulseek import CUT, split
 from audio import info, top_quality
 
 MAX = 2_000_000_000  # bytes; nothing an artist gives away is bigger
@@ -55,12 +56,12 @@ def fetch(url, dest):
 
 def best_audio(tmp, name):
     """The downloaded file itself, or from a zip the top-quality track whose file name carries the song's title
-    (song_key: the same matching the Downloads pickup uses)."""
+    as whole words (the same matching the Downloads pickup uses); the full title with its version first."""
     if not zipfile.is_zipfile(tmp):
         i = info(tmp)
         return (tmp, i) if top_quality(i) else (None, i)
-    short, full = song_key(name)
-    picks, key = [], short or full
+    short, full, _ = wanted(name)
+    picks = []
     with zipfile.ZipFile(tmp) as z:
         for m in z.infolist():
             base = os.path.basename(m.filename)
@@ -72,13 +73,14 @@ def best_audio(tmp, name):
                     dst.write(chunk)
             i = info(out)
             if top_quality(i):
-                picks.append((key in norm(base), i["lossless"], out, i))
+                b = words(os.path.splitext(base)[0])
+                picks.append((has(b, short), has(b, full), i["lossless"], out, i))
     # One track: it's the download. Several: only one whose file name carries the title, never a guess.
     if len(picks) > 1:
         picks = [p for p in picks if p[0]]
     if not picks:
         return None, None
-    _, _, path, i = max(picks, key=lambda p: p[:2])
+    *_, path, i = max(picks, key=lambda p: p[:3])
     return path, i
 
 
@@ -86,6 +88,24 @@ def song_key(name):
     """The song's own title, squeezed: "Label - Artist - Song (Extended Mix)" -> "song"."""
     title = name.partition(" - ")[2] or name
     return norm(re.sub(r"[(\[][^)\]]*[)\]]", "", title.rsplit(" - ", 1)[-1])), norm(title.rsplit(" - ", 1)[-1])
+
+
+def words(s):
+    return re.findall(r"[^\W_]+", s.lower())
+
+
+def has(hay, needle):
+    """True when the word list needle appears whole and in order in hay ("home" is not in "homecoming")."""
+    n = len(needle)
+    return n > 0 and any(hay[i:i + n] == needle for i in range(len(hay) - n + 1))
+
+
+def wanted(name):
+    """What a downloaded file's name must show to be this song: (title words, full title words with the
+    version, [artist or uploader words])."""
+    artist, title = split(name)
+    who = [w for w in {tuple(words(artist)), tuple(words(name.partition(" - ")[0] if " - " in name else ""))} if w]
+    return words(re.sub(r"[(\[][^)\]]*[)\]]", "", title)), words(title), [list(w) for w in who]
 
 
 def file_name(out, name, ext, tag):
@@ -111,14 +131,15 @@ def record(d, got):
 
 def inbox(d, out, folder=os.path.expanduser("~/Downloads"), days=30):
     """Takes still-to-get tracks you downloaded by hand (a Hypeddit or Laylo gate, a Bandcamp purchase, any
-    link) out of Downloads: the song's title must be in the file's name, and when SoundCloud gave a length,
-    within 5 s of it (same version). Top quality only, through the safety check. A zip is opened and stays."""
+    link) out of Downloads: the song's title (whole words) and its artist must be in the file's name, and when
+    SoundCloud gave a length, within 5 s of it (same version; a SoundCloud preview's length is not used). Top quality only, through the safety check. A zip is opened and stays."""
     try:
         with open(os.path.join(d, "to-buy.tsv")) as f:
             rows = [(l.rstrip("\n").split("\t") + ["", "", "", ""])[:4] for l in f if l.strip()]
     except OSError:
         return []
-    rows = [r for r in rows if len(song_key(r[0])[0]) >= 3]
+    # A clip or preview on SoundCloud: its length says nothing about the full download (as in soulseek.py)
+    rows = [r[:3] + [""] if CUT.search(r[0]) else r for r in rows if len(song_key(r[0])[0]) >= 3]
     if not rows:
         return []
     seen_path = os.path.join(d, "inbox-seen.txt")
@@ -138,25 +159,34 @@ def inbox(d, out, folder=os.path.expanduser("~/Downloads"), days=30):
                 except OSError:
                     continue
                 if (n.lower().endswith(AUDIO_EXT + (".zip",)) and not n.startswith(".") and stat.S_ISREG(st.st_mode)
-                        and 10 < now - st.st_mtime < days * 86400 and f"{p}\t{st.st_size}" not in seen):
+                        and 10 < now - st.st_mtime < days * 86400):
                     files.append((p, st.st_size))
     except OSError:  # no permission to read Downloads (the Crate Helper switch is off)
         return []
     got, new_seen = [], []
     for p, size in files:
-        base = norm(os.path.splitext(os.path.basename(p))[0])
+        base = words(os.path.splitext(os.path.basename(p))[0])
+        texts = [base]  # a zip: its name with each track's name (an album zip is often only "Artist - Album")
         if p.lower().endswith(".zip"):
             try:
                 with zipfile.ZipFile(p) as z:
-                    base += "".join(norm(m) for m in z.namelist())
+                    texts = [base + words(os.path.splitext(m)[0]) for m in z.namelist() if m.lower().endswith(AUDIO_EXT)]
             except (OSError, zipfile.BadZipFile):
                 continue
-        # the most specific title wins ("Intro" never takes "Intro (VIP)")
-        cands = sorted((r for r in rows if song_key(r[0])[0] in base), key=lambda r: -len(song_key(r[0])[1]))
+
+        def fits(row, full=False):
+            short, whole, who = wanted(row[0])
+            return any(has(x, whole if full else short) and (not who or any(has(x, w) for w in who)) for x in texts)
+        # The title as whole words AND the artist (or uploader) in the same name; the most specific title wins
+        # ("Intro" never takes "Intro (VIP)"). Without a length from SoundCloud, the full title with its version.
+        cands = sorted((r for r in rows if fits(r) and (r[3] or fits(r, True))), key=lambda r: -len(wanted(r[0])[1]))
+        # Looked at once for these tracks; looked at again if the file changes or other tracks match it
+        # (another song from a kept album zip added to the playlist).
+        key = f"{p}\t{size}\t{' '.join(sorted(r[1] for r in cands))}"
+        if not cands or key in seen:
+            continue
         for row in cands:
             name, link, _, secs = row
-            if not secs and song_key(name)[1] not in base:
-                continue
             with tempfile.TemporaryDirectory(dir=d, prefix=".inbox-") as tmpdir:  # outside the music folder
                 tmp = os.path.join(tmpdir, "download" + (".zip" if p.lower().endswith(".zip") else ""))
                 shutil.copyfile(p, tmp)
@@ -183,8 +213,8 @@ def inbox(d, out, folder=os.path.expanduser("~/Downloads"), days=30):
             print(f"from Downloads: {os.path.basename(dest)} ({'lossless' if i['lossless'] else str(i['kbps']) + ' kbps'})")
             if not os.path.exists(p):
                 break  # a zip (an album) can hold more than one track still to get
-        if cands and os.path.exists(p):  # looked at once; a new download (another size) is looked at again
-            new_seen.append(f"{p}\t{size}")
+        if os.path.exists(p):
+            new_seen.append(key)
     if new_seen:
         with open(seen_path, "a") as f:
             f.writelines(x + "\n" for x in new_seen)
