@@ -190,7 +190,7 @@ def connect(profile, browser):
     """Lists the profile's playlists, signed in through the chosen browser. Returns an error or None."""
     cmd = [YTDLP, "--flat-playlist", "--dump-single-json", f"https://soundcloud.com/{profile}/sets"]
     if browser != "none":
-        cmd[1:1] = ["--cookies-from-browser", browser]
+        cmd[1:1] = ["--cookies-from-browser", cookie_arg(browser)]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired:
@@ -214,8 +214,87 @@ def connect(profile, browser):
 
 def set_browser(b):
     # sync.sh reads this one line to know which browser's sign-in to borrow (empty: none).
+    if b == browser():
+        return
     with open(os.path.join(DIR, "browser.txt"), "w") as f:
         f.write("" if b == "none" else b + "\n")
+    try:  # a new browser: its signed-in profile is found again
+        os.remove(os.path.join(DIR, "profile.txt"))
+    except OSError:
+        pass
+    _login.update(at=0.0, state="", profile="")
+
+
+def login_seen(text):
+    """What a yt-dlp run says about the SoundCloud sign-in: ok, invalid, none (no SoundCloud sign-in in that
+    browser), or '' (no browser sign-in was used). yt-dlp only says "Verifying login token" when the browser
+    holds a SoundCloud sign-in. One track's original refused (401) while signed in is that track, not the sign-in."""
+    t = text.lower()
+    if "authorization token is invalid" in t:
+        return "invalid"
+    if "verifying login token" in t:
+        return "ok"
+    return "none" if re.search(r"extracted \d+ cookies from", t) else ""
+
+
+_login = {"at": 0.0, "state": "", "profile": "", "busy": False}  # the page's own re-check (sign_in_check)
+
+
+def cookie_arg(b):
+    """yt-dlp's --cookies-from-browser value: the browser, plus the profile that holds the SoundCloud sign-in
+    once one was found (profile.txt); without it yt-dlp reads the most recently used profile."""
+    p = read("profile.txt").strip()
+    return f"{b}:{p}" if p and b in ("chrome", "brave", "edge") else b
+
+
+def ask_soundcloud(arg, url):
+    """(state, profile folder) from one track looked up with that sign-in; state '' when SoundCloud didn't answer."""
+    try:
+        r = subprocess.run([YTDLP, "-v", "--cookies-from-browser", arg, "--simulate", "--no-playlist",
+                            "--ignore-no-formats-error", "--extractor-args", "soundcloud:formats=none", url],
+                           capture_output=True, text=True, timeout=90)
+    except (OSError, subprocess.TimeoutExpired):
+        return "", ""
+    out = r.stdout + r.stderr
+    m = re.search(r'Extracting cookies from: "([^"]+)"', out)
+    state = login_seen(out)
+    answered = state == "ok" or "downloading info json" in out.lower()
+    return (state if answered else ""), (os.path.dirname(m.group(1)) if m else "")
+
+
+def sign_in_check(b):
+    """Asks SoundCloud about one playlist track with the browser's sign-in, so the page notices a fresh sign-in
+    without waiting for the next sync. When that profile has no SoundCloud sign-in, tries the browser's other
+    profiles and keeps the first one that is signed in (profile.txt), so the sync uses it too."""
+    try:
+        url = read(".playlist").split("\n")[0].split(" ")[1]
+        state, folder = ask_soundcloud(cookie_arg(b), url)
+        if state in ("none", "invalid") and b in ("chrome", "brave", "edge"):
+            root = os.path.expanduser(COOKIE_DIRS[b])
+            others = [d for d in sorted(os.listdir(root)) if (d == "Default" or d.startswith("Profile "))
+                      and os.path.join(root, d) != folder and os.path.exists(os.path.join(root, d, "Cookies"))]
+            for d in others[:8]:
+                s2, f2 = ask_soundcloud(f"{b}:{d}", url)
+                if s2 == "ok":
+                    with open(os.path.join(DIR, "profile.txt"), "w") as f:
+                        f.write(d + "\n")
+                    state, folder = s2, f2
+                    break
+        if state:
+            _login.update(state=state, profile=profile_name(b, folder) if folder else "")
+    except (IndexError, OSError):
+        pass
+    _login.update(at=time.time(), busy=False)
+
+
+def profile_name(b, folder):
+    """The name the browser shows for that profile folder, when it has more than one profile; else ''."""
+    try:
+        with open(os.path.join(os.path.dirname(folder), "Local State")) as f:
+            cache = json.load(f)["profile"]["info_cache"]
+        return cache[os.path.basename(folder)]["name"] if len(cache) > 1 else ""
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
 
 
 def problem():
@@ -226,10 +305,21 @@ def problem():
     if name and ("operation not permitted" in log or "permission denied" in log or sign_in_status(b) == "blocked"):
         return ("Originals need one switch: System Settings > Privacy & Security > Full Disk Access > turn on "
                 "Crate Helper. Until then, missing tracks come from Soulseek and the shops.")
-    if name and ("cookies" in log and "error" in log or "authorization token is invalid" in log
-                 or "only available for registered users" in log or "401" in log):
-        return (f"SoundCloud's sign-in in {name} has run out (it lasts about a day). Open soundcloud.com in "
-                f"{name} once, then press Sync now to get the originals.")
+    try:
+        ran = os.path.getmtime(os.path.join(DIR, "last-run.log"))
+    except OSError:
+        ran = 0.0
+    state = _login["state"] if _login["at"] > ran and _login["state"] else login_seen(log)
+    if name and state in ("none", "invalid"):
+        # Re-check every 2 minutes while the page is open, so the line goes away soon after he signs in.
+        if not _login["busy"] and time.time() - _login["at"] > 120 and not sync_running():
+            _login["busy"] = True
+            threading.Thread(target=sign_in_check, args=(b,), daemon=True).start()
+        where = f"{name} (profile \"{_login['profile']}\")" if _login["profile"] else name
+        first = ("SoundCloud's sign-in in {w} has run out" if state == "invalid"
+                 else "You're not signed in to SoundCloud in {w}").format(w=where)
+        return (f"{first}, so the artists' original files can't download. Sign in at soundcloud.com in {where}; "
+                "this line goes away within 2 minutes, then press Sync now.")
     if "unable to download" in log and "getaddrinfo" in log or "network is unreachable" in log:
         return "The last sync couldn't reach SoundCloud (no internet). It will try again tonight."
     return ""

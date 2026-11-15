@@ -41,7 +41,9 @@ esac
 # A sign-in macOS won't let us read would stop yt-dlp altogether; then the sync runs without it (no originals,
 # the rest still works) and the page says how to turn it on.
 : >"$DIR/signin.log"
-if [ -n "$STORE" ] && ls "$STORE" >/dev/null 2>&1; then AUTH=(--cookies-from-browser "$BROWSER")
+# profile.txt: the browser profile signed in to SoundCloud, when the app found it isn't the most recently used one.
+PROFILE="$(cat "$DIR/profile.txt" 2>/dev/null)"; case "$BROWSER" in chrome|brave|edge) ;; *) PROFILE="" ;; esac
+if [ -n "$STORE" ] && ls "$STORE" >/dev/null 2>&1; then AUTH=(--cookies-from-browser "$BROWSER${PROFILE:+:$PROFILE}")
 elif [ -n "$STORE" ] && [ -d "$STORE" ]; then echo "sign-in blocked: operation not permitted ($BROWSER)" >"$DIR/signin.log"; fi
 
 # ONE pass over the playlist does both jobs: each track's details are saved for the to-get list (.listing), and
