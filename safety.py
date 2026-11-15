@@ -29,6 +29,8 @@ def signature(path, kind):
     with open(path, "rb") as f:
         head = f.read(12)
         if head[:3] == b"ID3" and kind in ("flac", "mp3", "aac"):  # a tag block first, then the audio
+            if len(head) < 10:
+                return False  # cut off inside its own tag: not a playable file
             size = (head[6] << 21) | (head[7] << 14) | (head[8] << 7) | head[9]
             f.seek(10 + size)
             body = f.read(4)
@@ -64,6 +66,8 @@ def why_not(path):
             return f"named {ext} but isn't one inside"
     except OSError as e:
         return f"unreadable ({e.strerror})"
+    except Exception:  # anything odd in the first bytes is a reason to block, never to stop the whole check
+        return "broken or not audio inside"
     i = audio.info(path)
     if not i or i["secs"] <= 0:
         return "macOS can't play it as audio"
@@ -144,8 +148,10 @@ def check(d, music):
                 else:
                     new.append((rel, p, sig))
         found = virus_scan([p for _, p, _ in new])
-        if found is None:
-            log("Virus scan FAILED to run (ClamAV); files that passed the audio check were kept.")
+        if found is None:  # not marked safe: they wait (and stay off the USB) until the scanner works again
+            log(f"Virus scan FAILED to run (ClamAV): {len(new)} new file(s) wait, not copied to the USB, "
+                "until it works again.")
+            new = []
             found = {}
         for rel, p, sig in new:
             if p in found:
