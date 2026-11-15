@@ -30,7 +30,14 @@
   .big { font-size: 17px; padding: 18px 34px; }
   .spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: r 1s linear infinite; vertical-align: -1px; margin-right: 8px; }
   @keyframes r { to { transform: rotate(360deg); } }
-  progress#usbBar { display: block; width: 100%; height: 8px; margin-top: 12px; appearance: none; -webkit-appearance: none; border: 0; border-radius: 999px; background: var(--line); overflow: hidden; color: var(--hot); }
+  .usbprog { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 13.5px; color: var(--dim); }
+  .usbprog[hidden] { display: none; }
+  .usbprog .spin { margin: 0; width: 11px; height: 11px; color: var(--hot); }
+  .usbprog .ok { color: var(--ok); font-weight: 700; }
+  #usbPct { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  .usbprog.done progress#usbBar::-webkit-progress-value { background: var(--ok); }
+  .usbprog.done progress#usbBar::-moz-progress-bar { background: var(--ok); }
+  progress#usbBar { display: block; flex: 1; min-width: 0; height: 8px; appearance: none; -webkit-appearance: none; border: 0; border-radius: 999px; background: var(--line); overflow: hidden; color: var(--hot); }
   progress#usbBar::-webkit-progress-bar { background: var(--line); border-radius: 999px; }
   progress#usbBar::-webkit-progress-value { background: var(--hot); border-radius: 999px; transition: width .5s ease; }
   progress#usbBar::-moz-progress-bar { background: var(--hot); border-radius: 999px; }
@@ -90,7 +97,14 @@
   .tabs button b { display: block; font-size: 26px; line-height: 1.1; margin-top: 6px; color: var(--text); font-variant-numeric: tabular-nums; }
   .tabs button[aria-selected="true"] { background: #1d1d27; color: var(--text); box-shadow: inset 0 -3px 0 var(--hot); }
   .tabs button:active { transform: none; }
-  #viewNote { margin: 14px 0 12px; }
+  #viewNote { margin: 14px 0 12px; display: grid; gap: 6px; }
+  #viewNote .lead { color: var(--text); font-weight: 600; }
+  #viewNote .step { display: flex; gap: 8px; align-items: baseline; }
+  #viewNote .step b { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--line); color: var(--text); font-size: 12px; display: inline-grid; place-items: center; }
+  #viewNote .key { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  #viewNote .key span::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; background: currentColor; }
+  #viewNote .near { color: #6cc4dc; } #viewNote .far { color: #f0a868; }
+  #viewNote .got { color: var(--ok); font-weight: 600; }
   h3 { font-size: 15px; font-weight: 600; color: var(--dim); margin: 28px 0 8px; display: flex; justify-content: space-between; align-items: center; }
   h3 em { font-size: 14px; color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
   .find { display: flex; align-items: center; gap: 10px; margin: 0 0 28px; }
@@ -98,6 +112,12 @@
   .find small { color: var(--dim); font-size: 14px; }
   li .why { flex-basis: 100%; color: var(--dim); font-size: 14.5px; margin-top: -2px; }
   li .why.act { color: var(--ok); }
+  /* Not found, by how hopeful it is: shared on Soulseek but the sharers were away (calm blue, it'll come), or not
+     anywhere in top quality (soft amber, needs buying). A file from Downloads that wasn't kept is amber too. */
+  li .why.near { color: #6cc4dc; }
+  li .why.far, li .why.bad { color: #f0a868; }
+  li .why.wait { color: var(--text); }
+  .tag.new { color: var(--ok); border-color: #35502a; }
   .state { font: 700 13px var(--mono); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; display: inline-flex; align-items: center; }
   .state .dot { width: 7px; height: 7px; margin-right: 6px; }
   .state.on { color: var(--text); border-color: var(--hot); }
@@ -229,7 +249,7 @@
     <div class="field">
       <label for="usb">USB drive</label>
       <div class="row"><select id="usb"></select><button class="act" id="copy">Copy Now</button></div>
-      <progress id="usbBar" hidden></progress>
+      <div class="usbprog" id="usbProg" hidden><span id="usbIcon"></span><progress id="usbBar" max="1" value="0"></progress><span id="usbPct"></span></div>
       <div class="note" id="usbNote" role="status" aria-live="polite"></div>
       <label class="note"><input type="checkbox" id="eject"> Eject the USB once new tracks are on it, so you can just pull it out</label>
     </div>
@@ -306,6 +326,8 @@ function scLink(text, cls) {
 // checks again within seconds (and keeps checking closely for 5 minutes).
 const watchSignin = () => call('/api/signin', {}).catch(() => {});
 addEventListener('focus', () => { if (last && last.playlist && !last.service && last.scLogin !== 'ok') watchSignin(); });
+// Back from a download page: look in Downloads right away instead of at the next check.
+addEventListener('focus', () => { if (last && (last.watching || []).length) call('/api/watch', {}).catch(() => {}); });
 
 let copyAsked = 0;  // when Copy Now was clicked: the button shows it at once, before the copy reports in
 function render(s) {
@@ -397,7 +419,8 @@ const SERVICE = { 'open.spotify.com': 'Spotify', 'music.apple.com': 'Apple Music
 const host = u => { try { return new URL(u).hostname; } catch (e) { return ''; } };
 function shopLinks(t) {
   return [
-    ...(/^https?:\/\//.test(t.free) ? [el('a', { className: 'free', title: 'The artist\'s own free download (often asks you to follow or repost first)', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download' })] : []),
+    ...(/^https?:\/\//.test(t.free) ? [el('a', { className: 'free', title: 'The artist\'s own free download (often asks you to follow or repost first)', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download',
+      onclick: () => { call('/api/watch', { link: t.link }).catch(() => {}); } })] : []),
     el('a', { href: t.link, target: '_blank', rel: 'noopener', title: SERVICE[host(t.link)] ? 'The song on ' + SERVICE[host(t.link)] + ' (it only streams: the file comes from Soulseek or a shop)' : 'The track on SoundCloud: look for a Download or Buy link under it', textContent: SERVICE[host(t.link)] || 'SoundCloud' }),
     el('span', { className: 'shops', title: 'Searches in each shop. Not every track is sold everywhere: try Bandcamp and Beatport first', textContent: 'Buy:' }),
     el('a', { href: search('https://bandcamp.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Bandcamp' }),
@@ -409,8 +432,13 @@ function shopLinks(t) {
 
 // Why a track isn't here yet, in plain words: what to do comes first when there's something to do.
 function why(t, s) {
-  if (/^https?:\/\//.test(t.free)) return ['act', 'Free from the artist: tap Free Download (it may ask for a follow or repost), then leave the file in Downloads.'];
-  return ['', t.why];
+  if (/^https?:\/\//.test(t.free)) {
+    if ((s.watching || []).includes(t.link)) return ['wait', 'Watching Downloads for this track… finish the download and leave the file there; it\'s added by itself.'];
+    const no = (s.inboxWhy || {})[t.link];
+    if (no) return ['bad', no];
+    return ['act', 'Free from the artist: tap Free Download (it may ask for a follow or repost). The download is added by itself.'];
+  }
+  return [/^On Soulseek/.test(t.why) ? 'near' : /^Not (on|found)/.test(t.why) ? 'far' : '', t.why];
 }
 // Three groups, never mixed: being fetched right now, not looked for yet, and looked for but not found.
 const live = t => t.state === 'downloading' || t.state === 'searching';
@@ -448,19 +476,32 @@ function draw() {
     el('span', { className: 'tag' + (LOSSLESS.includes(t.kind) ? ' lossless' : ''), textContent: t.kind }),
     ...(t.kbps && t.kbps < 318 ? [el('span', { className: 'tag low', title: 'Below 320 kbps: the file the artist uploaded is low quality. Buy the lossless one from a shop.', textContent: t.kbps + ' kbps' })] : []),
     el('span', { className: 'tag', textContent: t.mb + ' MB' }),
+    ...((s.justGot || []).includes(t.name) ? [el('span', { className: 'tag new', title: 'Just picked up from your Downloads folder', textContent: 'New' })] : []),
     ...(t.src ? [el('span', { className: 'tag', title: t.src === 'Soulseek' ? 'Found on Soulseek; replaced by the artist\'s own file when it comes' : 'Fetched from the artist\'s own free-download link', textContent: t.src })] : [])))
     : [el('div', { className: 'empty', textContent: q ? 'No match.' : 'Nothing yet. Tracks whose artists allow downloads land here in their original quality.' })]));
 
   for (const x of document.querySelectorAll('.tabs button')) x.setAttribute('aria-selected', x.dataset.v === view);
-  const downloads = 'Bought or unlocked one yourself? Leave the file in Downloads; it\'s added within a minute.';
-  $('viewNote').textContent = view === 'wait'
-    ? (!s.soulseekReady ? 'Sign in to Soulseek above and the next sync looks for these. Or buy them now.'
+  const line = (cls, txt) => el('div', { className: cls, textContent: txt });
+  const step = (n, txt) => el('div', { className: 'step' }, el('b', { textContent: n }), el('span', { textContent: txt }));
+  const auto = 'Bought or unlocked one yourself? Leave the file in Downloads: it moves into your music and off this list by itself.';
+  const got = (s.justGot || []).length ? [line('got', '✓ Got it: ' + s.justGot.join(', ') + ' ' + (s.justGot.length > 1 ? 'are' : 'is') + ' now in On your Mac.')] : [];
+  $('viewNote').replaceChildren(...got, ...(view === 'wait'
+    ? [line('', !s.soulseekReady ? 'Sign in to Soulseek above and the next sync looks for these. Or buy them now.'
       : s.running ? 'The sync looks for these one at a time, slowly, so Soulseek never blocks you.'
-      : 'The next sync looks for these, one at a time.')
-    : view === 'miss' ? 'Searched on Soulseek, but no top-quality copy turned up; tried again later. Mostly remixes and flips that exist only on SoundCloud. Buy it, or ask the artist. ' + downloads
-    : 'The artist gives these away: open the link and do what the page asks (often a follow). ' + downloads.split('? ')[1];
+      : 'The next sync looks for these, one at a time.')]
+    : view === 'miss'
+    ? [line('lead', 'Searched on Soulseek: no top-quality copy yet.'),
+      el('div', { className: 'key' },
+        el('span', { className: 'near', textContent: 'On Soulseek, sharers away: tried again next sync' }),
+        el('span', { className: 'far', textContent: 'Not on Soulseek: buy it or ask the artist' })),
+      line('', 'Mostly remixes and flips that only live on SoundCloud.'), line('', auto)]
+    : [line('lead', 'Free from the artist, in three steps:'),
+      step('1', 'Tap Free Download and do what the page asks (often a follow).'),
+      step('2', 'Leave the file in Downloads.'),
+      step('3', 'The Crate checks it, moves it into your music and ticks it off here. Nothing to tidy up.')]));
   const missRow = t => { const [k, txt] = why(t, s); return el('li', { className: 'shop' },
-    nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : ''), textContent: txt }), ...shopLinks(t)); };
+    nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : '') }, ...(k === 'wait' ? [el('span', { className: 'spin' })] : []), txt),
+    ...shopLinks(t)); };
   const waitRow = t => el('li', { className: s.soulseekReady ? '' : 'shop' }, nameEl(t),
     ...(t.state === 'queued' ? [el('span', { className: 'state' }, el('i', { className: 'dot' }), 'Next up')] : []),
     ...(s.soulseekReady ? [] : shopLinks(t)));
@@ -514,17 +555,27 @@ function paintSetup(s) {
   const cp = s.usbCopy || (copyAsked && Date.now() - copyAsked < 4000 ? { stage: 'starting' } : null);
   $('copy').disabled = !s.usbPlugged || !!cp; $('copy').setAttribute('aria-busy', !!cp);
   $('copy').replaceChildren(...(cp ? [el('span', { className: 'spin' }), 'Copying'] : ['Copy Now']));
-  const bar = $('usbBar'); bar.hidden = !cp;
-  if (cp && cp.stage === 'copying' && cp.total) { bar.max = cp.total; bar.value = cp.done; } else bar.removeAttribute('value');
+  const res = s.usbResult && Date.now() / 1000 - s.usbResult.at < 600 ? s.usbResult : null;
+  // The bar fills as tracks go on, a small spinner beside it while it works; full, green and "Done" once it's done.
+  // Mid-sync it's full but the spinner stays: more tracks are on their way.
+  const bar = $('usbBar'), done = !cp && res && res.ok, mid = done && res.mid && s.running;
+  $('usbProg').hidden = !cp && !done;
+  $('usbProg').classList.toggle('done', !!done && !mid);
+  if (cp && cp.stage === 'copying' && cp.total) { bar.max = cp.total; bar.value = Math.min(cp.done, cp.total); }
+  else { bar.max = 1; bar.value = done ? 1 : 0; }
+  $('usbIcon').replaceChildren(cp || mid ? el('span', { className: 'spin' }) : done ? el('span', { className: 'ok', textContent: '✓' }) : '');
+  $('usbPct').textContent = cp ? (cp.stage === 'copying' && cp.total ? Math.floor(100 * Math.min(cp.done, cp.total) / cp.total) + '%' : '')
+    : done ? (mid ? 'Syncing' : 'Done') : '';
   $('eject').checked = s.usbEject;
   if (document.activeElement !== $('syncTime') && !$('syncTime').dataset.dirty) $('syncTime').value = s.syncTime;
-  const res = s.usbResult && Date.now() / 1000 - s.usbResult.at < 600 ? s.usbResult : null;
   say('usbNote', cp ? (cp.stage === 'copying' && cp.total ? 'Copying ' + cp.done + ' of ' + cp.total + ' new tracks to ' + s.usb + '. Keep it plugged in.'
       : cp.stage === 'copying' ? 'Updating ' + s.usb + '…' : 'Getting ready: checking the files before they go on ' + s.usb + '…')
     : res && !res.ok ? res.text
     : res ? res.text
     : !s.usb ? 'Pick your USB once. After that it fills by itself.'
-    : s.usbPlugged ? 'New tracks copy over after every sync.' : 'Tracks wait here and copy the moment it is plugged in.', !cp && res && !res.ok);
+    : s.usbPlugged ? 'New tracks copy over after every sync.'
+    : s.usbBehind ? 'New tracks since the last copy: plug in ' + s.usb + ' and they go on by themselves.'
+    : 'Tracks wait here and copy the moment it is plugged in.', !cp && res && !res.ok);
 
   // Signed in and working: just the green status. Otherwise the reason and the sign-in boxes.
   const slskGood = s.soulseekReady && !s.soulseekBad;
@@ -589,9 +640,10 @@ $('eject').onchange = e => call('/api/eject', { on: e.target.checked }).catch(er
 $('copy').onclick = () => {
   copyAsked = Date.now(); $('copy').disabled = true; $('copy').setAttribute('aria-busy', true);
   $('copy').replaceChildren(el('span', { className: 'spin' }), 'Copying');
-  $('usbBar').hidden = false; $('usbBar').removeAttribute('value'); say('usbNote', 'Starting the copy…');
+  $('usbProg').hidden = false; $('usbProg').classList.remove('done'); $('usbBar').max = 1; $('usbBar').value = 0;
+  $('usbIcon').replaceChildren(el('span', { className: 'spin' })); $('usbPct').textContent = ''; say('usbNote', 'Starting the copy…');
   call('/api/copy', {}).catch(e => { copyAsked = 0; $('copy').disabled = false; $('copy').setAttribute('aria-busy', false); $('copy').replaceChildren('Copy Now');
-    $('usbBar').hidden = true; say('usbNote', e.message, true); });
+    $('usbProg').hidden = true; say('usbNote', e.message, true); });
 };
 $('sync').onclick = () => call('/api/sync', {}).catch(e => say('urlNote', e.message, true));
 

@@ -48,3 +48,6 @@ sync-time.txt
 .usb-copy
 .usb-progress
 .usb-err
+.usb-done
+.usb-mid
+.to-buy.lock

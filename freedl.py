@@ -10,9 +10,9 @@ Download gates (Hypeddit, ToneDen and the like), Bandcamp and hosts that need a 
 Mediafire) stay one click on the page. Only top quality is kept: lossless, or MP3/AAC at 320 kbps. A zip is
 opened and only its audio is taken. A link that gave a non-audio or low-quality file is not tried again.
 """
-import os, re, shutil, stat, sys, tempfile, time, urllib.parse, urllib.request, zipfile
+import json, os, re, shutil, stat, sys, tempfile, time, urllib.parse, urllib.request, zipfile
 import safety
-from soulseek import CUT, split
+from soulseek import CUT, locked, split
 from audio import info, top_quality
 
 MAX = 2_000_000_000  # bytes; nothing an artist gives away is bigger
@@ -122,17 +122,62 @@ def record(d, got):
         f.writelines("\t".join(g) + "\n" for g in got)
     done = {g[1] for g in got}
     path = os.path.join(d, "to-buy.tsv")
-    with open(path) as f:
-        rows = [l for l in f if l.split("\t")[0] not in done]
+    with locked(d):
+        with open(path) as f:
+            rows = [l for l in f if l.split("\t")[0] not in done]
+        with open(path + ".tmp", "w") as f:
+            f.writelines(rows)
+        os.replace(path + ".tmp", path)
+
+
+CLAIM_MINS = 15  # how long after a Free Download click a new file in Downloads may count as that track
+CLAIMS, WHY = ".inbox-claims.json", ".inbox-why.json"
+
+
+def load_json(d, name):
+    try:
+        with open(os.path.join(d, name)) as f:
+            v = json.load(f)
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_json(d, name, v):
+    path = os.path.join(d, name)
     with open(path + ".tmp", "w") as f:
-        f.writelines(rows)
+        json.dump(v, f)
     os.replace(path + ".tmp", path)
 
 
+def claims(d):
+    """{link: when} for the Free Download links clicked in the last CLAIM_MINS minutes."""
+    now = time.time()
+    return {k: t for k, t in load_json(d, CLAIMS).items()
+            if isinstance(t, (int, float)) and now - t < CLAIM_MINS * 60}
+
+
+def claim(d, link):
+    """The Free Download link was just clicked: the next file to land in Downloads may be this track."""
+    with locked(d, ".inbox-claims.lock"):
+        c = claims(d)
+        c[link] = time.time()
+        save_json(d, CLAIMS, c)
+
+
 def inbox(d, out, folder=os.path.expanduser("~/Downloads"), days=30):
+    """inbox_() with one pickup at a time (the sync and the app both call it)."""
+    with locked(d, ".inbox.lock"):
+        return inbox_(d, out, folder, days)
+
+
+def inbox_(d, out, folder, days):
     """Takes still-to-get tracks you downloaded by hand (a Hypeddit or Laylo gate, a Bandcamp purchase, any
     link) out of Downloads: the song's title (whole words) and its artist must be in the file's name, and when
-    SoundCloud gave a length, within 5 s of it (same version; a SoundCloud preview's length is not used). Top quality only, through the safety check. A zip is opened and stays."""
+    SoundCloud gave a length, within 5 s of it (same version; a SoundCloud preview's length is not used). Top quality only, through the safety check. A zip is opened and stays.
+    Right after a Free Download click (claim()), a file that lands in Downloads counts as that track whatever its
+    name, when its length is within 2 s of SoundCloud's. Why a file wasn't kept goes to .inbox-why.json for the
+    page."""
     try:
         with open(os.path.join(d, "to-buy.tsv")) as f:
             rows = [(l.rstrip("\n").split("\t") + ["", "", "", ""])[:4] for l in f if l.strip()]
@@ -160,11 +205,13 @@ def inbox(d, out, folder=os.path.expanduser("~/Downloads"), days=30):
                     continue
                 if (n.lower().endswith(AUDIO_EXT + (".zip",)) and not n.startswith(".") and stat.S_ISREG(st.st_mode)
                         and 10 < now - st.st_mtime < days * 86400):
-                    files.append((p, st.st_size))
+                    files.append((p, st.st_size, st.st_mtime))
     except OSError:  # no permission to read Downloads (the Crate Helper switch is off)
         return []
+    clicked = claims(d)
+    why = {}  # link: why the file that came in for it wasn't kept
     got, new_seen = [], []
-    for p, size in files:
+    for p, size, mtime in files:
         base = words(os.path.splitext(os.path.basename(p))[0])
         texts = [base]  # a zip: its name with each track's name (an album zip is often only "Artist - Album")
         if p.lower().endswith(".zip"):
@@ -180,6 +227,10 @@ def inbox(d, out, folder=os.path.expanduser("~/Downloads"), days=30):
         # The title as whole words AND the artist (or uploader) in the same name; the most specific title wins
         # ("Intro" never takes "Intro (VIP)"). Without a length from SoundCloud, the full title with its version.
         cands = sorted((r for r in rows if fits(r) and (r[3] or fits(r, True))), key=lambda r: -len(wanted(r[0])[1]))
+        # Just clicked: a single file (not a zip) that came in after the click, if SoundCloud gave a length to check.
+        named = {r[1] for r in cands}
+        if not p.lower().endswith(".zip"):
+            cands += [r for r in rows if r[1] in clicked and r[3] and r[1] not in named and mtime >= clicked[r[1]] - 5]
         # Looked at once for these tracks; looked at again if the file changes or other tracks match it
         # (another song from a kept album zip added to the playlist).
         key = f"{p}\t{size}\t{' '.join(sorted(r[1] for r in cands))}"
@@ -191,18 +242,26 @@ def inbox(d, out, folder=os.path.expanduser("~/Downloads"), days=30):
                 tmp = os.path.join(tmpdir, "download" + (".zip" if p.lower().endswith(".zip") else ""))
                 shutil.copyfile(p, tmp)
                 path, i = best_audio(tmp, name)
+                # Matched only by the click (any name): the length must agree closely (2 s), not just roughly.
+                fits_len = not (i and secs and abs(i["secs"] - float(secs)) > (5 if link in named else 2))
                 if not path:
-                    if i:
+                    if i and (link in named or fits_len):
                         print(f"in Downloads but only {i['kbps']} kbps, not kept: {os.path.basename(p)}")
+                        why[link] = (f"The file you downloaded ({os.path.basename(p)}) is only {i['kbps']} kbps, so it "
+                                     "wasn't kept. Look for a WAV, FLAC or 320 kbps option on the page.")
                         break
                     continue  # not audio, or no track of this name in the zip
-                if secs and abs(i["secs"] - float(secs)) > 5:
-                    continue  # another version of the song
+                if not fits_len:
+                    if link in named:  # the name says it's this song, the length says another version
+                        why[link] = (f"{os.path.basename(p)} is {mmss(i['secs'])} long, not {mmss(float(secs))}: "
+                                     "another version of the song, so it wasn't kept.")
+                    continue  # another version of the song (or, just after a click, another file)
                 staged = os.path.join(tmpdir, f"track.{i['ext']}")
                 os.replace(path, staged)
                 blocked = safety.vet(d, staged)
                 if blocked:
                     print(f"in Downloads but BLOCKED by the safety check ({blocked}), not kept: {os.path.basename(p)}")
+                    why[link] = f"The safety check stopped {os.path.basename(p)} ({blocked}), so it wasn't kept."
                     break
                 dest = file_name(out, name, i["ext"], "download")
                 shutil.move(staged, dest)
@@ -219,9 +278,27 @@ def inbox(d, out, folder=os.path.expanduser("~/Downloads"), days=30):
         with open(seen_path, "a") as f:
             f.writelines(x + "\n" for x in new_seen)
     record(d, got)
+    if got and clicked:  # picked up: stop watching for these
+        with locked(d, ".inbox-claims.lock"):
+            save_json(d, CLAIMS, {k: t for k, t in claims(d).items() if k not in {g[0] for g in got}})
+    note_why(d, why, {g[0] for g in got} | ({k for k in clicked} - {r[1] for r in rows}))
     if got:
         safety.check(d, out)
     return got
+
+
+def mmss(secs):
+    return f"{int(secs) // 60}:{int(secs) % 60:02d}"
+
+
+def note_why(d, new, gone):
+    """Keeps a day of 'why it wasn't kept' notes for the page, dropping tracks that are now on the Mac."""
+    old, now = load_json(d, WHY), time.time()
+    keep = {k: v for k, v in old.items() if k not in gone and k not in new and isinstance(v, dict)
+            and now - v.get("at", 0) < 86400}
+    keep.update({k: {"at": now, "text": t} for k, t in new.items() if k not in gone})
+    if keep != old:
+        save_json(d, WHY, keep)
 
 
 def main(d, out):

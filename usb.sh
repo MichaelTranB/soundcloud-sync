@@ -15,6 +15,9 @@ STATE="$DIR/.usb-copy"
 kill -0 "$(cut -d' ' -f1 "$STATE" 2>/dev/null)" 2>/dev/null && exit 0
 echo "$$ checking 0" >"$STATE"; : >"$DIR/.usb-progress"
 trap 'rm -f "$STATE" "$DIR/.usb-err"' EXIT
+# A copy while a sync is still getting tracks (not the sync's own last one) never ejects: more tracks are coming, and
+# the page copies them over as they arrive. The sync's last copy ejects once, at the end.
+MID=""; [ -z "$CRATE_FINAL" ] && kill -0 "$(cat "$DIR/.running" 2>/dev/null)" 2>/dev/null && MID=1
 fail() {
   echo "$(date '+%F %R')  COPY FAILED to \"$NAME\": $1" >> "$DIR/usb.log"
   [ -z "$VOLUMES" ] && osascript -e "display notification \"Copy to $NAME failed: $1\" with title \"The Crate\"" 2>/dev/null
@@ -29,12 +32,15 @@ LIST="$DIR/.usb-list"
 cut -f1 "$DIR/safety-ok.tsv" 2>/dev/null | while IFS= read -r p; do [ -f "$SRC/$p" ] && echo "./$p"; done >"$LIST"
 # Tracks not on the USB yet (counted before the copy, for the notice below)
 NEW=$(while IFS= read -r p; do [ -e "$DEST/SoundCloud Sync/$p" ] || echo x; done <"$LIST" | wc -l | tr -d ' ')
+TOTAL=$(wc -l <"$LIST" | tr -d ' ')
 echo "$$ copying $NEW" >"$STATE"
 # To Buy.txt is The Crate's own list, so the USB always gets the latest one.
 if rsync -a --ignore-existing --out-format='%n' --files-from="$LIST" "$SRC/" "$DEST/SoundCloud Sync/" \
      >"$DIR/.usb-progress" 2>"$DIR/.usb-err" &&
    { [ ! -f "$SRC/To Buy.txt" ] || cp "$SRC/To Buy.txt" "$DEST/SoundCloud Sync/To Buy.txt" 2>"$DIR/.usb-err"; }; then
-  echo "$(date '+%F %R')  copied to \"$NAME\" ($NEW new)" >> "$DIR/usb.log"
+  echo "$(date '+%F %R')  copied to \"$NAME\" ($NEW new, $TOTAL on it${MID:+, sync still running})" >> "$DIR/usb.log"
+  touch "$DIR/.usb-done"
+  [ -n "$MID" ] && [ "$NEW" -gt 0 ] && touch "$DIR/.usb-mid"  # tracks went on mid-sync: the last copy ejects
 else
   cat "$DIR/.usb-err" >> "$DIR/usb.log"
   [ -d "$DEST" ] || fail "it was unplugged before the copy finished. Plug it back in; it carries on."
@@ -43,10 +49,14 @@ else
   fail "$(grep -v '^rsync error' "$DIR/.usb-err" | tail -1 | sed 's/^rsync: //')"
 fi
 # New tracks landed: eject the USB (unless "Eject when done" is off on the page) and say it's safe to unplug.
-if [ "$NEW" -gt 0 ] && [ -z "$VOLUMES" ]; then
-  [ "$NEW" = 1 ] && MSG="1 new track on $NAME." || MSG="$NEW new tracks on $NAME."
+if [ -n "$MID" ]; then
+  [ "$NEW" -gt 0 ] && [ -z "$VOLUMES" ] && osascript -e "display notification \"$NEW new on $NAME so far. Still syncing: keep it plugged in.\" with title \"The Crate\"" 2>/dev/null
+elif { [ "$NEW" -gt 0 ] || [ -e "$DIR/.usb-mid" ]; } && [ -z "$VOLUMES" ]; then
+  rm -f "$DIR/.usb-mid"
+  [ "$NEW" = 0 ] && MSG="All $TOTAL tracks on $NAME." || { [ "$NEW" = 1 ] && MSG="1 new track on $NAME." || MSG="$NEW new tracks on $NAME."; }
   if [ ! -e "$DIR/usb-keep.txt" ]; then
     sync; diskutil eject "$DEST" >/dev/null 2>&1 && { MSG="$MSG Safe to unplug."; echo "$(date '+%F %R')  ejected \"$NAME\"" >> "$DIR/usb.log"; }
   fi
   osascript -e "display notification \"$MSG\" with title \"The Crate\" sound name \"Glass\"" 2>/dev/null
 fi
+exit 0

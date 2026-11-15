@@ -116,7 +116,7 @@ echo "$(date '+%F %R')  have: $HAVE  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d
 awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" > "$OUT/To Buy.txt"
 # Every new file must be real audio (and pass the virus scan) before it stays or reaches the USB.
 python3 "$DIR/safety.py" check "$DIR" "$OUT" 2>>"$DIR/safety.log"
-"$DIR/usb.sh"
+CRATE_FINAL=1 "$DIR/usb.sh"  # the sync's last copy: the one that may eject
 # The Crate keeps itself up to date: once a day it takes the newest version from GitHub (only a clean step forward on
 # main; a copy someone changed by hand is left alone). The page restarts on it at once; the sync's own parts are new
 # from the next sync. Running the install line again does the same by hand.
