@@ -39,6 +39,7 @@ usb-keep.txt
 usb-eject.txt
 .free-*
 .inbox-*
+inbox-seen.txt
 .sockseek-*
 soulseek-missed.tsv
 soulseek-missed.tsv.tmp
