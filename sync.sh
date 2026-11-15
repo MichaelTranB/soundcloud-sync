@@ -42,7 +42,10 @@ yt-dlp "${AUTH[@]}" -f download --download-archive "$DIR/archive.txt" --ignore-e
 
 # Everything in the playlist with no artist download: the list still to get, each with the artist's
 # own free-download link when their description has one.
-yt-dlp "${AUTH[@]}" --skip-download --ignore-errors --ignore-no-formats-error --dump-json "$URL" 2>>"$DIR/last-run.log" |
+# Tracks already downloaded are skipped by ID before SoundCloud is asked about them, so a playlist that keeps
+# growing doesn't make every sync re-read all of it (yt-dlp only reads the archive here; it never writes it
+# without a download or --force-write-archive).
+yt-dlp "${AUTH[@]}" --download-archive "$DIR/archive.txt" --skip-download --ignore-errors --ignore-no-formats-error --dump-json "$URL" 2>>"$DIR/last-run.log" |
   python3 "$DIR/tobuy.py" "$DIR/archive.txt" "$DIR/to-buy.tsv"
 # The artist's own free download, when the description links straight to a file (Dropbox, Drive...): top quality only.
 python3 "$DIR/freedl.py" "$DIR" "$OUT" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/free.log"
