@@ -334,7 +334,7 @@ def login_seen(text):
     return "none" if re.search(r"extracted \d+ cookies from", t) else ""
 
 
-_login = {"at": 0.0, "state": "", "profile": "", "busy": False}  # the page's own re-check (sign_in_check)
+_login = {"at": 0.0, "state": "", "profile": "", "busy": False, "soon": 0.0}  # the page's own re-check (sign_in_check)
 LOGIN_FILE = os.path.join(DIR, ".signin-check.json")  # kept on disk, so a restart doesn't forget a fresh sign-in
 try:
     with open(LOGIN_FILE) as f:
@@ -367,11 +367,11 @@ def cookie_arg(b):
     return f"{b}:{p}" if ok else b
 
 
-def ask_soundcloud(arg, url):
+def ask_soundcloud(arg, url, extra=()):
     """(state, profile folder) from one track looked up with that sign-in; state '' when SoundCloud didn't answer."""
     try:
         r = subprocess.run([YTDLP, "-v", "--cookies-from-browser", arg, "--simulate", "--no-playlist",
-                            "--ignore-no-formats-error", "--extractor-args", "soundcloud:formats=none", url],
+                            "--ignore-no-formats-error", "--extractor-args", "soundcloud:formats=none", *extra, url],
                            capture_output=True, text=True, errors="replace", timeout=90)
     except (OSError, subprocess.TimeoutExpired):
         return "", ""
@@ -390,9 +390,13 @@ def sign_in_check(b):
     without waiting for the next sync. When that profile has no SoundCloud sign-in, tries the browser's other
     profiles and keeps the first one that is signed in (profile.txt), so the sync uses it too."""
     try:
-        url = read(".playlist").split("\n")[0].split(" ")[1]
+        # One track from the last sync's list; before the first sync, the first track of the playlist itself.
+        first = read(".playlist").split("\n")[0].split(" ")
+        url, extra = (first[1], ()) if len(first) > 1 and "soundcloud.com/" in first[1] else (read("playlist.txt").strip(), ("--playlist-items", "1"))
+        if "soundcloud.com/" not in url:
+            return
         arg = cookie_arg(b)
-        state, folder = ask_soundcloud(arg, url)
+        state, folder = ask_soundcloud(arg, url, extra)
         if state == "ok" and folder and arg == b and b in ("chrome", "brave", "edge") and browser() == b:
             # Signed in on the profile used most recently right now: keep that one, since yt-dlp otherwise
             # reads whichever profile was used last, and by the next sync that can be one with no sign-in.
@@ -405,7 +409,7 @@ def sign_in_check(b):
             for d in others[:8]:
                 if browser() != b:
                     return  # he switched browsers meanwhile: this answer is for the old one
-                s2, f2 = ask_soundcloud(f"{b}:{d}", url)
+                s2, f2 = ask_soundcloud(f"{b}:{d}", url, extra)
                 if s2 == "ok":
                     with open(os.path.join(DIR, "profile.txt"), "w") as f:
                         f.write(f"{b}:{d}\n")
@@ -442,6 +446,18 @@ def login_state(log=None):
     return _login["state"] if _login["at"] > ran and _login["state"] else login_seen(log)
 
 
+def watch_login(svc):
+    """While the SoundCloud sign-in isn't confirmed, asks SoundCloud again in the background: every 2 minutes, and
+    every 15 seconds for 5 minutes after the sign-in button or coming back to the page (/api/signin), so a fresh
+    sign-in ticks within seconds instead of after the next sync. Not while the sync itself is asking SoundCloud."""
+    b = browser()
+    if svc or not read("playlist.txt") or _login["busy"] or sign_in_status(b) != "ok" or login_state() == "ok":
+        return
+    if time.time() - _login["at"] > (15 if time.time() < _login["soon"] else 120) and sync_phase() != "soundcloud":
+        _login["busy"] = True
+        threading.Thread(target=sign_in_check, args=(b,), daemon=True).start()
+
+
 def problem():
     """One plain line when the last sync could not sign in or reach SoundCloud; empty when fine."""
     svc = playlists.service(read("playlist.txt"))
@@ -458,16 +474,11 @@ def problem():
                 "Crate Helper. Until then, missing tracks come from Soulseek and the shops.")
     state = login_state(log)
     if name and state in ("none", "invalid"):
-        # Re-check every 2 minutes while the page is open, so the line goes away soon after he signs in.
-        # Not while the sync itself is asking SoundCloud (the Soulseek part doesn't touch it).
-        if not _login["busy"] and time.time() - _login["at"] > 120 and sync_phase() != "soundcloud":
-            _login["busy"] = True
-            threading.Thread(target=sign_in_check, args=(b,), daemon=True).start()
         where = f"{name} (profile \"{_login['profile']}\")" if _login["profile"] else name
         first = ("SoundCloud's sign-in in {w} has run out" if state == "invalid"
                  else "You're not signed in to SoundCloud in {w}").format(w=where)
-        return (f"{first}, so the artists' original files can't download. Sign in with the link below; "
-                "this message clears within 2 minutes, then press Sync Now.")
+        return (f"{first}, so the artists' original files can't download. Sign in with the link below "
+                "and come back here: this clears within seconds.")
     if "unable to download" in log and "getaddrinfo" in log or "network is unreachable" in log:
         return "The last sync couldn't reach SoundCloud (no internet). It will try again tonight."
     return ""
@@ -526,6 +537,7 @@ def state():
             json.loads(read(".service"))["capped"]
     except (ValueError, KeyError):
         capped = False
+    watch_login(svc)
     return {
         "playlist": read("playlist.txt"), "service": svc, "capped": capped, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
@@ -541,7 +553,7 @@ def state():
         "lastSoulseek": slsklog[-1] if slsklog else "",
         "lastRun": history[-1] if history else "", "lastUsb": usblog[-1] if usblog else "",
         # for the Get started list: the SoundCloud sign-in as last seen, the helper's switch, the virus scanner
-        "scLogin": "" if svc else login_state(), "helper": os.path.exists(HELPER),
+        "scLogin": "" if svc else login_state(), "scChecking": _login["busy"], "helper": os.path.exists(HELPER),
         "virusBusy": bool(_virus["proc"]) and _virus["proc"].poll() is None,
         "virusFailed": _virus["failed"],
         "safety": {"virusScan": bool(safety.clam()), "last": safelog[-1] if safelog else "",
@@ -562,6 +574,7 @@ def open_for_setup(what):
         if os.path.exists(HELPER):
             subprocess.run(["open", "-R", HELPER])
     elif what == "soundcloud":  # SoundCloud's sign-in page in the browser the sync reads
+        _login["soon"] = time.time() + 300  # then watch for the sign-in closely (watch_login)
         app = APPS.get(browser())
         if not app or subprocess.run(["open", "-a", app, "https://soundcloud.com/signin"]).returncode:
             subprocess.run(["open", "https://soundcloud.com/signin"])
@@ -692,6 +705,8 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/open":
             if open_for_setup(str(body.get("what", ""))):
                 return self.send(404, {"error": "not found"})
+        elif self.path == "/api/signin":  # the sign-in link was used, or the page is back in front
+            _login["soon"] = time.time() + 300
         elif self.path == "/api/copy":
             subprocess.Popen([os.path.join(DIR, "usb.sh")])
             time.sleep(0.4)
