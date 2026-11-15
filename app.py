@@ -4,7 +4,7 @@
 Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so another website open
 in the browser cannot press the buttons.
 """
-import json, os, re, subprocess, time, urllib.parse
+import json, os, re, shutil, subprocess, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -13,6 +13,10 @@ PORT = 4780
 HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 PLAYLIST_RE = re.compile(r"^https://(on\.|m\.|www\.)?soundcloud\.com/\S+$")
+PROFILE_RE = re.compile(r"^(?:https?://(?:www\.|m\.)?soundcloud\.com/)?([A-Za-z0-9_-]{1,60})/?$")
+# "none" lists public playlists only; the others borrow the SoundCloud session of that browser.
+BROWSERS = ("chrome", "safari", "brave", "firefox", "edge", "none")
+YTDLP = shutil.which("yt-dlp") or "/opt/homebrew/bin/yt-dlp"
 _signed = {"at": 0.0, "ok": False}
 
 
@@ -44,7 +48,50 @@ def signed_in():
     return _signed["ok"]
 
 
+def account():
+    try:
+        return json.loads(read("account.json") or "{}")
+    except ValueError:
+        return {}
+
+
+def connect(profile, browser):
+    """Lists the profile's playlists, signed in through the chosen browser. Returns an error or None."""
+    cmd = [YTDLP, "--flat-playlist", "--dump-single-json", f"https://soundcloud.com/{profile}/sets"]
+    if browser != "none":
+        cmd[1:1] = ["--cookies-from-browser", browser]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        return "SoundCloud took too long to answer. Try again."
+    try:
+        entries = json.loads(r.stdout).get("entries") or []
+    except ValueError:
+        err = [l for l in r.stderr.splitlines() if l.startswith("ERROR")]
+        return (err[-1][7:] if err else "Could not read that profile.")[:300]
+    lists = [{"title": e.get("title") or e["url"].rstrip("/").split("/")[-1], "url": e["url"]}
+             for e in entries if PLAYLIST_RE.match(str(e.get("url", "")))]
+    lists.append({"title": "Liked tracks", "url": f"https://soundcloud.com/{profile}/likes"})
+    with open(os.path.join(DIR, "account.json"), "w") as f:
+        json.dump({"profile": profile, "browser": browser, "playlists": lists}, f)
+    # sync.sh reads this one line to know which browser session to borrow.
+    with open(os.path.join(DIR, "browser.txt"), "w") as f:
+        f.write("" if browser == "none" else browser + "\n")
+    return None
+
+
+def problem():
+    """One plain line when the last sync could not sign in or reach SoundCloud; empty when fine."""
+    log = read("last-run.log").lower()
+    if "cookies" in log and "error" in log or "only available for registered users" in log or "401" in log:
+        return "SoundCloud sign-in isn't working. Sign in to SoundCloud in your browser, then press Connect again."
+    if "unable to download" in log and "getaddrinfo" in log or "network is unreachable" in log:
+        return "The last sync couldn't reach SoundCloud (no internet). It will try again tonight."
+    return ""
+
+
 def state():
+    acct = account()
     have = []
     if os.path.isdir(OUT):
         for f in sorted(os.listdir(OUT), key=str.lower):
@@ -54,16 +101,19 @@ def state():
                 have.append({"name": name, "kind": ext[1:].upper(), "mb": round(os.path.getsize(p) / 1e6, 1)})
     buy = []
     for line in read("to-buy.tsv").splitlines():
-        name, _, link = line.partition("\t")
+        name, link, free = (line.split("\t") + ["", ""])[:3]
         if name:
-            buy.append({"name": name, "link": link})
+            buy.append({"name": name, "link": link, "free": free})
     usb = read("usb.txt")
     history = read("history.log").splitlines()
     usblog = read("usb.log").splitlines()
     return {
         "playlist": read("playlist.txt"), "usb": usb, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
-        "running": os.path.exists(os.path.join(DIR, ".running")), "signedIn": signed_in(),
+        "running": os.path.exists(os.path.join(DIR, ".running")),
+        "signedIn": bool(read("browser.txt")) or signed_in(),
+        "profile": acct.get("profile", ""), "browser": acct.get("browser", "chrome"),
+        "playlists": acct.get("playlists", []), "problem": problem(),
         "have": have, "buy": buy,
         "lastRun": history[-1] if history else "", "lastUsb": usblog[-1] if usblog else "",
     }
@@ -88,6 +138,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/":
             with open(os.path.join(DIR, "index.html"), "rb") as f:
                 return self.send(200, f.read(), "text/html; charset=utf-8")
+        if self.path in ("/icon.svg", "/icon.png", "/apple-touch-icon.png", "/favicon.ico"):
+            svg = self.path == "/icon.svg"
+            with open(os.path.join(DIR, "icon.svg" if svg else "icon.png"), "rb") as f:
+                return self.send(200, f.read(), "image/svg+xml" if svg else "image/png")
         if self.path == "/api/state":
             return self.send(200, state())
         self.send(404, {"error": "not found"})
@@ -104,6 +158,20 @@ class Handler(BaseHTTPRequestHandler):
             url = str(body.get("url", "")).strip()
             if not PLAYLIST_RE.match(url):
                 return self.send(400, {"error": "That doesn't look like a SoundCloud link."})
+            with open(os.path.join(DIR, "playlist.txt"), "w") as f:
+                f.write(url + "\n")
+        elif self.path == "/api/connect":
+            m = PROFILE_RE.match(str(body.get("profile", "")).strip())
+            browser = str(body.get("browser", ""))
+            if not m or browser not in BROWSERS:
+                return self.send(400, {"error": "Type your SoundCloud profile name, like soundcloud.com/yourname."})
+            err = connect(m.group(1), browser)
+            if err:
+                return self.send(400, {"error": err})
+        elif self.path == "/api/pick":
+            url = str(body.get("url", ""))
+            if url not in [p["url"] for p in account().get("playlists", [])]:
+                return self.send(400, {"error": "Pick one of your playlists."})
             with open(os.path.join(DIR, "playlist.txt"), "w") as f:
                 f.write(url + "\n")
         elif self.path == "/api/usb":

@@ -11,21 +11,27 @@ URL="${1:-$(cat "$DIR/playlist.txt" 2>/dev/null)}"
 touch "$DIR/.running" "$DIR/archive.txt"; trap 'rm -f "$DIR/.running"' EXIT
 mkdir -p "$OUT"
 
-# Original files only download for a signed-in account: the token comes from the Keychain, never a file.
+# Keep the downloader current by itself (SoundCloud changes often): at most once a week.
+if [ -z "$(find "$DIR/.updated" -mtime -7 2>/dev/null)" ]; then
+  brew upgrade yt-dlp >>"$DIR/update.log" 2>&1; touch "$DIR/.updated"
+fi
+
+# Original files only download for a signed-in account: a Keychain token, or the browser he signed in with.
 TOKEN="$("$HOME/work-os/bin/api-key" get soundcloud 2>/dev/null)"
-AUTH=(); [ -n "$TOKEN" ] && AUTH=(--username oauth --password "$TOKEN")
+BROWSER="$(cat "$DIR/browser.txt" 2>/dev/null)"
+AUTH=()
+if [ -n "$TOKEN" ]; then AUTH=(--username oauth --password "$TOKEN")
+elif [ -n "$BROWSER" ]; then AUTH=(--cookies-from-browser "$BROWSER"); fi  # the session of the browser picked in the app
 
 # New tracks only (archive.txt remembers what is already here).
 yt-dlp "${AUTH[@]}" -f download --download-archive "$DIR/archive.txt" --ignore-errors --no-overwrites \
   --embed-metadata -o "$OUT/%(uploader)s - %(title)s.%(ext)s" "$URL" >"$DIR/last-run.log" 2>&1
 
-# Everything in the playlist with no artist download: the list to buy (name, tab, link).
-yt-dlp "${AUTH[@]}" --skip-download --ignore-errors --ignore-no-formats-error \
-  --print "%(id)s	%(uploader)s - %(title)s	%(webpage_url)s" "$URL" 2>>"$DIR/last-run.log" |
-  while IFS=$'\t' read -r id name link; do
-    grep -q "soundcloud $id\$" "$DIR/archive.txt" || printf '%s\t%s\n' "$name" "$link"
-  done > "$DIR/to-buy.tsv"
-tr '\t' ' ' < "$DIR/to-buy.tsv" > "$OUT/To Buy.txt"
+# Everything in the playlist with no artist download: the list still to get, each with the artist's
+# own free-download link when their description has one.
+yt-dlp "${AUTH[@]}" --skip-download --ignore-errors --ignore-no-formats-error --dump-json "$URL" 2>>"$DIR/last-run.log" |
+  python3 "$DIR/tobuy.py" "$DIR/archive.txt" "$DIR/to-buy.tsv"
+awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" > "$OUT/To Buy.txt"
 
 echo "$(date '+%F %R')  have: $(wc -l < "$DIR/archive.txt" | tr -d ' ')  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d ' ')" | tee -a "$DIR/history.log"
 "$DIR/usb.sh"
