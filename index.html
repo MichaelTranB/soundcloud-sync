@@ -139,6 +139,7 @@
       <h2>Still to get <em id="cBuy"></em></h2>
       <div class="note">Bought one (Bandcamp, Beatport, any shop) or got it through a free-download gate (Hypeddit, Laylo)?
         Leave the file in Downloads. The Crate takes it within a minute, checks it, and it goes on the USB.</div>
+      <div class="note" id="unread" hidden></div>
       <ul id="buy"></ul>
     </div>
   </section>
@@ -159,6 +160,8 @@ const search = (site, q) => site + encodeURIComponent(q);
 function render(s) {
   $('alert').hidden = !s.problem; $('alert').textContent = s.problem;
   $('nHave').textContent = s.have.length; $('cHave').textContent = s.have.length || '';
+  $('unread').hidden = !s.unread;
+  $('unread').textContent = s.unread ? `Plus ${s.unread} song${s.unread > 1 ? 's' : ''} SoundCloud wouldn't show us yet (it slows down anyone who asks too fast). The next sync asks again.` : '';
   $('nBuy').textContent = s.buy.length; $('cBuy').textContent = s.buy.length || '';
   if (document.activeElement !== $('profile') && !busy) $('profile').value = s.profile;
   if (document.activeElement !== $('browser') && !busy) $('browser').value = s.browser;
@@ -206,7 +209,6 @@ function render(s) {
 
   $('buy').replaceChildren(...(s.buy.length ? s.buy.map(t => el('li', {},
     el('span', { className: 'n', textContent: t.name }),
-    ...(t.soulseek ? [el('span', { className: 'tag lossless', title: 'A copy from Soulseek is on your Mac', textContent: 'Got from Soulseek' })] : []),
     ...(/^https?:\/\//.test(t.free) ? [el('a', { className: 'free', title: 'The artist\'s own free download (often asks you to follow or repost first)', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download' })] : []),
     el('a', { href: t.link, target: '_blank', rel: 'noopener', title: 'The track on SoundCloud: look for a Download or Buy link under it', textContent: 'SoundCloud' }),
     el('span', { className: 'shops', title: 'Searches in each shop. Not every track is sold everywhere: try Bandcamp and Beatport first', textContent: 'Buy:' }),

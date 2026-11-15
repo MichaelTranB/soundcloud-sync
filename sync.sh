@@ -45,7 +45,8 @@ elif [ -n "$STORE" ] && [ -d "$STORE" ]; then echo "sign-in blocked: operation n
 
 # New tracks only (archive.txt remembers what is already here).
 : >"$DIR/.originals"
-yt-dlp "${AUTH[@]}" -f download --download-archive "$DIR/archive.txt" --ignore-errors --no-overwrites \
+# SoundCloud refuses (HTTP 403) a Mac that asks too fast, so every pass here asks at a gentle pace.
+yt-dlp "${AUTH[@]}" -f download --download-archive "$DIR/archive.txt" --ignore-errors --no-overwrites --sleep-requests 1 \
   --print-to-file after_move:"%(extractor_key)s %(id)s	%(filepath)s" "$DIR/.originals" \
   --embed-metadata -o "$OUT/%(uploader)s - %(title)s.%(ext)s" "$URL" >"$DIR/last-run.log" 2>&1
 # The safety check right away: an original it blocks (moved to Quarantine) counts as not got, so the free
@@ -62,17 +63,31 @@ grep -vxFf "$DIR/blocked-originals.txt" "$DIR/archive.txt" >"$DIR/.archive-have"
 # Tracks already downloaded are skipped by ID before SoundCloud is asked about them, so a playlist that keeps
 # growing doesn't make every sync re-read all of it (yt-dlp only reads the archive here; it never writes it
 # without a download or --force-write-archive).
-yt-dlp "${AUTH[@]}" --download-archive "$DIR/.archive-have" --skip-download --ignore-errors --ignore-no-formats-error --dump-json "$URL" 2>>"$DIR/last-run.log" |
-  python3 "$DIR/tobuy.py" "$DIR/.archive-have" "$DIR/to-buy.tsv"
+# The playlist's own track list first (one request), then each track's details; whatever SoundCloud refused is
+# asked again after a pause, slower. What it still won't show is counted on the page and asked at the next sync.
+yt-dlp --flat-playlist --print "%(id)s %(url)s" "$URL" >"$DIR/.playlist" 2>>"$DIR/last-run.log"
+yt-dlp "${AUTH[@]}" --download-archive "$DIR/.archive-have" --skip-download --ignore-errors --ignore-no-formats-error \
+  --sleep-requests 1 --dump-json "$URL" >"$DIR/.listing" 2>>"$DIR/last-run.log"
+unread() { python3 "$DIR/tobuy.py" --unread "$DIR/.playlist" "$DIR/.archive-have" "$DIR/.listing" >"$DIR/.unread"; }
+for pause in 60 300; do
+  unread; [ -s "$DIR/.unread" ] || break
+  echo "SoundCloud refused $(wc -l < "$DIR/.unread" | tr -d ' ') track(s); asking again in $pause s" >>"$DIR/last-run.log"
+  sleep $pause
+  yt-dlp "${AUTH[@]}" --skip-download --ignore-errors --ignore-no-formats-error --sleep-requests 3 \
+    --dump-json -a "$DIR/.unread" >>"$DIR/.listing" 2>>"$DIR/last-run.log"
+done
+unread; wc -l < "$DIR/.unread" | tr -d ' ' >"$DIR/unread.txt"
+python3 "$DIR/tobuy.py" "$DIR/.archive-have" "$DIR/to-buy.tsv" <"$DIR/.listing"
 # The artist's own free download, when the description links straight to a file (Dropbox, Drive...): top quality only.
 python3 "$DIR/freedl.py" "$DIR" "$OUT" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/free.log"
 # Tracks bought or unlocked by hand (Beatport, Hypeddit, Laylo...) waiting in Downloads.
 python3 "$DIR/freedl.py" inbox "$DIR" "$OUT" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/free.log"
-awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" > "$OUT/To Buy.txt"
 
 echo "$(date '+%F %R')  have: $(wc -l < "$DIR/.archive-have" | tr -d ' ')  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d ' ')" | tee -a "$DIR/history.log"
 # Last fallback for whatever is still to get: Soulseek, through sockseek (download-only).
 "$DIR/soulseek.sh"
+# The list for the USB, after every source had its turn (a track on the Mac is never on it).
+awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" > "$OUT/To Buy.txt"
 # Every new file must be real audio (and pass the virus scan) before it stays or reaches the USB.
 python3 "$DIR/safety.py" check "$DIR" "$OUT" 2>>"$DIR/safety.log"
 "$DIR/usb.sh"

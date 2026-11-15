@@ -4,9 +4,35 @@
 For each track not already downloaded it writes: name, SoundCloud link, the artist's own free-download link
 when their description carries one (Hypeddit and the other download gates), and the length in seconds
 (soulseek.sh uses it to take only the same version). Tracks freedl.py already got (free.tsv) are left out.
+Tracks Soulseek got (soulseek.tsv) are left out too: a track on the Mac is never still to get.
 Usage: yt-dlp --dump-json ... | tobuy.py archive.txt to-buy.tsv
+       tobuy.py --unread PLAYLIST ARCHIVE LISTING   prints the links of playlist tracks (PLAYLIST: "id url" lines,
+           from --flat-playlist) not in ARCHIVE and missing from LISTING (SoundCloud refused them: ask again)
 """
 import json, os, re, sys
+
+if sys.argv[1:2] == ["--unread"]:
+    def ids(path, f):
+        try:
+            with open(path) as fh:
+                return {x for x in (f(l) for l in fh if l.strip()) if x}
+        except OSError:
+            return set()
+    def listed(l):
+        try:
+            return str(json.loads(l).get("id"))
+        except ValueError:
+            return None
+    known = ids(sys.argv[3], lambda l: l.split()[-1]) | ids(sys.argv[4], listed)
+    try:
+        with open(sys.argv[2]) as f:
+            for l in f:
+                tid, _, url = l.strip().partition(" ")
+                if tid and url and tid not in known:
+                    print(url)
+    except OSError:
+        pass
+    sys.exit(0)
 
 # The gates and hosts artists use to give a track away. Only the artist's own description is read.
 FREE = re.compile(
@@ -30,6 +56,11 @@ try:  # fetched from the artist's free-download link or taken from Downloads (fr
     # even when the file was later moved or deleted by hand
     with open(os.path.join(os.path.dirname(os.path.abspath(out_path)), "free.tsv")) as f:
         have |= {g[0] for g in (l.rstrip("\n").split("\t") for l in f) if len(g) == 3}
+except OSError:
+    pass
+try:  # got from Soulseek (soulseek.py); the artist's own file still replaces it when it comes (sync.sh pass 1)
+    with open(os.path.join(os.path.dirname(os.path.abspath(out_path)), "soulseek.tsv")) as f:
+        have |= {l.split("\t")[0] for l in f if l.count("\t") == 2}
 except OSError:
     pass
 

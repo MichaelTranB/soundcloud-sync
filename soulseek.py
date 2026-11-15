@@ -94,7 +94,16 @@ def prepare(d, slsk):
     print(f"searching Soulseek for {len(out)} track(s)")
 
 
-def record(d, slsk):
+def got_links(d, slsk):
+    """SoundCloud links of every track Soulseek has got: recorded ones and, during a run, ones sockseek just
+    finished (so the page never shows a track as both downloaded and still to get)."""
+    links = {g[0] for g in load_got(d)}
+    done = finished(slsk)
+    return links | {link for link, name, artist, title, _ in to_get(d) if (artist.lower(), title.lower()) in done}
+
+
+def finished(slsk):
+    """(artist, title) -> file, for each track sockseek finished and whose file is there."""
     index = os.path.join(slsk, ".index.sldl")
     done = {}
     try:
@@ -103,9 +112,16 @@ def record(d, slsk):
                 if r.get("state") == "1" and r.get("filepath"):
                     p = r["filepath"]
                     p = p if os.path.isabs(p) else os.path.normpath(os.path.join(slsk, p))
-                    done[(r.get("artist", "").lower(), r.get("title", "").lower())] = p
+                    if os.path.exists(p):
+                        done[(r.get("artist", "").lower(), r.get("title", "").lower())] = p
     except OSError:
         pass
+    return done
+
+
+def record(d, slsk):
+    """Adds what sockseek got to soulseek.tsv and takes those tracks off to-buy.tsv (got once, never again)."""
+    done = finished(slsk)
     got = load_got(d)
     have = {g[0] for g in got}
     for link, name, artist, title, _ in to_get(d):
@@ -114,6 +130,15 @@ def record(d, slsk):
             got.append([link, name, p])
             have.add(link)
     save_got(d, got)
+    path = os.path.join(d, "to-buy.tsv")
+    try:
+        with open(path) as f:
+            rows = [l for l in f if l.split("\t")[1:2] and l.split("\t")[1] not in have]
+    except OSError:
+        return
+    with open(path + ".tmp", "w") as f:
+        f.writelines(rows)
+    os.replace(path + ".tmp", path)
 
 
 if __name__ == "__main__":

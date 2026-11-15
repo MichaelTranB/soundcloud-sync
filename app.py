@@ -5,7 +5,7 @@ Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so an
 in the browser cannot press the buttons.
 """
 import json, os, re, shutil, subprocess, threading, time, urllib.parse
-import audio, freedl, safety
+import audio, freedl, safety, soulseek
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -246,12 +246,16 @@ def state():
                     have.append({"name": name, "kind": ext[1:].upper(), "mb": round(os.path.getsize(p) / 1e6, 1),
                                  "src": src or ("Free download" if p in free else ""), "kbps": lossy_kbps(p)})
     have.sort(key=lambda t: t["name"].lower())
-    slsk_links = {l.split("\t")[0] for l in read("soulseek.tsv").splitlines() if l}
+    got = soulseek.got_links(DIR, SLSK)  # on the Mac from Soulseek, even mid-run: not still to get
     buy = []
     for line in read("to-buy.tsv").splitlines():
         name, link, free = (line.split("\t") + ["", ""])[:3]
-        if name:
-            buy.append({"name": name, "link": link, "free": free, "soulseek": link in slsk_links})
+        if name and link not in got:
+            buy.append({"name": name, "link": link, "free": free})
+    try:
+        unread = int(read("unread.txt") or 0)
+    except ValueError:
+        unread = 0
     usb = read("usb.txt")
     history = read("history.log").splitlines()
     slsklog = read("soulseek.log").splitlines()
@@ -259,7 +263,7 @@ def state():
     safelog = read("safety.log").splitlines()
     qdir = os.path.join(DIR, "Quarantine")
     return {
-        "playlist": read("playlist.txt"), "usb": usb, "volumes": volumes(),
+        "playlist": read("playlist.txt"), "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
         "usbEject": not os.path.exists(os.path.join(DIR, "usb-keep.txt")),
         "running": os.path.exists(os.path.join(DIR, ".running")),
