@@ -193,7 +193,8 @@ def inbox_(d, out, folder, days):
     is opened, and goes to the Trash once nothing else on the list is in it.
     Right after a Free Download click (claim()), a file that lands in Downloads counts as that track whatever its
     name, when its length is within 2 s of SoundCloud's; when its name also shares a telling word with the song, it's
-    trusted like a named file (an extended cut is fine). Why a file wasn't kept goes to .inbox-why.json for the
+    trusted like a named file (an extended cut is fine). Just clicked and named with the full title and version, a
+    shorter cut is taken too (the artist's own free version; at least 90 s, never a clip). Why a file wasn't kept goes to .inbox-why.json for the
     page."""
     try:
         with open(os.path.join(d, "to-buy.tsv")) as f:
@@ -271,6 +272,10 @@ def inbox_(d, out, folder, days):
                 off = i["secs"] - float(secs) if i and secs else 0
                 sure = link in named or link in hinted
                 fits_len = abs(off) <= (5 if sure else 2) or ((link in whole or link in hinted) and 0 < off <= 240)
+                # From the song's own gate (just clicked) and named with its full title and version: the artist's own
+                # free cut, even when SoundCloud's upload is longer (a mashup or an extended upload). Not a clip.
+                fits_len = fits_len or bool(i and link in whole and link in clicked and mtime >= clicked[link] - 5
+                                            and i["secs"] >= 90)
                 if not path:
                     if i and (link in named or fits_len):
                         print(f"in Downloads but only {i['kbps']} kbps, not kept: {os.path.basename(p)}")
