@@ -51,3 +51,4 @@ sync-time.txt
 .usb-done
 .usb-mid
 .to-buy.lock
+.reload-*

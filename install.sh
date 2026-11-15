@@ -19,12 +19,14 @@ fi
 SOCKSEEK_VER=3.0.6
 if [ "$(uname -m)" = arm64 ]; then SOCKSEEK_OS=osx-arm64 SOCKSEEK_SHA=b7b9602b3ea0d8724b2a4dd1370c97f2f1f7175f901e7088dad714352c4926d9
 else SOCKSEEK_OS=osx-x64 SOCKSEEK_SHA=6211374e1fca1f0b0bb4bfc6395e493c5969416e116a976f87bac4bdb99320fd; fi
+# Each version gets its own folder and the short name is switched over at the end, so a sync searching Soulseek
+# right now carries on with the copy it started with.
 if [ "$("$HOME/.local/bin/sockseek" --version 2>/dev/null)" != "$SOCKSEEK_VER" ]; then
-  T="$(mktemp -d)"; F="$T/sockseek.tar.gz"
+  T="$(mktemp -d)"; F="$T/sockseek.tar.gz"; V="$HOME/.local/share/sockseek-$SOCKSEEK_VER"
   curl -fsSL -o "$F" "https://github.com/fiso64/sockseek/releases/download/v$SOCKSEEK_VER/sockseek_${SOCKSEEK_VER}_${SOCKSEEK_OS}.tar.gz" &&
     [ "$(shasum -a 256 "$F" | cut -d' ' -f1)" = "$SOCKSEEK_SHA" ] &&
-    mkdir -p "$HOME/.local/share/sockseek" "$HOME/.local/bin" && tar xzf "$F" -C "$HOME/.local/share/sockseek" &&
-    ln -sf "$HOME/.local/share/sockseek/sockseek" "$HOME/.local/bin/sockseek" || echo "sockseek install FAILED (download or checksum)"
+    mkdir -p "$T/x" "$HOME/.local/bin" && tar xzf "$F" -C "$T/x" && rm -rf "$V" && mv "$T/x" "$V" &&
+    ln -sfn "$V/sockseek" "$HOME/.local/bin/sockseek" || echo "sockseek install FAILED (download or checksum)"
   rm -rf "$T"
 fi
 # ClamAV, the free virus scanner the safety check (safety.py) uses: Homebrew's copy when this Mac has one, else
@@ -80,9 +82,15 @@ for old in com.michael.soundcloud-sync.app com.michael.soundcloud-sync com.micha
 done
 PY="$(for p in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do [ -x "$p" ] && echo "$p" && break; done)"
 
-job() { # label, body
+# Re-running the install (an update) never stops work halfway. Reloading a job stops what it's running, so a job
+# busy right now (a nightly sync, a copy to the USB) keeps going with everything it has done so far; its new settings
+# are saved and the page loads them once it's finished (.reload-<job>). A sync started from the page runs on its own
+# and isn't touched at all. Every track already got stays got: the sync picks up where it was.
+sync_busy() { kill -0 "$(cat "$DIR/.running" 2>/dev/null)" 2>/dev/null; }
+usb_busy() { kill -0 "$(cut -d' ' -f1 "$DIR/.usb-copy" 2>/dev/null)" 2>/dev/null; }
+job() { # label, body, busy check
   local p="$AGENTS/$1.plist"
-  cat > "$p" <<EOF
+  cat > "$p.tmp" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -92,6 +100,13 @@ $2
 <key>StandardErrorPath</key><string>$DIR/launchd.log</string>
 </dict></plist>
 EOF
+  mv -f "$p.tmp" "$p"
+  if [ -n "$3" ] && $3; then
+    touch "$DIR/.reload-$1"
+    echo "$4"
+    return
+  fi
+  rm -f "$DIR/.reload-$1"
   launchctl bootout "gui/$(id -u)/$1" 2>/dev/null
   launchctl bootstrap "gui/$(id -u)" "$p"
 }
@@ -102,9 +117,10 @@ job com.thecrate.app "<key>ProgramArguments</key><array>$(run app "<string>$PY</
 T="$(cat "$DIR/sync-time.txt" 2>/dev/null)"
 case "$T" in [01][0-9]:[0-5][0-9]|2[0-3]:[0-5][0-9]) ;; *) T=03:10 ;; esac
 job com.thecrate.sync "<key>ProgramArguments</key><array>$(run sync "<string>$DIR/sync.sh</string>")</array>
-<key>StartCalendarInterval</key><dict><key>Hour</key><integer>$((10#${T%%:*}))</integer><key>Minute</key><integer>$((10#${T##*:}))</integer></dict>"
+<key>StartCalendarInterval</key><dict><key>Hour</key><integer>$((10#${T%%:*}))</integer><key>Minute</key><integer>$((10#${T##*:}))</integer></dict>" sync_busy \
+  "A sync is running: it keeps going, with everything it got so far kept. The update finishes by itself when it's done."
 job com.thecrate.usb "<key>ProgramArguments</key><array>$(run usb "<string>$DIR/usb.sh</string>")</array>
-<key>StartOnMount</key><true/>"
+<key>StartOnMount</key><true/>" usb_busy "A copy to the USB is running: it finishes first."
 
 # "The Crate" in Applications (and Launchpad): opens the page.
 APP="$HOME/Applications/The Crate.app"
