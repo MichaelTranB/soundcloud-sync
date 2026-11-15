@@ -11,7 +11,7 @@ DEST="${VOLUMES:-/Volumes}/$NAME"
 [ -d "$DEST" ] || { echo "$(date '+%F %R')  USB \"$NAME\" not plugged in; will copy when it is" >> "$DIR/usb.log"; exit 0; }
 mkdir -p "$DEST/SoundCloud Sync"
 # Only files that passed the safety check (safety.py) are copied. During a sync the check runs at its end.
-[ -e "$DIR/.running" ] || python3 "$DIR/safety.py" check "$DIR" "$SRC" 2>>"$DIR/safety.log"
+kill -0 "$(cat "$DIR/.running" 2>/dev/null)" 2>/dev/null || python3 "$DIR/safety.py" check "$DIR" "$SRC" 2>>"$DIR/safety.log"
 LIST="$DIR/.usb-list"
 # "./" first: rsync would read a name starting with # or ; as a comment
 cut -f1 "$DIR/safety-ok.tsv" 2>/dev/null | while IFS= read -r p; do [ -f "$SRC/$p" ] && echo "./$p"; done >"$LIST"

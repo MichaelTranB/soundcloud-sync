@@ -141,6 +141,60 @@ def record(d, slsk):
     os.replace(path + ".tmp", path)
 
 
+
+# sockseek's per-track log lines ("[004] SongJob: failed [No search results]: Artist - Title"), in plain words.
+JOB = re.compile(r"SongJob: (searching|downloading|succeeded|failed)(?: \[([^\]]*)\])?: (.*)")
+WHY = {
+    "no search results": "Not on Soulseek in top quality (lossless or a real 320 MP3, same length).",
+    "all downloads failed": "On Soulseek, but everyone sharing it was offline or busy. Tried again next sync.",
+}
+
+
+def progress(d, live):
+    """SoundCloud link -> (state, why) for each track still to get, from sockseek's logs: "searching" or
+    "downloading" while a sync is on it right now, "queued" when this sync will look for it, else "missing" with
+    the reason from the last time Soulseek looked. live: a sync is running and its Soulseek step has started."""
+    label = {}
+    for link, name, artist, title, _ in to_get(d):
+        label[f"{artist} - {title}" if artist else title] = link
+    def events(log):
+        last = {}
+        try:
+            with open(os.path.join(d, log), errors="replace") as f:
+                for line in f:
+                    m = JOB.search(line)
+                    if not m:
+                        continue
+                    rest = m.group(3).rstrip("\n")
+                    for lab, link in label.items():
+                        if rest == lab or rest.startswith(lab + ": "):
+                            last[link] = (m.group(1), (m.group(2) or "").lower())
+                            break
+        except OSError:
+            pass
+        return last
+    # soulseek-run.log: every finished pass (of this sync while one runs, else of the last one);
+    # soulseek-pass.log: the pass running now (lossless first, then 320 MP3 for what that didn't find).
+    done, now = events("soulseek-run.log"), events("soulseek-pass.log") if live else {}
+    queued = set()
+    if live:
+        try:
+            with open(os.path.join(d, "soulseek.csv"), newline="") as f:
+                want = {(r["Artist"], r["Title"]) for r in csv.DictReader(f)}
+            queued = {link for link, name, artist, title, _ in to_get(d) if (artist, title) in want}
+        except (OSError, KeyError):
+            pass
+    out = {}
+    for link, name, *_ in to_get(d):
+        state, reason = (now.get(link) or ("queued", "")) if link in queued else done.get(link, ("", ""))
+        if live and state in ("searching", "downloading", "queued"):
+            out[link] = (state, "")
+        elif state == "failed":
+            out[link] = ("missing", WHY.get(reason, f"Soulseek: {reason}." if reason else "Not found on Soulseek."))
+        else:
+            out[link] = ("missing", "")
+    return out
+
 if __name__ == "__main__":
     if len(sys.argv) != 4 or sys.argv[1] not in ("prepare", "record"):
         sys.exit(__doc__)

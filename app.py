@@ -107,6 +107,18 @@ def soulseek_login(user, pw):
     return ""
 
 
+def sync_running():
+    """True while sync.sh runs: .running holds its process number (a flag left by a killed sync doesn't count)."""
+    try:
+        with open(os.path.join(DIR, ".running")) as f:
+            os.kill(int(f.read().strip()), 0)
+        return True
+    except PermissionError:
+        return True  # the process exists
+    except (OSError, ValueError):
+        return False
+
+
 def soulseek_ready():
     """True once a Soulseek sign-in is saved (reads only the item's name, never the password)."""
     if time.time() - _slsk["at"] > 60:
@@ -249,11 +261,22 @@ def state():
                                  "src": src or ("Free download" if p in free else ""), "kbps": lossy_kbps(p)})
     have.sort(key=lambda t: t["name"].lower())
     got = soulseek.got_links(DIR, SLSK)  # on the Mac from Soulseek, even mid-run: not still to get
+    # What a running sync is doing: reading SoundCloud first, then Soulseek (its log is newer than the sync's flag).
+    running = sync_running()
+    phase = ""
+    if running:
+        try:
+            started = os.path.getmtime(os.path.join(DIR, ".running"))
+            phase = "soulseek" if os.path.getmtime(os.path.join(DIR, "soulseek-pass.log")) >= started else "soundcloud"
+        except OSError:
+            phase = "soundcloud"
+    prog = soulseek.progress(DIR, phase == "soulseek")
     buy = []
     for line in read("to-buy.tsv").splitlines():
         name, link, free = (line.split("\t") + ["", ""])[:3]
         if name and link not in got:
-            buy.append({"name": name, "link": link, "free": free})
+            st, why = prog.get(link, ("missing", ""))
+            buy.append({"name": name, "link": link, "free": free, "state": st, "why": why})
     try:
         unread = int(read("unread.txt") or 0)
     except ValueError:
@@ -268,7 +291,7 @@ def state():
         "playlist": read("playlist.txt"), "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
         "usbEject": not os.path.exists(os.path.join(DIR, "usb-keep.txt")),
-        "running": os.path.exists(os.path.join(DIR, ".running")),
+        "running": running, "phase": phase,
         "signIn": sign_in_status(browser()),
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
@@ -364,7 +387,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(DIR, "usb.txt"), "w") as f:
                 f.write(name + "\n")
             if name:
-                subprocess.Popen([os.path.join(DIR, "usb.sh")])
+                subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True)
         elif self.path == "/api/eject":
             keep = os.path.join(DIR, "usb-keep.txt")
             if body.get("on"):
@@ -375,7 +398,9 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/sync":
             if not read("playlist.txt"):
                 return self.send(400, {"error": "Add your playlist link first."})
-            subprocess.Popen([os.path.join(DIR, "sync.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # its own session: restarting the page (an update) never stops a sync or a copy halfway
+            subprocess.Popen([os.path.join(DIR, "sync.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
             time.sleep(0.4)
         elif self.path == "/api/copy":
             subprocess.Popen([os.path.join(DIR, "usb.sh")])
@@ -390,7 +415,7 @@ def watch_downloads():
     then copy anything new to the USB when it's plugged in."""
     while True:
         time.sleep(60)
-        if os.path.exists(os.path.join(DIR, ".running")):
+        if sync_running():
             continue  # a sync is running; it does the same at its end
         try:
             got = freedl.inbox(DIR, OUT)

@@ -10,7 +10,7 @@
 <style>
   :root {
     --bg: #0c0c12; --panel: #15151d; --line: #282834; --text: #f0eef8; --dim: #8a889c;
-    --hot: #7b6bff; --ok: #9be36b; --warn: #ffc24a;
+    --hot: #e5484d; --ok: #9be36b; --warn: #ffc24a;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
@@ -73,6 +73,20 @@
   li .shops { color: var(--dim); font-size: 12px; margin-left: 8px; }
   li a.free { color: var(--ok); border-bottom-style: solid; border-color: var(--ok); font-weight: 700; }
   li a:hover { color: var(--hot); border-color: var(--hot); }
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 22px 0 6px; display: flex; justify-content: space-between; align-items: center; }
+  h3 em { font: 700 12px var(--mono); color: var(--text); font-style: normal; }
+  .find { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; }
+  .find input { flex: 1; max-width: 420px; }
+  .find small { color: var(--dim); font-size: 12px; }
+  li .why { flex-basis: 100%; color: var(--dim); font-size: 12.5px; margin-top: -2px; }
+  li .why.act { color: var(--ok); }
+  .state { font: 700 11px var(--mono); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; display: inline-flex; align-items: center; }
+  .state .dot { width: 7px; height: 7px; margin-right: 6px; }
+  .state.on { color: var(--text); border-color: var(--hot); }
+  .dot.live { background: var(--hot); animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  @media (prefers-reduced-motion: reduce) { .dot.live { animation: none; } }
+  .phase { color: var(--dim); font-size: 13px; padding: 12px 0; border-bottom: 1px solid var(--line); display: flex; align-items: center; }
   .empty { color: var(--dim); padding: 22px 0; border-bottom: 1px solid var(--line); }
   footer { color: var(--dim); font-size: 12px; margin-top: 40px; font-family: var(--mono); }
   @media (max-width: 820px) { .strip { grid-template-columns: 1fr 1fr; } .setup, .cols { grid-template-columns: 1fr; } h1 { font-size: 40px; } }
@@ -135,6 +149,10 @@
     </div>
   </section>
 
+  <div class="find">
+    <input id="q" type="search" placeholder="Search your tracks" spellcheck="false" autocomplete="off" aria-label="Search tracks in both lists">
+    <small id="qNote"></small>
+  </div>
   <section class="cols">
     <div>
       <h2>On your Mac <em id="cHave"></em></h2>
@@ -145,6 +163,11 @@
       <div class="note">Bought one (Bandcamp, Beatport, any shop) or got it through a free-download gate (Hypeddit, Laylo)?
         Leave the file in Downloads. The Crate takes it within a minute, checks it, and it goes on the USB.</div>
       <div class="note" id="unread" hidden></div>
+      <div id="nowBox" hidden>
+        <h3>Getting now <em id="cNow"></em></h3>
+        <ul id="now"></ul>
+      </div>
+      <h3 id="missHead">Not found yet <em id="cMiss"></em></h3>
       <ul id="buy"></ul>
     </div>
   </section>
@@ -168,6 +191,73 @@ function render(s) {
   $('unread').hidden = !s.unread;
   $('unread').textContent = s.unread ? `Plus ${s.unread} song${s.unread > 1 ? 's' : ''} SoundCloud wouldn't show us yet (it slows down anyone who asks too fast). The next sync asks again.` : '';
   $('nBuy').textContent = s.buy.length; $('cBuy').textContent = s.buy.length || '';
+  paintSetup(s); last = s; draw();
+}
+
+// Search: every word typed must be in the track's name (both lists).
+const words = () => $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
+const hit = (name, w) => w.every(x => name.toLowerCase().includes(x));
+const nameEl = t => el('span', { className: 'n', textContent: t.name });
+const STATE = { downloading: 'Downloading', searching: 'Searching Soulseek', queued: 'Next up on Soulseek' };
+
+function shopLinks(t) {
+  return [
+    ...(/^https?:\/\//.test(t.free) ? [el('a', { className: 'free', title: 'The artist\'s own free download (often asks you to follow or repost first)', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download' })] : []),
+    el('a', { href: t.link, target: '_blank', rel: 'noopener', title: 'The track on SoundCloud: look for a Download or Buy link under it', textContent: 'SoundCloud' }),
+    el('span', { className: 'shops', title: 'Searches in each shop. Not every track is sold everywhere: try Bandcamp and Beatport first', textContent: 'Buy:' }),
+    el('a', { href: search('https://bandcamp.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Bandcamp' }),
+    el('a', { href: search('https://www.beatport.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Beatport' }),
+    el('a', { href: search('https://www.traxsource.com/search?term=', t.name), target: '_blank', rel: 'noopener', textContent: 'Traxsource' }),
+    el('a', { href: search('https://www.junodownload.com/search/?q%5Ball%5D%5B%5D=', t.name), target: '_blank', rel: 'noopener', textContent: 'Juno' }),
+    el('a', { href: search('https://www.qobuz.com/us-en/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Qobuz' })];
+}
+
+// Why a track isn't here yet, in plain words: what to do comes first when there's something to do.
+function why(t, s) {
+  if (/^https?:\/\//.test(t.free)) return ['act', 'Free from the artist: tap Free Download (it may ask for a follow or repost), then leave the file in Downloads.'];
+  if (t.why) return ['', t.why];
+  if (!s.soulseekReady) return ['', 'Not looked for on Soulseek: sign in to Soulseek above and the next sync looks.'];
+  return ['', 'Not looked for on Soulseek yet: the next sync looks.'];
+}
+
+let last = null;
+function draw() {
+  const s = last; if (!s) return;
+  const w = words(), q = w.length > 0;
+  const have = s.have.filter(t => hit(t.name, w));
+  const now = s.buy.filter(t => STATE[t.state] && hit(t.name, w));
+  const miss = s.buy.filter(t => !STATE[t.state] && hit(t.name, w));
+  $('qNote').textContent = q ? `${have.length + now.length + miss.length} match${have.length + now.length + miss.length === 1 ? '' : 'es'}` : '';
+  $('cHave').textContent = q ? have.length + ' of ' + s.have.length : s.have.length || '';
+  const nowAll = s.buy.filter(t => STATE[t.state]).length;
+  $('nowBox').hidden = !s.running;
+  $('cNow').textContent = nowAll ? (q ? now.length + ' of ' + nowAll : nowAll) : '';
+  $('cMiss').textContent = q ? miss.length + ' of ' + (s.buy.length - nowAll) : (s.buy.length - nowAll) || '';
+  $('missHead').hidden = !s.buy.length || (!q && s.buy.length === nowAll);
+  const phase = s.phase === 'soundcloud' ? 'Checking SoundCloud for new tracks and the artists\' own files…'
+    : s.phase === 'soulseek' && !nowAll ? 'Looking on Soulseek…' : '';
+  $('now').replaceChildren(
+    ...(phase ? [el('div', { className: 'phase' }, el('i', { className: 'dot live' }), phase)] : []),
+    ...now.sort((a, b) => (a.state === 'queued') - (b.state === 'queued')).map(t => el('li', {},
+      nameEl(t),
+      el('span', { className: 'state' + (t.state === 'queued' ? '' : ' on') },
+        el('i', { className: 'dot' + (t.state === 'queued' ? '' : ' live') }), STATE[t.state]))));
+
+  $('have').replaceChildren(...(have.length ? have.map(t => el('li', {},
+    el('span', { className: 'n', textContent: t.name }),
+    el('span', { className: 'tag' + (LOSSLESS.includes(t.kind) ? ' lossless' : ''), textContent: t.kind }),
+    ...(t.kbps && t.kbps < 318 ? [el('span', { className: 'tag low', title: 'Below 320 kbps: the file the artist uploaded is low quality. Buy the lossless one from a shop.', textContent: t.kbps + ' kbps' })] : []),
+    el('span', { className: 'tag', textContent: t.mb + ' MB' }),
+    ...(t.src ? [el('span', { className: 'tag', title: t.src === 'Soulseek' ? 'Found on Soulseek; replaced by the artist\'s own file when it comes' : 'Fetched from the artist\'s own free-download link', textContent: t.src })] : [])))
+    : [el('div', { className: 'empty', textContent: q ? 'No match.' : 'Nothing yet. Tracks whose artists allow downloads land here in their original quality.' })]));
+
+  $('buy').replaceChildren(...(miss.length ? miss.map(t => { const [k, txt] = why(t, s); return el('li', {},
+    nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : ''), textContent: txt }), ...shopLinks(t)); })
+    : s.buy.length && q ? [el('div', { className: 'empty', textContent: 'No match.' })] : []));
+  if (!s.buy.length) $('buy').replaceChildren(el('div', { className: 'empty', textContent: 'Nothing left to get. Every track is on your Mac.' }));
+}
+
+function paintSetup(s) {
   if (document.activeElement !== $('profile') && !busy) $('profile').value = s.profile;
   if (document.activeElement !== $('browser') && !busy) $('browser').value = s.browser;
   const pick = (p, note) => call('/api/pick', { url: p.url }).then(() => say(note, p.title + ' syncs now. Press Sync Now, or leave it for tonight.')).catch(e => say(note, e.message, true));
@@ -203,26 +293,6 @@ function render(s) {
   $('eject').checked = s.usbEject;
   $('usbNote').textContent = !s.usb ? 'Pick your USB once. After that it fills by itself.'
     : s.usbPlugged ? 'New tracks copy over after every sync.' : 'Tracks wait here and copy the moment it is plugged in.';
-
-  $('have').replaceChildren(...(s.have.length ? s.have.map(t => el('li', {},
-    el('span', { className: 'n', textContent: t.name }),
-    el('span', { className: 'tag' + (LOSSLESS.includes(t.kind) ? ' lossless' : ''), textContent: t.kind }),
-    ...(t.kbps && t.kbps < 318 ? [el('span', { className: 'tag low', title: 'Below 320 kbps: the file the artist uploaded is low quality. Buy the lossless one from a shop.', textContent: t.kbps + ' kbps' })] : []),
-    el('span', { className: 'tag', textContent: t.mb + ' MB' }),
-    ...(t.src ? [el('span', { className: 'tag', title: t.src === 'Soulseek' ? 'Found on Soulseek; replaced by the artist\'s own file when it comes' : 'Fetched from the artist\'s own free-download link', textContent: t.src })] : [])))
-    : [el('div', { className: 'empty', textContent: 'Nothing yet. Tracks whose artists allow downloads land here in their original quality.' })]));
-
-  $('buy').replaceChildren(...(s.buy.length ? s.buy.map(t => el('li', {},
-    el('span', { className: 'n', textContent: t.name }),
-    ...(/^https?:\/\//.test(t.free) ? [el('a', { className: 'free', title: 'The artist\'s own free download (often asks you to follow or repost first)', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download' })] : []),
-    el('a', { href: t.link, target: '_blank', rel: 'noopener', title: 'The track on SoundCloud: look for a Download or Buy link under it', textContent: 'SoundCloud' }),
-    el('span', { className: 'shops', title: 'Searches in each shop. Not every track is sold everywhere: try Bandcamp and Beatport first', textContent: 'Buy:' }),
-    el('a', { href: search('https://bandcamp.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Bandcamp' }),
-    el('a', { href: search('https://www.beatport.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Beatport' }),
-    el('a', { href: search('https://www.traxsource.com/search?term=', t.name), target: '_blank', rel: 'noopener', textContent: 'Traxsource' }),
-    el('a', { href: search('https://www.junodownload.com/search/?q%5Ball%5D%5B%5D=', t.name), target: '_blank', rel: 'noopener', textContent: 'Juno' }),
-    el('a', { href: search('https://www.qobuz.com/us-en/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Qobuz' })))
-    : [el('div', { className: 'empty', textContent: 'Tracks with no artist download show here, with links to the artist\'s page and the shops.' })]));
 
   // Signed in and working: just the green status. Otherwise the reason and the sign-in boxes.
   const slskGood = s.soulseekReady && !s.soulseekBad;
@@ -279,6 +349,8 @@ $('eject').onchange = e => call('/api/eject', { on: e.target.checked }).catch(er
 $('copy').onclick = () => call('/api/copy', {}).catch(e => say('usbNote', e.message, true));
 $('sync').onclick = () => call('/api/sync', {}).catch(e => say('urlNote', e.message, true));
 
+$('q').oninput = draw;
+$('q').onkeydown = e => { if (e.key === 'Escape') { e.target.value = ''; draw(); } };
 const tick = () => call('/api/state').catch(() => {});
 tick(); setInterval(tick, 3000);
 </script>
