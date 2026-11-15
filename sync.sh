@@ -34,4 +34,6 @@ yt-dlp "${AUTH[@]}" --skip-download --ignore-errors --ignore-no-formats-error --
 awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" > "$OUT/To Buy.txt"
 
 echo "$(date '+%F %R')  have: $(wc -l < "$DIR/archive.txt" | tr -d ' ')  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d ' ')" | tee -a "$DIR/history.log"
+# Last fallback for whatever is still to get: Soulseek, through sockseek (download-only).
+"$DIR/soulseek.sh"
 "$DIR/usb.sh"

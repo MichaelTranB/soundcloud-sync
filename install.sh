@@ -4,6 +4,16 @@
 DIR="${0:A:h}"
 AGENTS="$HOME/Library/LaunchAgents"
 command -v yt-dlp >/dev/null || brew install yt-dlp
+# sockseek (Soulseek downloader, github.com/fiso64/sockseek): pinned release, checksum checked.
+SOCKSEEK_VER=3.0.6 SOCKSEEK_SHA=b7b9602b3ea0d8724b2a4dd1370c97f2f1f7175f901e7088dad714352c4926d9
+if [ "$("$HOME/.local/bin/sockseek" --version 2>/dev/null)" != "$SOCKSEEK_VER" ]; then
+  T="$(mktemp -d)"; F="$T/sockseek.tar.gz"
+  curl -fsSL -o "$F" "https://github.com/fiso64/sockseek/releases/download/v$SOCKSEEK_VER/sockseek_${SOCKSEEK_VER}_osx-arm64.tar.gz" &&
+    [ "$(shasum -a 256 "$F" | cut -d' ' -f1)" = "$SOCKSEEK_SHA" ] &&
+    mkdir -p "$HOME/.local/share/sockseek" "$HOME/.local/bin" && tar xzf "$F" -C "$HOME/.local/share/sockseek" &&
+    ln -sf "$HOME/.local/share/sockseek/sockseek" "$HOME/.local/bin/sockseek" || echo "sockseek install FAILED (download or checksum)"
+  rm -rf "$T"
+fi
 chmod +x "$DIR"/*.sh
 mkdir -p "$AGENTS" "$HOME/Music/SoundCloud Sync"
 

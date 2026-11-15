@@ -170,18 +170,22 @@ function render(s) {
   $('have').replaceChildren(...(s.have.length ? s.have.map(t => el('li', {},
     el('span', { className: 'n', textContent: t.name }),
     el('span', { className: 'tag' + (LOSSLESS.includes(t.kind) ? ' lossless' : ''), textContent: t.kind }),
-    el('span', { className: 'tag', textContent: t.mb + ' MB' })))
+    el('span', { className: 'tag', textContent: t.mb + ' MB' }),
+    ...(t.src ? [el('span', { className: 'tag', title: 'Found on Soulseek; replaced by the artist\'s own file when it comes', textContent: t.src })] : [])))
     : [el('div', { className: 'empty', textContent: 'Nothing yet. Tracks whose artists allow downloads land here in their original quality.' })]));
 
   $('buy').replaceChildren(...(s.buy.length ? s.buy.map(t => el('li', {},
     el('span', { className: 'n', textContent: t.name }),
+    ...(t.soulseek ? [el('span', { className: 'tag lossless', title: 'A copy from Soulseek is on your Mac', textContent: 'Got from Soulseek' })] : []),
     ...(/^https?:\/\//.test(t.free) ? [el('a', { className: 'free', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download' })] : []),
     el('a', { href: t.link, target: '_blank', rel: 'noopener', textContent: 'SoundCloud' }),
     el('a', { href: search('https://bandcamp.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Bandcamp' }),
     el('a', { href: search('https://www.beatport.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Beatport' })))
     : [el('div', { className: 'empty', textContent: 'Tracks with no artist download show here, with links to the artist\'s page and the shops.' })]));
 
-  $('foot').textContent = [s.lastRun && 'last sync  ' + s.lastRun, s.lastUsb && 'usb  ' + s.lastUsb].filter(Boolean).join('   ·   ');
+  $('foot').textContent = [s.lastRun && 'last sync  ' + s.lastRun, s.lastUsb && 'usb  ' + s.lastUsb,
+    s.soulseekReady ? s.lastSoulseek && 'soulseek  ' + s.lastSoulseek.replace(/^\S+ \S+\s+/, '')
+      : 'Soulseek not set up: run soulseek-login.sh once'].filter(Boolean).join('   ·   ');
 }
 
 async function call(path, body) {
