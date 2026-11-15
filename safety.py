@@ -95,6 +95,20 @@ def virus_scan(paths):
     return found
 
 
+def vet(d, path):
+    """One file, checked before it is moved into the music folder. '' when safe; else the reason, and the file
+    is in Quarantine. A virus scan that couldn't run doesn't block it here: check() keeps it off the USB."""
+    reason = why_not(path)
+    if not reason:
+        found = virus_scan([path]) or {}
+        if path in found:
+            reason = f"virus found ({found[path]})"
+    if reason:
+        with open(os.path.join(d, "safety.log"), "a") as f:
+            quarantine(d, path, reason, lambda m: f.write(f"{time.strftime('%F %R')}  {m}\n"))
+    return reason
+
+
 def quarantine(d, path, reason, log):
     q = os.path.join(d, "Quarantine")
     os.makedirs(q, exist_ok=True)

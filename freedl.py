@@ -9,7 +9,8 @@ Download gates (Hypeddit, ToneDen and the like), Bandcamp and hosts that need a 
 Mediafire) stay one click on the page. Only top quality is kept: lossless, or MP3/AAC at 320 kbps. A zip is
 opened and only its audio is taken. A link that gave a non-audio or low-quality file is not tried again.
 """
-import os, re, sys, tempfile, urllib.parse, urllib.request, zipfile
+import os, re, shutil, sys, tempfile, urllib.parse, urllib.request, zipfile
+import safety
 from audio import info, top_quality
 
 MAX = 2_000_000_000  # bytes; nothing an artist gives away is bigger
@@ -97,7 +98,7 @@ def main(d, out):
         if not url:
             kept.append(row)
             continue
-        with tempfile.TemporaryDirectory(dir=out, prefix=".free-") as tmpdir:
+        with tempfile.TemporaryDirectory(dir=d, prefix=".free-") as tmpdir:  # outside the music folder
             tmp = os.path.join(tmpdir, "download")
             try:
                 fetch(url, tmp)
@@ -113,11 +114,20 @@ def main(d, out):
                     f.write(free + "\n")
                 kept.append(row)
                 continue
+            staged = os.path.join(tmpdir, f"track.{i['ext']}")
+            os.replace(path, staged)
+            blocked = safety.vet(d, staged)
+            if blocked:  # never kept: the link isn't tried again, and the track stays on the list for Soulseek
+                print(f"free download BLOCKED by the safety check ({blocked}): {name}")
+                with open(tried_path, "a") as f:
+                    f.write(free + "\n")
+                kept.append(row)
+                continue
             safe = re.sub(r'[/:\x00-\x1f]', "-", name).strip(". ")[:200]
             dest = os.path.join(out, f"{safe}.{i['ext']}")
             if os.path.exists(dest):
                 dest = os.path.join(out, f"{safe} (free download).{i['ext']}")
-            os.replace(path, dest)
+            shutil.move(staged, dest)
             got.append((link, name, dest))
             print(f"free download: {os.path.basename(dest)} ({'lossless' if i['lossless'] else str(i['kbps']) + ' kbps'})")
     if got:
