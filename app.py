@@ -729,14 +729,21 @@ def state():
     safelog = read("safety.log").splitlines()
     qdir = os.path.join(DIR, "Quarantine")
     svc = playlists.service(read("playlist.txt"))
-    try:  # Spotify shows only its first 100 tracks to a page without a Spotify sign-in
-        capped = bool(svc) and json.loads(read(".service") or "{}").get("service") == svc and \
-            json.loads(read(".service"))["capped"]
-    except (ValueError, KeyError):
-        capped = False
+    try:  # Spotify's page shows its first 100 songs, Apple's its first 300
+        info = json.loads(read(".service") or "{}")
+        info = info if svc and info.get("service") == svc else {}
+    except ValueError:
+        info = {}
+    capped = bool(info.get("capped"))
+    pasted = len(playlists.pasted(DIR, read("playlist.txt").strip())) if svc == "spotify" else 0
+    try:  # how far a long playlist read has got, while a sync runs
+        reading = json.loads(read(".reading.json") or "null") if sync_running() else None
+    except ValueError:
+        reading = None
     watch_login(svc)
     return {
-        "playlist": read("playlist.txt"), "service": svc, "capped": capped, "usb": usb, "unread": unread, "volumes": volumes(),
+        "playlist": read("playlist.txt"), "service": svc, "capped": capped, "pasted": pasted,
+        "missing": info.get("missing", 0), "reading": reading, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
         "usbEject": os.path.exists(os.path.join(DIR, "usb-eject.txt")),  # off unless ticked
         "usbCopy": usb_copy(), "usbResult": usb_result(usblog),
@@ -834,7 +841,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("Host") not in HOSTS or urllib.parse.urlparse(origin).netloc not in HOSTS:
             return self.send(403, {"error": "wrong origin"})
         try:
-            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 4096)) or b"{}")
+            cap = 600_000 if self.path == "/api/spotify-songs" else 4096  # a pasted song list: ~55 bytes a song
+            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
         except ValueError:
             return self.send(400, {"error": "bad request"})
         if self.path == "/api/playlist":
@@ -851,6 +859,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(400, {"error": "SoundCloud didn't open that link. For a private playlist, use its "
                                                 "Share link (it ends in /s-…)."})
             remember(url, title)
+        elif self.path == "/api/spotify-songs":
+            url = read("playlist.txt")
+            if playlists.service(url) != "spotify":
+                return self.send(400, {"error": "Add the Spotify playlist first."})
+            n = playlists.paste(DIR, url, str(body.get("text", "")))
+            if not n:
+                return self.send(400, {"error": "No Spotify song links in that. In Spotify, click one song, press "
+                                                "⌘A then ⌘C, and paste here."})
+            if not sync_running():  # read them now, not at the next timed sync
+                subprocess.Popen([os.path.join(DIR, "sync.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+                time.sleep(0.4)
         elif self.path == "/api/connect":
             m = PROFILE_RE.match(str(body.get("profile", "")).strip())
             browser = str(body.get("browser", ""))
