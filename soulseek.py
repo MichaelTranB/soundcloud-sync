@@ -4,11 +4,21 @@
   soulseek.py prepare DIR SLSK   writes DIR/soulseek.csv (Artist,Title,Length for every track still to get) and
                                  removes a Soulseek copy once the artist's own file has landed in the music folder
   soulseek.py record  DIR SLSK   updates DIR/soulseek.tsv (SoundCloud link, name, file) from sockseek's index
+  soulseek.py missed  DIR SLSK   after both passes: notes each track Soulseek had nothing for (soulseek-missed.tsv)
 
 DIR is the app folder (to-buy.tsv lives there); SLSK is the "From Soulseek" folder inside the music folder.
 Standard library only.
+
+Soulseek's server bans an account for 30 minutes after too many searches, so sockseek allows 34 every 220 s and
+searching is what makes a sync slow. Most tracks still to get are bootlegs nobody shares; searching each one again
+every sync costs the most and finds the least. So a track Soulseek had nothing at all for (no file in top quality,
+both passes) waits before it's searched again: 1 day after the first miss, then 2, 4, and at most 7 days. New
+tracks, and tracks that were there but whose sharers were offline, are searched every sync.
 """
-import csv, os, re, sys
+import csv, os, re, sys, time
+
+WAIT_DAYS = (1, 2, 4, 7)  # after 1, 2, 3, 4+ misses in a row
+SLACK = 3600  # a sync at about the same time the next day still counts as a day later
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus", ".alac", ".aac")
 # A title like this is a short excerpt of the track, so its length says nothing about the real file.
@@ -86,18 +96,94 @@ def prepare(d, slsk):
         kept.append([link, name, path])
     save_got(d, kept)
     have = {k[0] for k in kept}
-    seen, out = set(), []
+    miss, now = load_missed(d), time.time()
+    seen, out, later = set(), [], 0
     for link, name, artist, title, secs in rows:
         key = (artist.lower(), title.lower())
         if link in have or not title or key in seen:
             continue
         seen.add(key)
+        if not due(miss.get(link), query(artist, title), now):
+            later += 1
+            continue
         out.append((artist, title, secs))
     with open(os.path.join(d, "soulseek.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["Artist", "Title", "Length"])
         w.writerows(out)
-    print(f"searching Soulseek for {len(out)} track(s)")
+    print(f"searching Soulseek for {len(out)} track(s)" + (f"; {later} not on Soulseek lately, looked for later" if later else ""))
+
+
+def query(artist, title):
+    return f"{artist} - {title}" if artist else title
+
+
+def load_missed(d):
+    """link -> (query, misses in a row, last miss time) for tracks Soulseek had nothing for."""
+    out = {}
+    try:
+        with open(os.path.join(d, "soulseek-missed.tsv")) as f:
+            for line in f:
+                p = line.rstrip("\n").split("\t")
+                if len(p) == 4 and p[2].isdigit():
+                    try:
+                        out[p[0]] = (p[1], int(p[2]), float(p[3]))
+                    except ValueError:
+                        pass
+    except OSError:
+        pass
+    return out
+
+
+def next_look(entry):
+    """When a missed track is searched again (epoch seconds)."""
+    _, n, last = entry
+    return last + WAIT_DAYS[min(n, len(WAIT_DAYS)) - 1] * 86400 - SLACK
+
+
+def due(entry, q, now):
+    # a track searched under other words (its title was read differently since) gets a fresh look
+    return not entry or entry[0] != q or entry[1] < 1 or now >= next_look(entry)
+
+
+def outcomes(d, log):
+    """link -> set of (state, reason) for every finished sockseek job in DIR/log."""
+    label = {query(artist, title): link for link, name, artist, title, _ in to_get(d)}
+    out = {}
+    try:
+        with open(os.path.join(d, log), errors="replace") as f:
+            for line in f:
+                m = JOB.search(line)
+                if not m or m.group(1) not in ("succeeded", "failed"):
+                    continue
+                rest = m.group(3).rstrip("\n")
+                for lab, link in label.items():
+                    if rest == lab or rest.startswith(lab + ": "):
+                        out.setdefault(link, set()).add((m.group(1), (m.group(2) or "").lower()))
+                        break
+    except OSError:
+        pass
+    return out
+
+
+def missed(d, slsk):
+    """After this sync's passes: a track whose every search came back empty is counted as missed (looked for
+    again later, see WAIT_DAYS); one found, or there but not downloaded, is searched again every sync."""
+    rows = {link: query(artist, title) for link, name, artist, title, _ in to_get(d)}
+    old, now = load_missed(d), time.time()
+    new = {}
+    res = outcomes(d, "soulseek-run.log")
+    for link, q in rows.items():
+        if link in res:
+            if res[link] == {("failed", "no search results")}:
+                n = old[link][1] + 1 if link in old and old[link][0] == q else 1
+                new[link] = (q, n, now)
+        elif link in old:
+            new[link] = old[link]  # not searched this sync (still waiting): kept as it was
+    tmp = os.path.join(d, "soulseek-missed.tsv.tmp")
+    with open(tmp, "w") as f:
+        f.writelines(f"{link}\t{q}\t{n}\t{int(t)}\n" for link, (q, n, t) in new.items())
+    os.replace(tmp, os.path.join(d, "soulseek-missed.tsv"))
 
 
 def got_links(d, slsk):
@@ -190,18 +276,26 @@ def progress(d, live):
             queued = {link for link, name, artist, title, _ in to_get(d) if (artist, title) in want}
         except (OSError, KeyError):
             pass
+    miss, t = load_missed(d), time.time()
     out = {}
-    for link, name, *_ in to_get(d):
+    for link, name, artist, title, _ in to_get(d):
         state, reason = (now.get(link) or ("queued", "")) if link in queued else done.get(link, ("", ""))
+        m = miss.get(link)
+        if m and m[0] != query(artist, title):
+            m = None
         if live and state in ("searching", "downloading", "queued"):
             out[link] = (state, "")
-        elif state == "failed":
+        elif state == "failed" and (reason != "no search results" or not m):
             out[link] = ("missing", WHY.get(reason, f"Soulseek: {reason}." if reason else "Not found on Soulseek."))
+        elif m:  # nothing on Soulseek the last time(s) it looked: when it looks again
+            when = next_look(m)
+            again = "next sync" if when <= t else "on " + time.strftime("%b %-d", time.localtime(when))
+            out[link] = ("missing", f"{WHY['no search results'][:-1]}; looks again {again}.")
         else:
             out[link] = ("missing", "")
     return out
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4 or sys.argv[1] not in ("prepare", "record"):
+    if len(sys.argv) != 4 or sys.argv[1] not in ("prepare", "record", "missed"):
         sys.exit(__doc__)
-    {"prepare": prepare, "record": record}[sys.argv[1]](sys.argv[2], sys.argv[3])
+    {"prepare": prepare, "record": record, "missed": missed}[sys.argv[1]](sys.argv[2], sys.argv[3])

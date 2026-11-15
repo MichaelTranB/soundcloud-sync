@@ -54,6 +54,9 @@ if [ "$(rows)" -gt 0 ]; then
   if [ "$(rows)" -gt 0 ]; then
     RESULT="$RESULT; 320 MP3 pass: $(get --format mp3 --min-bitrate 320 --strict-conditions)"
   fi
+  # Tracks no pass found at all are searched again after a wait (soulseek.py: 1, 2, 4, then 7 days).
+  # (Only when every pass ran: a pass that crashed searched nothing, so it proves nothing.)
+  case "$RESULT" in *FAILED*) ;; *) python3 "$DIR/soulseek.py" missed "$DIR" "$SLSK" >>"$LOG" 2>&1 ;; esac
   say "Soulseek: ${RESULT}"
   # Only a sign-in or crash is a problem; a peer that doesn't answer is normal (the next one is tried).
   BAD='login.*(fail|reject|denied)|invalid ?pass|wrong password|unhandled exception'
