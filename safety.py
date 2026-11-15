@@ -20,8 +20,13 @@ import audio
 AUDIO = {".flac": "flac", ".wav": "wav", ".aiff": "aiff", ".aif": "aiff", ".mp3": "mp3", ".m4a": "m4a", ".aac": "aac"}
 OWN = {".DS_Store", ".index.sldl", ".localized", "To Buy.txt"}  # kept there by macOS, sockseek and sync.sh
 BUSY = (".part", ".ytdl", ".incomplete", ".tmp")  # a download still being written: checked once it is finished
-CLAM = [p for p in ("/opt/homebrew/bin/clamscan", "/usr/local/bin/clamscan", "/usr/local/clamav/bin/clamscan")
-        if os.access(p, os.X_OK)]
+# Homebrew's, the official install's, or the one clamav.sh unpacked into the home folder (a small wrapper).
+def clam():
+    return [p for p in ("/opt/homebrew/bin/clamscan", "/usr/local/bin/clamscan", "/usr/local/clamav/bin/clamscan",
+                        os.path.expanduser("~/.local/bin/clamscan")) if os.access(p, os.X_OK)]
+
+
+CLAM = clam()
 
 
 def signature(path, kind):

@@ -33,3 +33,12 @@ usb-keep.txt
 .free-*
 .inbox-*
 .sockseek-*
+soulseek-missed.tsv
+soulseek-missed.tsv.tmp
+profile.txt
+unread.txt
+.listing
+.playlist
+.unread
+.service
+clamav.log

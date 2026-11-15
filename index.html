@@ -88,20 +88,87 @@
   @media (prefers-reduced-motion: reduce) { .dot.live { animation: none; } }
   .phase { color: var(--dim); font-size: 13px; padding: 12px 0; border-bottom: 1px solid var(--line); display: flex; align-items: center; }
   .empty { color: var(--dim); padding: 22px 0; border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .brand img { width: 58px; height: 58px; flex: none; }
+  .start { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 20px 6px; margin-top: 30px; }
+  .start h2 { align-items: center; margin-bottom: 8px; }
+  .start h2 button { padding: 6px 12px; font-size: 12px; }
+  .step { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .step .tick { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); flex: none; display: grid; place-items: center; font: 700 12px var(--mono); color: var(--dim); }
+  .step.done .tick { background: var(--ok); border-color: var(--ok); color: var(--bg); }
+  .step .t { flex: 1 1 300px; min-width: 0; }
+  .step .t small { display: block; color: var(--dim); font-size: 13px; margin-top: 2px; }
+  .step.done .t b { color: var(--dim); font-weight: 600; }
+  .step button { padding: 9px 18px; font-size: 13px; }
+  .step:not(.next) button { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .help { color: var(--dim); font-size: 13px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .help button, .linkish { background: none; border: 0; padding: 0; color: var(--text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; font-size: inherit; border-radius: 0; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   footer { color: var(--dim); font-size: 12px; margin-top: 40px; font-family: var(--mono); }
-  @media (max-width: 820px) { .strip { grid-template-columns: 1fr 1fr; } .setup, .cols { grid-template-columns: 1fr; } h1 { font-size: 40px; } }
+  .acts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .ask b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--dim); font-size: 12px; margin-right: 6px; vertical-align: -1px; }
+  dialog#faq { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 18px; padding: 26px 30px 30px; width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; }
+  dialog#faq::backdrop { background: rgba(0, 0, 0, .65); }
+  .faqTop { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .faqTop h2 { margin: 0; font-size: 24px; letter-spacing: -.02em; text-transform: none; color: var(--text); display: block; }
+  .faqTop button { padding: 4px 13px; font-size: 20px; line-height: 1.2; }
+  #faq h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .09em; color: var(--hot); margin: 24px 0 6px; }
+  #faq p, #faq li { color: #cfcdd9; margin: 0 0 8px; }
+  #faq ol { padding-left: 20px; margin: 0 0 8px; }
+  #faq li { display: list-item; padding: 0; border: 0; }
+  #faq li::marker { color: var(--dim); }
+  #faq li b, #faq p b { color: var(--text); }
+  @media (max-width: 820px) { .strip { grid-template-columns: 1fr 1fr; } .setup, .cols { grid-template-columns: 1fr; } h1 { font-size: 40px; } .brand img { width: 44px; height: 44px; } }
 </style>
 </head>
 <body>
 <main>
   <header>
     <div>
-      <h1>The <span>Crate</span></h1>
-      <div class="sub">Your SoundCloud, Apple Music or Spotify playlist, as real files, ready for the USB.</div>
+      <div class="brand"><img src="/icon.svg" alt=""><h1>The <span>Crate</span></h1></div>
+      <div class="sub">Download your SoundCloud, Apple Music or Spotify playlist straight to your USB.</div>
     </div>
-    <button class="big" id="sync">Sync Now</button>
+    <div class="acts">
+      <button class="ghost ask" id="faqOpen" aria-haspopup="dialog"><b aria-hidden="true">?</b> How it works</button>
+      <button class="big" id="sync">Sync Now</button>
+    </div>
   </header>
 
+  <dialog id="faq" aria-labelledby="faqHead">
+    <div class="faqTop"><h2 id="faqHead">How it works</h2><button class="ghost" id="faqClose" aria-label="Close">&times;</button></div>
+
+    <h3>What it does</h3>
+    <p>Paste a playlist link. Every night (or when you hit Sync Now) it grabs any new tracks into Music &rsaquo; SoundCloud Sync on your Mac, then copies them to your USB whenever it's plugged in. It only adds tracks; nothing on your USB gets deleted.</p>
+
+    <h3>Where it looks, in order</h3>
+    <ol>
+      <li><b>SoundCloud</b>: the artist's original file, if they turned downloads on.</li>
+      <li><b>Free download links</b> in the track description (Dropbox, Google Drive and so on).</li>
+      <li><b>Your Downloads folder</b>: anything you bought or unlocked yourself gets picked up and filed.</li>
+      <li><b>Soulseek</b>, the file-sharing network a lot of DJs use. Download only; it never shares your files.</li>
+    </ol>
+    <p>Anything it can't find stays under Still to get, with links to Bandcamp, Beatport, Traxsource, Juno and Qobuz.</p>
+    <p>Spotify and Apple Music only stream, so for those it reads the track list and gets the files from steps 3 and 4.</p>
+
+    <h3>Quality</h3>
+    <p>Lossless (WAV, FLAC, AIFF) or 320 kbps MP3. Nothing lower is kept. It never records a stream.</p>
+    <p>SoundCloud originals come as the artist uploaded them; anything under 320 is marked in your list. Soulseek files have to match the track's length within 5 seconds, so you get the same mix, not an extended or radio edit.</p>
+
+    <h3>Is it safe?</h3>
+    <p>Every file is checked before it's kept: it has to actually be audio, and it's virus scanned. Anything else goes to a Quarantine folder and never reaches your USB.</p>
+
+    <h3>Why the first sync is slow</h3>
+    <p>Soulseek only allows so many searches a minute, so a big playlist takes a few hours the first time. After that it only looks for new tracks. Tracks nobody has are tried again after 1, 2, 4, then 7 days.</p>
+
+    <h3>Do I need to keep it open?</h3>
+    <p>No. It runs in the background. Just leave your Mac on (or asleep) and plug in your USB when you want the tracks.</p>
+  </dialog>
+
+  <section class="start" id="start" aria-labelledby="startHead" hidden>
+    <h2 id="startHead"><span>Get started <em id="startCount"></em></span><button class="ghost" id="startHide">Hide</button></h2>
+    <div id="steps"></div>
+    <div class="help">Stuck on a step? <button id="helpCopy">Copy a message for ChatGPT or Claude</button>, paste it there, and it walks you through. <span id="startNote" role="status"></span></div>
+  </section>
   <div class="alert" id="alert" role="alert" hidden></div>
   <section class="strip" aria-live="polite">
     <div class="stat"><b id="nHave">0</b><small>On your Mac</small></div>
@@ -171,7 +238,7 @@
       <ul id="buy"></ul>
     </div>
   </section>
-  <footer id="foot"></footer>
+  <footer><span id="foot"></span> <button class="linkish" id="startShow" hidden>Setup list</button></footer>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -194,8 +261,85 @@ function render(s) {
       : 'Apple Music showed only part of this playlist. The next sync reads it again.')
     : s.unread ? `Plus ${s.unread} song${s.unread > 1 ? 's' : ''} SoundCloud wouldn't show us yet (it slows down anyone who asks too fast). The next sync asks again.` : '';
   $('nBuy').textContent = s.buy.length; $('cBuy').textContent = s.buy.length || '';
-  paintSetup(s); last = s; draw();
+  paintSetup(s); last = s; draw(); paintStart(s);
 }
+
+// The Get started list: each step a friend needs once, ticked from what the app can see, with a button that opens
+// the one place it needs. Hidden once everything is done (or when hidden by hand; "Setup list" brings it back).
+function steps(s) {
+  const sc = !s.playlist || s.saved.some(p => !SERVICE[host(p.url)]);  // SoundCloud playlists need its sign-in
+  const signin = sc && s.browser !== 'none';
+  const bn = { chrome: 'Chrome', safari: 'Safari', brave: 'Brave', firefox: 'Firefox', edge: 'Edge' }[s.browser] || 'your browser';
+  const to = (id, block) => () => { const e = $(id); if (e.closest('details')) e.closest('details').open = true; e.scrollIntoView({ block: block || 'center', behavior: 'smooth' }); e.focus({ preventScroll: true }); };
+  return [
+    { done: !!s.playlist, title: 'Add a playlist',
+      how: 'In SoundCloud, Spotify or Apple Music, open your playlist, tap Share > Copy link, and paste it in the box below.',
+      btn: 'Paste a link', go: to('url') },
+    signin && { done: s.signIn === 'ok', title: 'Let The Crate use your SoundCloud sign-in',
+      how: s.signIn === 'missing' ? `${bn} isn't on this Mac. Under "Or find them on your profile" below, pick the browser you use for SoundCloud.`
+        : s.helper ? 'Once: the button opens System Settings and a Finder window. Drag "Crate Helper" from Finder into the list, switch it on, and confirm with your password or Touch ID.'
+        : 'The helper is missing: install the Xcode command line tools, then run the install line again.',
+      btn: s.signIn === 'missing' ? 'Pick the browser' : 'Open the setting', go: s.signIn === 'missing' ? to('browser') : () => openStep('fda') },
+    signin && { done: s.scLogin === 'ok', title: `Sign in to SoundCloud in ${bn}`,
+      how: 'Artists who allow downloads give their original file (WAV, FLAC) to signed-in people only. Sign in as usual; this ticks after the next sync.',
+      btn: 'Open SoundCloud', go: () => openStep('soundcloud') },
+    { done: s.soulseekReady && !s.soulseekBad, title: 'Sign in to Soulseek (recommended)',
+      how: 'Finds the tracks SoundCloud, Spotify and Apple Music won\'t give you. Free: make up a new name and a password you use nowhere else, in the Soulseek box below.',
+      btn: 'Go to Soulseek', go: to('slskUser') },
+    { done: s.safety.virusScan, title: 'Virus scanner',
+      how: s.virusBusy ? 'Installing… (a few minutes; about 400 MB to download)' : s.virusFailed || 'Checks every downloaded file before it stays. Free (ClamAV), installs in your home folder, no password.',
+      btn: s.virusBusy ? '' : s.virusFailed ? 'Try again' : 'Install it', go: () => openStep('virus') },
+    { done: !!s.usb, title: 'Choose your USB (optional)',
+      how: 'Plug in the USB you DJ from and pick it below. New tracks copy over by themselves.', btn: 'Pick the USB', go: to('usb') },
+    { done: !!s.lastRun, title: 'Run your first sync',
+      how: s.running ? 'Running. The first one takes a while (Soulseek is searched slowly so nobody gets blocked).'
+        : 'After this, it runs by itself every night at 3:10 while the Mac is on.', btn: s.running ? '' : 'Sync Now', go: () => $('sync').click() },
+  ].filter(Boolean);
+}
+let startKey = '', startHidden = false;
+try { startHidden = localStorage.getItem('crate-start-hidden') === '1'; } catch (e) {}
+function paintStart(s) {
+  const all = steps(s), done = all.filter(x => x.done).length, finished = done === all.length;
+  $('start').hidden = finished || startHidden;
+  $('startShow').hidden = finished || !startHidden;
+  $('startCount').textContent = done + ' of ' + all.length + ' done';
+  const key = JSON.stringify(all.map(x => [x.done, x.title, x.how, x.btn]));
+  if (key === startKey) return;  // unchanged: keep focus where it is
+  startKey = key;
+  const next = all.findIndex(x => !x.done);
+  $('steps').replaceChildren(...all.map((x, i) => {
+    const b = !x.done && x.btn ? [el('button', { textContent: x.btn, onclick: x.go })] : [];
+    return el('div', { className: 'step' + (x.done ? ' done' : '') + (i === next ? ' next' : '') },
+      el('span', { className: 'tick', ariaHidden: 'true', textContent: x.done ? '✓' : i + 1 }),
+      el('div', { className: 't' }, el('b', { textContent: x.title }), el('span', { className: 'sr', textContent: x.done ? ' (done)' : '' }),
+        el('small', { textContent: x.done ? '' : x.how })), ...b);
+  }));
+}
+function openStep(what) {
+  call('/api/open', { what }).then(() => say('startNote', what === 'virus' ? 'Installing the virus scanner…' : 'Opened. Come back here when done.'))
+    .catch(e => say('startNote', e.message, true));
+}
+function helpText(s) {
+  const left = steps(s).filter(x => !x.done);
+  return 'I\'m setting up The Crate, a free Mac app (github.com/MichaelTranB/soundcloud-sync) that saves my music playlists as files. ' +
+    'I\'m not technical: walk me through it in short, simple steps, one at a time.\n\n' +
+    (left.length ? 'Where I\'m stuck: "' + left[0].title + '". The app says: ' + left[0].how + '\n' : '') +
+    (s.problem ? 'The app also shows: ' + s.problem + '\n' : '') +
+    'Still to do: ' + (left.map(x => x.title).join('; ') || 'nothing') + '.\n' +
+    'The app runs at http://localhost:4780 on my Mac. ' +
+    'Its setup guide is the README at that GitHub link.';
+}
+$('helpCopy').onclick = async () => {
+  const t = helpText(last || { saved: [], safety: {} });
+  try { await navigator.clipboard.writeText(t); say('startNote', 'Copied. Paste it into ChatGPT or Claude.'); }
+  catch (e) { window.prompt('Copy this, then paste it into ChatGPT or Claude:', t); }
+};
+const setHidden = h => { startHidden = h; try { localStorage.setItem('crate-start-hidden', h ? '1' : '0'); } catch (e) {} if (last) paintStart(last); };
+$('startHide').onclick = () => setHidden(true);
+$('faqOpen').onclick = () => $('faq').showModal();
+$('faqClose').onclick = () => $('faq').close();
+$('faq').onclick = e => { if (e.target === $('faq')) $('faq').close(); };  // a click on the dark backdrop closes it
+$('startShow').onclick = () => { setHidden(false); $('start').scrollIntoView({ behavior: 'smooth' }); };
 
 // Search: every word typed must be in the track's name (both lists).
 const words = () => $('q').value.toLowerCase().split(/\s+/).filter(Boolean);

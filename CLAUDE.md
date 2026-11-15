@@ -20,7 +20,7 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   SoundCloud length (same version). Into `From Soulseek/`; the artist's own file replaces it when it arrives.
   Download-only. Sign-in: `soulseek-login.sh` once (Keychain `soundcloud-sync-soulseek`).
 - **Safety check (`safety.py`):** every file in the music folder must be real audio: an audio name, that type's own
-  first bytes, opened by `afinfo`, and clean in ClamAV when installed (Homebrew; `freshclam` daily from `sync.sh`).
+  first bytes, opened by `afinfo`, and clean in ClamAV (Homebrew's, else `clamav.sh` unpacks Cisco's signed pkg into `~/.local/share/clamav` with wrappers in `~/.local/bin`; `freshclam` daily from `sync.sh`).
   Anything else goes to `Quarantine/` beside the app with its run permission removed. Runs after Soulseek (before a
   track counts as got), at the end of every sync, and before a USB copy. Never loosen it.
 - **`usb.sh`:** adds new files to the chosen USB after every sync and whenever a drive is mounted, only those on

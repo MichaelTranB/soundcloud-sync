@@ -4,29 +4,41 @@ Keeps a SoundCloud, Apple Music or Spotify playlist on your Mac as real, top-qua
 your DJ USB by itself.
 Free sources come first. Everything runs on your own Mac; no account with us, nothing to pay.
 
-## Install (Mac)
+## Install (Mac, about 10 minutes)
 
-Open **Terminal** (press Cmd+Space, type Terminal, press Return), paste this line, press Return:
+1. Open **Terminal**: press **Cmd + Space**, type `Terminal`, press **Return**.
+2. Copy this whole line, paste it into Terminal (**Cmd + V**), press **Return**:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MichaelTranB/soundcloud-sync/main/get.sh | zsh
 ```
 
-- If your Mac asks to install Apple's command line tools, click **Install**, wait, then paste the line again.
-- When it's done, The Crate opens in your browser (http://localhost:4780). It's also in **Applications**.
-- Paste the same line again any time to update.
+3. If a window asks to install Apple's **command line tools**, click **Install**, wait until it's done, then paste
+   the same line again.
+4. Wait while it sets everything up by itself (the music downloaders and a free virus scanner). No password needed.
+5. The Crate opens in your browser. Its **Get started** list walks you through the rest, one button per step.
 
-## First use (about 2 minutes)
+Paste the same line again any time to update. The Crate is also in your **Applications** folder.
 
-1. **Playlist:** paste your SoundCloud, Apple Music or Spotify playlist link on the page (Spotify and Apple Music:
-   a public playlist; Spotify shows The Crate its first 100 songs).
-2. **SoundCloud sign-in:** be signed in to soundcloud.com in Chrome (or Safari). The Crate borrows that sign-in, so
-   it can fetch the artists' original files. With several Chrome profiles, it finds the one signed in.
-3. **One switch:** a Finder window and System Settings open on *Full Disk Access*. Drag **Crate Helper** into the
-   list and switch it on. (macOS needs this before any app can read your browser's sign-in.)
-4. **Soulseek (optional, for tracks the artist didn't make free):** sign in on the page with a free Soulseek
-   account. The password is kept in your Mac's Keychain.
-5. **USB:** plug your DJ USB in and pick it on the page. That's it.
+## Get started (on the page)
+
+The page ticks off each step by itself:
+
+1. **Add a playlist:** in SoundCloud, Spotify or Apple Music, open the playlist, **Share > Copy link**, and paste it.
+   (Spotify and Apple Music: a public playlist. Spotify shows The Crate its first 100 songs.)
+2. **Let The Crate use your SoundCloud sign-in** (SoundCloud playlists only): the button opens System Settings at
+   *Full Disk Access* and a Finder window. Drag **Crate Helper** into the list and switch it on. macOS asks this of
+   any app that reads a browser's sign-in; nothing is sent anywhere.
+3. **Sign in to SoundCloud** in Chrome (or the browser you picked), as usual. Artists who allow downloads give their
+   original WAV/FLAC only to signed-in people.
+4. **Soulseek (recommended):** finds what SoundCloud, Spotify and Apple Music won't give you. Make up a new name
+   and a password you use nowhere else; Soulseek creates the account the first time. Kept in your Mac's Keychain.
+5. **Virus scanner:** installed already; if not, the button installs it.
+6. **USB (optional):** plug in your DJ USB and pick it.
+7. **Sync Now.** After that it runs by itself every night at 3:10 while the Mac is on.
+
+**Stuck?** On the page, tap **Copy a message for ChatGPT or Claude** and paste it into either one: it says where
+you are, and they'll walk you through it. Or send them this page's link and say which step.
 
 ## Where tracks come from, best first
 
@@ -51,8 +63,9 @@ Never YouTube rips or recorded streams: low quality.
 ## Safety
 
 Every file is checked before it counts or goes on the USB: it must be real audio (name, contents, and macOS can
-play it), and, if you have Homebrew, clean in the free ClamAV virus scanner. Anything else goes to *Quarantine*
-and can't run.
+play it) and clean in the free ClamAV virus scanner (installed by The Crate: Cisco's own signed package, checked
+before it's used, kept in your home folder; its virus list updates daily). Anything else goes to *Quarantine* and
+can't run.
 
 ## Uninstall
 
@@ -62,4 +75,4 @@ zsh ~/TheCrate/uninstall.sh
 
 Your music stays in Music > SoundCloud Sync.
 
-Windows: not yet.
+Mac only (it uses macOS's own tools for the background jobs, audio checks and Keychain). Windows: not yet.

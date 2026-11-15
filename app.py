@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 DIR = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.expanduser("~/Music/SoundCloud Sync")
 SLSK = os.path.join(OUT, "From Soulseek")  # soulseek.sh's downloads
-PORT = 4780
+PORT = int(os.environ.get("CRATE_PORT", 4780))  # another port only for trying a copy side by side
 HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 PLAYLIST_RE = re.compile(r"^https://(on\.|m\.|www\.)?soundcloud\.com/\S+$")
@@ -340,6 +340,18 @@ def profile_name(b, folder):
         return ""
 
 
+def login_state(log=None):
+    """The SoundCloud sign-in as last seen: the page's own re-check when it is newer than the last sync, else what
+    that sync's log says (login_seen)."""
+    if log is None:
+        log = (read("last-run.log") + read("signin.log")).lower()
+    try:
+        ran = os.path.getmtime(os.path.join(DIR, "last-run.log"))
+    except OSError:
+        ran = 0.0
+    return _login["state"] if _login["at"] > ran and _login["state"] else login_seen(log)
+
+
 def problem():
     """One plain line when the last sync could not sign in or reach SoundCloud; empty when fine."""
     svc = playlists.service(read("playlist.txt"))
@@ -354,11 +366,7 @@ def problem():
     if name and ("operation not permitted" in log or "permission denied" in log or sign_in_status(b) == "blocked"):
         return ("Originals need one switch: System Settings > Privacy & Security > Full Disk Access > turn on "
                 "Crate Helper. Until then, missing tracks come from Soulseek and the shops.")
-    try:
-        ran = os.path.getmtime(os.path.join(DIR, "last-run.log"))
-    except OSError:
-        ran = 0.0
-    state = _login["state"] if _login["at"] > ran and _login["state"] else login_seen(log)
+    state = login_state(log)
     if name and state in ("none", "invalid"):
         # Re-check every 2 minutes while the page is open, so the line goes away soon after he signs in.
         # Not while the sync itself is asking SoundCloud (the Soulseek part doesn't touch it).
@@ -441,9 +449,46 @@ def state():
         "soulseekBad": bool(slsklog) and bool(re.search(r"PROBLEM.*(login|pass)", slsklog[-1], re.I)),
         "lastSoulseek": slsklog[-1] if slsklog else "",
         "lastRun": history[-1] if history else "", "lastUsb": usblog[-1] if usblog else "",
-        "safety": {"virusScan": bool(safety.CLAM), "last": safelog[-1] if safelog else "",
+        # for the Get started list: the SoundCloud sign-in as last seen, the helper's switch, the virus scanner
+        "scLogin": "" if svc else login_state(), "helper": os.path.exists(HELPER),
+        "virusBusy": bool(_virus["proc"]) and _virus["proc"].poll() is None,
+        "virusFailed": _virus["failed"],
+        "safety": {"virusScan": bool(safety.clam()), "last": safelog[-1] if safelog else "",
                    "blocked": len(os.listdir(qdir)) if os.path.isdir(qdir) else 0},
     }
+
+
+HELPER = os.path.join(DIR, "Crate Helper.app")
+APPS = {"chrome": "Google Chrome", "safari": "Safari", "brave": "Brave Browser", "edge": "Microsoft Edge",
+        "firefox": "Firefox"}
+_virus = {"proc": None, "failed": ""}  # the virus scanner install the Get started list started (clamav.sh)
+
+
+def open_for_setup(what):
+    """The Get started list's buttons: open the one place on this Mac each step needs. '' when done, else why not."""
+    if what == "fda":  # the Full Disk Access list, and Crate Helper in Finder to drag into it
+        subprocess.run(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"])
+        if os.path.exists(HELPER):
+            subprocess.run(["open", "-R", HELPER])
+    elif what == "soundcloud":  # SoundCloud's sign-in page in the browser the sync reads
+        app = APPS.get(browser())
+        if not app or subprocess.run(["open", "-a", app, "https://soundcloud.com/signin"]).returncode:
+            subprocess.run(["open", "https://soundcloud.com/signin"])
+    elif what == "virus":
+        if not (_virus["proc"] and _virus["proc"].poll() is None):
+            _virus["failed"] = ""
+            with open(os.path.join(DIR, "clamav.log"), "a") as log:
+                _virus["proc"] = p = subprocess.Popen(["/bin/zsh", os.path.join(DIR, "clamav.sh")], stdout=log,
+                                                      stderr=subprocess.STDOUT, start_new_session=True)
+
+            def done():
+                if p.wait():
+                    lines = [l for l in read("clamav.log").splitlines() if l.strip()]
+                    _virus["failed"] = lines[-1] if lines else "The virus scanner didn't install."
+            threading.Thread(target=done, daemon=True).start()
+    else:
+        return "not found"
+    return ""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -546,6 +591,9 @@ class Handler(BaseHTTPRequestHandler):
             subprocess.Popen([os.path.join(DIR, "sync.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              start_new_session=True)
             time.sleep(0.4)
+        elif self.path == "/api/open":
+            if open_for_setup(str(body.get("what", ""))):
+                return self.send(404, {"error": "not found"})
         elif self.path == "/api/copy":
             subprocess.Popen([os.path.join(DIR, "usb.sh")])
             time.sleep(0.4)
