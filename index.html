@@ -624,7 +624,9 @@ function draw() {
       ...(freeAll.length ? [el('div', { className: 'agents' }, el('button', { className: 'ghost',
         onclick: openHelper }, '✨ Have ', agentName('claude'), ' or ', agentName('codex'), ' download them'))] : [])]));
   const missRow = t => { const [k, txt] = why(t, s); return el('li', { className: 'shop' },
-    nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : '') }, ...(k === 'wait' ? [el('span', { className: 'spin' })] : []), txt),
+    nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : '') }, ...(k === 'wait' ? [el('span', { className: 'spin' })] : []), txt,
+      // The file was turned away only for its length: one tap says it IS this song (still quality and safety checked)
+      ...((s.inboxFile || {})[t.link] ? [' ', el('button', { className: 'ghost', onclick: () => call('/api/take', { link: t.link }) }, 'Use this file')] : [])),
     ...shopLinks(t)); };
   const waitRow = t => el('li', { className: s.soulseekReady ? '' : 'shop' }, nameEl(t),
     ...(t.state === 'queued' ? [el('span', { className: 'state' }, el('i', { className: 'dot' }), 'Next up')] : []),

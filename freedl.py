@@ -228,6 +228,7 @@ def inbox_(d, out, folder, days):
         return []
     clicked = claims(d)
     why = {}  # link: why the file that came in for it wasn't kept
+    turned = {}  # link: the file turned away for its length only (the page offers "Use this file", take())
     got, new_seen = [], []
     for p, size, mtime in files:
         base = words(os.path.splitext(os.path.basename(p))[0])
@@ -287,9 +288,11 @@ def inbox_(d, out, folder, days):
                     if link in named:  # the name says it's this song, the length says another (shorter) version
                         why[link] = (f"{os.path.basename(p)} is {mmss(i['secs'])} long, not {mmss(float(secs))}: "
                                      "another version of the song, so it wasn't kept.")
+                        turned[link] = p
                     elif i and len(cands) == 1:  # came in just after the click, but its length is another song's
                         why.setdefault(link, f"{os.path.basename(p)} came in after the click but is {mmss(i['secs'])} "
                                              f"long, not {mmss(float(secs))}, so it wasn't taken as this song.")
+                        turned.setdefault(link, p)
                     continue  # another version of the song (or, just after a click, another file)
                 staged = os.path.join(tmpdir, f"track.{i['ext']}")
                 os.replace(path, staged)
@@ -322,10 +325,48 @@ def inbox_(d, out, folder, days):
     if got and clicked:  # picked up: stop watching for these
         with locked(d, ".inbox-claims.lock"):
             save_json(d, CLAIMS, {k: t for k, t in claims(d).items() if k not in {g[0] for g in got}})
-    note_why(d, why, {g[0] for g in got} | ({k for k in clicked} - {r[1] for r in rows}))
+    note_why(d, why, {g[0] for g in got} | ({k for k in clicked} - {r[1] for r in rows}), turned)
     if got:
         safety.check(d, out)
     return got
+
+
+def take(d, out, link, folder=os.path.expanduser("~/Downloads")):
+    """"Use this file": you (or Claude or Codex) say the file turned away for its length IS this song (SoundCloud's
+    upload is a mashup, a preview or another cut). Still top quality only and through the safety check. Returns
+    [(link, name, file)] once kept, else the reason it can't be."""
+    with locked(d, ".inbox.lock"):
+        p = (load_json(d, WHY).get(link) or {}).get("file", "")
+        row = next((r for r in ((l.rstrip("\n").split("\t") + ["", "", "", ""])[:4]
+                                for l in open(os.path.join(d, "to-buy.tsv")) if l.strip()) if r[1] == link), None)
+        real = os.path.realpath(p) if p else ""
+        if not row or not real.startswith(os.path.realpath(folder) + os.sep) or not os.path.isfile(real):
+            return "That file isn't in Downloads any more, or the song is no longer on the list."
+        name = row[0]
+        with tempfile.TemporaryDirectory(dir=d, prefix=".inbox-") as tmpdir:
+            tmp = os.path.join(tmpdir, "download" + (".zip" if real.lower().endswith(".zip") else ""))
+            shutil.copyfile(real, tmp)
+            path, i = best_audio(tmp, name, row[3])
+            if not path:
+                return "That file isn't top quality (WAV, FLAC, AIFF or a 320 kbps MP3), so it can't be used."
+            staged = os.path.join(tmpdir, f"track.{i['ext']}")
+            os.replace(path, staged)
+            blocked = safety.vet(d, staged)
+            if blocked:
+                return f"The safety check stopped that file ({blocked})."
+            dest = file_name(out, name, i["ext"], "download")
+            shutil.move(staged, dest)
+        if real.lower().endswith(".zip"):
+            trash(real)
+        else:
+            os.remove(real)  # moved into the music folder
+        got = [(link, name, dest)]
+        record(d, got)
+        note_why(d, {}, {link})
+        with locked(d, ".inbox-claims.lock"):
+            save_json(d, CLAIMS, {k: t for k, t in claims(d).items() if k != link})
+        safety.check(d, out)
+        return got
 
 
 def trash(p):
@@ -345,12 +386,14 @@ def mmss(secs):
     return f"{int(secs) // 60}:{int(secs) % 60:02d}"
 
 
-def note_why(d, new, gone):
-    """Keeps a day of 'why it wasn't kept' notes for the page, dropping tracks that are now on the Mac."""
+def note_why(d, new, gone, files=None):
+    """Keeps a day of 'why it wasn't kept' notes for the page, dropping tracks that are now on the Mac. A file turned
+    away only for its length is kept with its note, for the page's "Use this file" (take())."""
     old, now = load_json(d, WHY), time.time()
     keep = {k: v for k, v in old.items() if k not in gone and k not in new and isinstance(v, dict)
             and now - v.get("at", 0) < 86400}
-    keep.update({k: {"at": now, "text": t} for k, t in new.items() if k not in gone})
+    keep.update({k: {"at": now, "text": t, **({"file": files[k]} if k in (files or {}) else {})}
+                 for k, t in new.items() if k not in gone})
     if keep != old:
         save_json(d, WHY, keep)
 

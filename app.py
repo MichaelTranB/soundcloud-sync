@@ -113,7 +113,9 @@ Then for each song on that page, top to bottom:
 3. Once the file has started downloading, close every tab that song opened (the gate page, SoundCloud, the
    download page): keep only the list page open, so a long list doesn't fill Chrome and slow the Mac. Then go back
    to the list page and wait a few seconds before the next song, so none of my accounts looks like a bot.
-Reload the list page whenever you like: songs that have arrived drop off it. At the end, close every tab you opened.
+Reload the list page whenever you like: songs that have arrived drop off it. If a song you downloaded stays on the
+list with a "Use this file" button, The Crate turned the file away (usually its length differs from SoundCloud's):
+if it's the song you downloaded for that row, click the button. At the end, close every tab you opened.
 
 Keep going until every song is done or skipped: don't stop in the middle to wait for me. If a song needs me (a
 sign-in, a code sent to my phone, a "prove you're human" check), leave its tab open, tell me in one line which tab
@@ -147,18 +149,26 @@ def free_page():
     here tells The Crate which song is coming (as in the app), so the downloaded file needs no renaming."""
     from html import escape
     rows = free_rows()
+    why = {k: v for k, v in freedl.load_json(DIR, freedl.WHY).items()
+           if isinstance(v, dict) and v.get("file") and os.path.exists(v["file"])}
     items = "".join(f'<li><span>{escape(n)}</span> <a href="{escape(f)}" target="_blank" rel="noopener" '
-                    f'data-link="{escape(t)}">Free Download</a></li>' for n, t, f in rows)
+                    f'data-link="{escape(t)}">Free Download</a>'
+                    + (f'<br><small>{escape(why[t]["text"])}</small> <button data-take="{escape(t)}">Use this file'
+                       '</button>' if t in why else "") + '</li>' for n, t, f in rows)
     return f"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Crate: free downloads</title>
 <style>body{{font:16px/1.5 -apple-system,system-ui,sans-serif;background:#0c0c12;color:#f0eef8;max-width:760px;margin:32px auto;padding:0 16px}}
-p{{color:#a4a2b6}} li{{margin:10px 0}} a{{color:#ff6b7d;font-weight:600;margin-left:8px}}</style>
+p{{color:#a4a2b6}} li{{margin:10px 0}} a{{color:#ff6b7d;font-weight:600;margin-left:8px}}
+small{{color:#f0a868}} button{{font:inherit;font-size:14px;margin-left:8px;padding:2px 10px;border-radius:8px;border:1px solid #ff6b7d;background:none;color:#ff6b7d;cursor:pointer}}</style>
 <h1>Free downloads: {len(rows)} left</h1>
 <p>Click each song's Free Download link here, one at a time: the click tells The Crate which song is coming.
 Songs that have arrived drop off this list when the page is reloaded.</p>
 <ol>{items}</ol>
-<script>for (const a of document.querySelectorAll('a[data-link]')) a.addEventListener('click', () =>
-  fetch('/api/watch', {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ link: a.dataset.link }}) }}));</script>
+<script>const post = (u, b) => fetch(u, {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(b) }});
+for (const a of document.querySelectorAll('a[data-link]')) a.addEventListener('click', () => post('/api/watch', {{ link: a.dataset.link }}));
+for (const b of document.querySelectorAll('button[data-take]')) b.addEventListener('click', async () => {{
+  b.disabled = true; const r = await post('/api/take', {{ link: b.dataset.take }});
+  if (r.ok) location.reload(); else {{ b.disabled = false; alert((await r.json()).error); }} }});</script>
 """
 
 
@@ -739,6 +749,8 @@ def state():
         "have": have, "buy": buy, "watching": watching(),
         "agents": [w for w in ("claude", "codex") if agent_app(w)], "claudeInChrome": in_chrome("claude"), "codexInChrome": in_chrome("codex"), "chrome": bool(chrome_app()), "agentUses": agent_uses(),
         "inboxWhy": {k: v.get("text", "") for k, v in freedl.load_json(DIR, freedl.WHY).items() if isinstance(v, dict)},
+        "inboxFile": {k: os.path.basename(v["file"]) for k, v in freedl.load_json(DIR, freedl.WHY).items()
+                      if isinstance(v, dict) and v.get("file") and os.path.exists(v["file"])},
         "justGot": [k for k, t in _just_got.items() if time.time() - t < 600],
         "soulseekReady": soulseek_ready(), "soulseekUser": _slsk["user"],
         # the last run's sign-in was turned down (soulseek.sh logs "Soulseek PROBLEM" with the reason)
@@ -939,6 +951,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(404, {"error": "not found"})
         elif self.path == "/api/signin":  # the sign-in link was used, or the page is back in front
             _login["soon"] = time.time() + 300
+        elif self.path == "/api/take":  # "Use this file": the file turned away for its length is this song
+            got = freedl.take(DIR, OUT, str(body.get("link", "")))
+            if isinstance(got, str):
+                return self.send(400, {"error": got})
+            picked_up(got)
         elif self.path == "/api/watch":
             link = str(body.get("link", ""))
             if link:
@@ -1015,14 +1032,19 @@ def watch_downloads():
             with open(os.path.join(DIR, "free.log"), "a") as f:
                 f.write(f"{time.strftime('%F %R')}  Downloads pickup FAILED: {e!r}\n")
         if got:
-            now = time.time()
-            for k in [k for k, t in _just_got.items() if now - t > 600]:
-                del _just_got[k]
-            _just_got.update({os.path.splitext(os.path.basename(g[2]))[0]: now for g in got})
-            with open(os.path.join(DIR, "free.log"), "a") as f:
-                f.writelines(f"{time.strftime('%F %R')}  from Downloads: {os.path.basename(g[2])}\n" for g in got)
-            subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True,  # a page restart never stops it
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            picked_up(got)
+
+
+def picked_up(got):
+    """Songs just taken from Downloads: marked new on the page, logged, and copied to the USB if it's plugged in."""
+    now = time.time()
+    for k in [k for k, t in _just_got.items() if now - t > 600]:
+        del _just_got[k]
+    _just_got.update({os.path.splitext(os.path.basename(g[2]))[0]: now for g in got})
+    with open(os.path.join(DIR, "free.log"), "a") as f:
+        f.writelines(f"{time.strftime('%F %R')}  from Downloads: {os.path.basename(g[2])}\n" for g in got)
+    subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True,  # a page restart never stops it
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 if __name__ == "__main__":
