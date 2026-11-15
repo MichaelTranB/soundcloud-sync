@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Soulseek helper for soulseek.sh (sockseek does the searching and downloading).
 
-  soulseek.py prepare DIR SLSK   writes DIR/soulseek.csv (Artist,Title for every track still to get) and
+  soulseek.py prepare DIR SLSK   writes DIR/soulseek.csv (Artist,Title,Length for every track still to get) and
                                  removes a Soulseek copy once the artist's own file has landed in the music folder
   soulseek.py record  DIR SLSK   updates DIR/soulseek.tsv (SoundCloud link, name, file) from sockseek's index
 
@@ -11,6 +11,8 @@ Standard library only.
 import csv, os, re, sys
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus", ".alac", ".aac")
+# A title like this is a short excerpt of the track, so its length says nothing about the real file.
+CUT = re.compile(r"\b(?:clip|preview|snippet|teaser)\b", re.I)
 # Promo text uploaders put in titles; Soulseek files never carry it, so it only hurts the search.
 PROMO = re.compile(r"\s*[(\[][^)\]]*\b(?:free|download|dl|out now|premiere|buy|preview|clip|exclusive|support)\b[^)\]]*[)\]]", re.I)
 PREFIX = re.compile(r"^\s*(?:premiere|free download|free dl|out now)\s*[:|\-]\s*", re.I)
@@ -39,9 +41,9 @@ def to_get(d):
     try:
         with open(os.path.join(d, "to-buy.tsv")) as f:
             for line in f:
-                name, link = (line.rstrip("\n").split("\t") + [""])[:2]
+                name, link, _, secs = (line.rstrip("\n").split("\t") + ["", "", ""])[:4]
                 if name and link:
-                    rows.append((link, name, *split(name)))
+                    rows.append((link, name, *split(name), "" if CUT.search(name) else secs))
     except OSError:
         pass
     return rows
@@ -79,15 +81,15 @@ def prepare(d, slsk):
     save_got(d, kept)
     have = {k[0] for k in kept}
     seen, out = set(), []
-    for link, name, artist, title in rows:
+    for link, name, artist, title, secs in rows:
         key = (artist.lower(), title.lower())
         if link in have or not title or key in seen:
             continue
         seen.add(key)
-        out.append((artist, title))
+        out.append((artist, title, secs))
     with open(os.path.join(d, "soulseek.csv"), "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["Artist", "Title"])
+        w.writerow(["Artist", "Title", "Length"])
         w.writerows(out)
     print(f"searching Soulseek for {len(out)} track(s)")
 
@@ -106,7 +108,7 @@ def record(d, slsk):
         pass
     got = load_got(d)
     have = {g[0] for g in got}
-    for link, name, artist, title in to_get(d):
+    for link, name, artist, title, _ in to_get(d):
         p = done.get((artist.lower(), title.lower()))
         if p and link not in have and os.path.exists(p):
             got.append([link, name, p])

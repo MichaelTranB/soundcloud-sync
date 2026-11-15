@@ -63,6 +63,7 @@
   li .n { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .tag { font: 700 11px var(--mono); padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
   .tag.lossless { color: var(--ok); border-color: #35502a; }
+  .tag.low { color: #e0a040; border-color: #6b4a1a; }
   li a { color: var(--dim); font-size: 12px; text-decoration: none; border-bottom: 1px dotted var(--dim); white-space: nowrap; }
   li a.free { color: var(--ok); border-bottom-style: solid; border-color: var(--ok); font-weight: 700; }
   li a:hover { color: var(--hot); border-color: var(--hot); }
@@ -170,8 +171,9 @@ function render(s) {
   $('have').replaceChildren(...(s.have.length ? s.have.map(t => el('li', {},
     el('span', { className: 'n', textContent: t.name }),
     el('span', { className: 'tag' + (LOSSLESS.includes(t.kind) ? ' lossless' : ''), textContent: t.kind }),
+    ...(t.kbps && t.kbps < 318 ? [el('span', { className: 'tag low', title: 'Below 320 kbps: the file the artist uploaded is low quality. Buy the lossless one from a shop.', textContent: t.kbps + ' kbps' })] : []),
     el('span', { className: 'tag', textContent: t.mb + ' MB' }),
-    ...(t.src ? [el('span', { className: 'tag', title: 'Found on Soulseek; replaced by the artist\'s own file when it comes', textContent: t.src })] : [])))
+    ...(t.src ? [el('span', { className: 'tag', title: t.src === 'Soulseek' ? 'Found on Soulseek; replaced by the artist\'s own file when it comes' : 'Fetched from the artist\'s own free-download link', textContent: t.src })] : [])))
     : [el('div', { className: 'empty', textContent: 'Nothing yet. Tracks whose artists allow downloads land here in their original quality.' })]));
 
   $('buy').replaceChildren(...(s.buy.length ? s.buy.map(t => el('li', {},
@@ -180,7 +182,10 @@ function render(s) {
     ...(/^https?:\/\//.test(t.free) ? [el('a', { className: 'free', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download' })] : []),
     el('a', { href: t.link, target: '_blank', rel: 'noopener', textContent: 'SoundCloud' }),
     el('a', { href: search('https://bandcamp.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Bandcamp' }),
-    el('a', { href: search('https://www.beatport.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Beatport' })))
+    el('a', { href: search('https://www.beatport.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Beatport' }),
+    el('a', { href: search('https://www.traxsource.com/search?term=', t.name), target: '_blank', rel: 'noopener', textContent: 'Traxsource' }),
+    el('a', { href: search('https://www.junodownload.com/search/?q%5Ball%5D%5B%5D=', t.name), target: '_blank', rel: 'noopener', textContent: 'Juno' }),
+    el('a', { href: search('https://www.qobuz.com/us-en/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Qobuz' })))
     : [el('div', { className: 'empty', textContent: 'Tracks with no artist download show here, with links to the artist\'s page and the shops.' })]));
 
   $('foot').textContent = [s.lastRun && 'last sync  ' + s.lastRun, s.lastUsb && 'usb  ' + s.lastUsb,

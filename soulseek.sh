@@ -20,12 +20,14 @@ mkdir -p "$SLSK"
 prep() { python3 "$DIR/soulseek.py" prepare "$DIR" "$SLSK" >>"$LOG" 2>&1 || { say "Soulseek FAILED: could not read the to-get list"; exit 1; }; }
 # Highest quality only. Pass 1: lossless only. Pass 2, for what pass 1 didn't find: MP3 at a confirmed 320 kbps
 # (--strict-conditions drops files whose bitrate the peer doesn't report). Nothing lower is ever taken.
+# Same version only: the file must be within 5 seconds of the SoundCloud track's length (an extended mix is not
+# the radio edit), unless the SoundCloud upload is itself a clip or edit (soulseek.py leaves its length out).
 # --no-config: only these settings count. --no-skip-existing: soulseek.py's list alone decides what to search,
 # so a Soulseek file that was moved or deleted is fetched again (sockseek's own index would skip it forever).
 get() {
   "$SOCKSEEK" "$DIR/soulseek.csv" --input-type csv --no-config --user "$SUSER" --pass "$SPASS" \
     -o "$SLSK" --index-path "$SLSK/.index.sldl" --name-format '{sartist( - )stitle|slsk-filename}' \
-    --strict-title --no-skip-existing --no-progress "$@" >"$DIR/soulseek-pass.log" 2>&1
+    --strict-title --length-tol 5 --no-skip-existing --no-progress "$@" >"$DIR/soulseek-pass.log" 2>&1
   cat "$DIR/soulseek-pass.log" >>"$DIR/soulseek-run.log"
   python3 "$DIR/soulseek.py" record "$DIR" "$SLSK" >>"$LOG" 2>&1
   local c="$(grep -E 'Completed:' "$DIR/soulseek-pass.log" | tail -1 | sed 's/^\[cli\] Completed: //')"

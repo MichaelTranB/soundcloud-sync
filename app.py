@@ -5,6 +5,7 @@ Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so an
 in the browser cannot press the buttons.
 """
 import json, os, re, shutil, subprocess, time, urllib.parse
+import audio
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -105,9 +106,22 @@ def problem():
     return ""
 
 
+_quality = {}  # path -> (mtime, kbps or 0 for lossless): afinfo runs once per file
+
+
+def lossy_kbps(p):
+    """Bitrate of a lossy file (0 when lossless or unreadable), so the page can flag anything under 320."""
+    m = os.path.getmtime(p)
+    if _quality.get(p, (None,))[0] != m:
+        i = audio.info(p)
+        _quality[p] = (m, i["kbps"] if i and not i["lossless"] else 0)
+    return _quality[p][1]
+
+
 def state():
     acct = account()
     have = []
+    free = {l.split("\t")[2] for l in read("free.tsv").splitlines() if l.count("\t") == 2}
     for folder, src in ((OUT, ""), (SLSK, "Soulseek")):
         if os.path.isdir(folder):
             for f in os.listdir(folder):
@@ -115,7 +129,7 @@ def state():
                     p = os.path.join(folder, f)
                     name, ext = os.path.splitext(f)
                     have.append({"name": name, "kind": ext[1:].upper(), "mb": round(os.path.getsize(p) / 1e6, 1),
-                                 "src": src})
+                                 "src": src or ("Free download" if p in free else ""), "kbps": lossy_kbps(p)})
     have.sort(key=lambda t: t["name"].lower())
     slsk_links = {l.split("\t")[0] for l in read("soulseek.tsv").splitlines() if l}
     buy = []

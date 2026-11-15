@@ -31,6 +31,8 @@ yt-dlp "${AUTH[@]}" -f download --download-archive "$DIR/archive.txt" --ignore-e
 # own free-download link when their description has one.
 yt-dlp "${AUTH[@]}" --skip-download --ignore-errors --ignore-no-formats-error --dump-json "$URL" 2>>"$DIR/last-run.log" |
   python3 "$DIR/tobuy.py" "$DIR/archive.txt" "$DIR/to-buy.tsv"
+# The artist's own free download, when the description links straight to a file (Dropbox, Drive...): top quality only.
+python3 "$DIR/freedl.py" "$DIR" "$OUT" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/free.log"
 awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" > "$OUT/To Buy.txt"
 
 echo "$(date '+%F %R')  have: $(wc -l < "$DIR/archive.txt" | tr -d ' ')  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d ' ')" | tee -a "$DIR/history.log"

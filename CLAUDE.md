@@ -6,9 +6,17 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
 - **Page:** http://localhost:4780 (`app.py`, standard library only, bound to 127.0.0.1). `index.html` is the whole interface.
 - **`sync.sh`:** downloads the artist's ORIGINAL file for every playlist track with downloads switched on; the rest
   go to `to-buy.tsv` (and `To Buy.txt` in the music folder). Nightly at 3:10am, or Sync Now on the page.
-- **`soulseek.sh`:** last fallback, run by `sync.sh`: searches Soulseek with sockseek (`~/.local/bin/sockseek`,
-  pinned in `install.sh`) for every track still to get, lossless first, into `From Soulseek/`; the artist's own file
-  replaces it when it arrives. Download-only. Sign-in: `soulseek-login.sh` once (Keychain `soundcloud-sync-soulseek`).
+- **Where files come from, best first:** (1) the artist's original upload on SoundCloud (`sync.sh`); (2) the artist's
+  free-download link when it points straight to a file: Dropbox, Google Drive, pixeldrain, a direct audio/zip link
+  (`freedl.py`; gates like Hypeddit, Bandcamp and Mega stay one click on the page); (3) Soulseek (`soulseek.sh`);
+  (4) shop links on the page to buy lossless (Bandcamp, Beatport, Traxsource, Juno, Qobuz). Never YouTube or a
+  recorded stream (lossy).
+- **Top quality only** for anything fetched beyond the artist's upload: lossless, or 320 kbps (`audio.py`, macOS
+  `afinfo`). The page flags any file under 320 kbps.
+- **`soulseek.sh`:** last fallback: sockseek (`~/.local/bin/sockseek`, pinned in `install.sh`) searches every track
+  still to get; pass 1 lossless only, pass 2 MP3 at a confirmed 320 kbps; exact title and within 5 s of the
+  SoundCloud length (same version). Into `From Soulseek/`; the artist's own file replaces it when it arrives.
+  Download-only. Sign-in: `soulseek-login.sh` once (Keychain `soundcloud-sync-soulseek`).
 - **`usb.sh`:** adds new files to the chosen USB after every sync and whenever a drive is mounted. Never deletes.
 - **`install.sh`:** (re)creates the three launchd jobs. Run it after moving the folder.
 - **Music lives in** `~/Music/SoundCloud Sync/`. State (`playlist.txt`, `usb.txt`, `archive.txt`, logs) is git-ignored.
