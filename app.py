@@ -261,6 +261,7 @@ def state():
     return {
         "playlist": read("playlist.txt"), "usb": usb, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
+        "usbEject": not os.path.exists(os.path.join(DIR, "usb-keep.txt")),
         "running": os.path.exists(os.path.join(DIR, ".running")),
         "signIn": sign_in_status(browser()),
         "profile": acct.get("profile", ""), "browser": browser(),
@@ -355,6 +356,13 @@ class Handler(BaseHTTPRequestHandler):
                 f.write(name + "\n")
             if name:
                 subprocess.Popen([os.path.join(DIR, "usb.sh")])
+        elif self.path == "/api/eject":
+            keep = os.path.join(DIR, "usb-keep.txt")
+            if body.get("on"):
+                if os.path.exists(keep):
+                    os.remove(keep)
+            else:
+                open(keep, "w").close()
         elif self.path == "/api/sync":
             if not read("playlist.txt"):
                 return self.send(400, {"error": "Add your playlist link first."})

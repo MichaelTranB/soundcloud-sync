@@ -116,6 +116,7 @@
       <label for="usb">USB drive</label>
       <div class="row"><select id="usb"></select><button class="ghost" id="copy">Copy Now</button></div>
       <div class="note" id="usbNote"></div>
+      <label class="note"><input type="checkbox" id="eject"> Eject the USB once new tracks are on it, so you can just pull it out</label>
     </div>
     <div class="field">
       <label for="slskUser">Soulseek <span id="slskState"></span></label>
@@ -188,6 +189,7 @@ function render(s) {
       ...names.map(n => el('option', { value: n, textContent: n, selected: n === s.usb })));
   }
   $('copy').disabled = !s.usbPlugged;
+  $('eject').checked = s.usbEject;
   $('usbNote').textContent = !s.usb ? 'Pick your USB once. After that it fills by itself.'
     : s.usbPlugged ? 'New tracks copy over after every sync.' : 'Tracks wait here and copy the moment it is plugged in.';
 
@@ -252,6 +254,7 @@ $('browser').onchange = e => call('/api/browser', { browser: e.target.value }).t
 $('profile').onkeydown = e => { if (e.key === 'Enter') $('connect').click(); };
 $('url').onkeydown = e => { if (e.key === 'Enter') $('saveUrl').click(); };
 $('usb').onchange = e => { e.target.blur(); call('/api/usb', { name: e.target.value }).catch(err => say('usbNote', err.message, true)); };
+$('eject').onchange = e => call('/api/eject', { on: e.target.checked }).catch(err => say('usbNote', err.message, true));
 $('copy').onclick = () => call('/api/copy', {}).catch(e => say('usbNote', e.message, true));
 $('sync').onclick = () => call('/api/sync', {}).catch(e => say('urlNote', e.message, true));
 

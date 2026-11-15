@@ -15,8 +15,20 @@ mkdir -p "$DEST/SoundCloud Sync"
 LIST="$DIR/.usb-list"
 # "./" first: rsync would read a name starting with # or ; as a comment
 { cut -f1 "$DIR/safety-ok.tsv" 2>/dev/null; echo "To Buy.txt"; } | while IFS= read -r p; do [ -f "$SRC/$p" ] && echo "./$p"; done >"$LIST"
+# Tracks not on the USB yet (counted before the copy, for the notice below)
+NEW=$(while IFS= read -r p; do [ "$p" = "./To Buy.txt" ] || [ -e "$DEST/SoundCloud Sync/$p" ] || echo x; done <"$LIST" | wc -l | tr -d ' ')
 if rsync -a --ignore-existing --files-from="$LIST" "$SRC/" "$DEST/SoundCloud Sync/" 2>>"$DIR/usb.log"; then
-  echo "$(date '+%F %R')  copied to \"$NAME\"" >> "$DIR/usb.log"
+  echo "$(date '+%F %R')  copied to \"$NAME\" ($NEW new)" >> "$DIR/usb.log"
 else
-  echo "$(date '+%F %R')  COPY FAILED to \"$NAME\"" >> "$DIR/usb.log"; exit 1
+  echo "$(date '+%F %R')  COPY FAILED to \"$NAME\"" >> "$DIR/usb.log"
+  [ -z "$VOLUMES" ] && osascript -e "display notification \"Copy to $NAME failed. Open The Crate to see why.\" with title \"The Crate\"" 2>/dev/null
+  exit 1
+fi
+# New tracks landed: eject the USB (unless "Eject when done" is off on the page) and say it's safe to unplug.
+if [ "$NEW" -gt 0 ] && [ -z "$VOLUMES" ]; then
+  [ "$NEW" = 1 ] && MSG="1 new track on $NAME." || MSG="$NEW new tracks on $NAME."
+  if [ ! -e "$DIR/usb-keep.txt" ]; then
+    sync; diskutil eject "$DEST" >/dev/null 2>&1 && { MSG="$MSG Safe to unplug."; echo "$(date '+%F %R')  ejected \"$NAME\"" >> "$DIR/usb.log"; }
+  fi
+  osascript -e "display notification \"$MSG\" with title \"The Crate\" sound name \"Glass\"" 2>/dev/null
 fi

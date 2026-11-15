@@ -9,7 +9,9 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
 - **Where files come from, best first:** (1) the artist's original upload on SoundCloud (`sync.sh`); (2) the artist's
   free-download link when it points straight to a file: Dropbox, Google Drive, pixeldrain, a direct audio/zip link
   (`freedl.py`; gates like Hypeddit, Bandcamp and Mega stay one click on the page); (3) Soulseek (`soulseek.sh`);
-  (4) shop links on the page to buy lossless (Bandcamp, Beatport, Traxsource, Juno, Qobuz). Never YouTube or a
+  (4) the Downloads pickup: `freedl.py inbox` (every minute from `app.py`, and in `sync.sh`) takes a track still to
+  get from `~/Downloads` (a free gate, Bandcamp $0, or a purchase) when its title is in the file name, the length
+  matches and it's top quality; (5) shop links on the page to buy lossless (Bandcamp, Beatport, Traxsource, Juno, Qobuz). Never YouTube or a
   recorded stream (lossy).
 - **Top quality only** for anything fetched beyond the artist's upload: lossless, or 320 kbps (`audio.py`, macOS
   `afinfo`). The page flags any file under 320 kbps.
@@ -22,8 +24,11 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   Anything else goes to `Quarantine/` beside the app with its run permission removed. Runs after Soulseek (before a
   track counts as got), at the end of every sync, and before a USB copy. Never loosen it.
 - **`usb.sh`:** adds new files to the chosen USB after every sync and whenever a drive is mounted, only those on
-  the safety check's list (`safety-ok.tsv`). Never deletes.
-- **`install.sh`:** (re)creates the three launchd jobs. Run it after moving the folder.
+  the safety check's list (`safety-ok.tsv`). Never deletes. When new tracks land it ejects the USB and shows a Mac
+  notice (off when `usb-keep.txt` exists; the page's switch). An original the safety check blocks is added to
+  `blocked-originals.txt` so it counts as not got.
+- **`install.sh`:** (re)creates the three launchd jobs. Run it after moving the folder. Friends install with the one
+  line in `get.sh` (README); `uninstall.sh` removes it, music stays.
 - **Music lives in** `~/Music/SoundCloud Sync/`. State (`playlist.txt`, `usb.txt`, `archive.txt`, logs) is git-ignored.
 - **Sign-in:** standalone, no Claude needed. yt-dlp borrows the SoundCloud sign-in already in his browser (`browser.txt`, Chrome by default). macOS blocks reading it unless the job runs through Crate Helper (`crate-helper.c`, built by install.sh) with Full Disk Access on; without it the sync runs signed out and the page says so. SoundCloud's sign-in lasts about a day, so originals need soundcloud.com opened in that browser within a day.
 
