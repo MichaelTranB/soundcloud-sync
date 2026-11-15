@@ -99,7 +99,11 @@ def quarantine(d, path, reason, log):
     q = os.path.join(d, "Quarantine")
     os.makedirs(q, exist_ok=True)
     name = "".join(c if ord(c) >= 32 else "?" for c in os.path.basename(path))
-    dest = os.path.join(q, f"{time.strftime('%Y%m%d-%H%M%S')} {name}")
+    stamp, n = time.strftime('%Y%m%d-%H%M%S'), 1
+    dest = os.path.join(q, f"{stamp} {name}")
+    while os.path.lexists(dest):  # same name blocked in the same second: never overwrite
+        n += 1
+        dest = os.path.join(q, f"{stamp}-{n} {name}")
     try:
         shutil.move(path, dest)
         if not os.path.islink(dest):
