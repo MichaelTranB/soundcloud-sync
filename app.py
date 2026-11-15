@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.expanduser("~/Music/SoundCloud Sync")
+SLSK = os.path.join(OUT, "From Soulseek")  # soulseek.sh's downloads
 PORT = 4780
 HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
@@ -18,6 +19,7 @@ PROFILE_RE = re.compile(r"^(?:https?://(?:www\.|m\.)?soundcloud\.com/)?([A-Za-z0
 BROWSERS = ("chrome", "safari", "brave", "firefox", "edge", "none")
 YTDLP = shutil.which("yt-dlp") or "/opt/homebrew/bin/yt-dlp"
 _signed = {"at": 0.0, "ok": False}
+_slsk = {"at": 0.0, "ok": False}
 
 
 def read(name, default=""):
@@ -46,6 +48,19 @@ def signed_in():
             _signed["ok"] = False
         _signed["at"] = time.time()
     return _signed["ok"]
+
+
+def soulseek_ready():
+    """True once soulseek-login.sh saved a Soulseek sign-in (reads only the item's name, never the password)."""
+    if time.time() - _slsk["at"] > 60:
+        try:
+            r = subprocess.run(["security", "find-generic-password", "-s", "soundcloud-sync-soulseek"],
+                               capture_output=True, text=True, timeout=10)
+            _slsk["ok"] = r.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            _slsk["ok"] = False
+        _slsk["at"] = time.time()
+    return _slsk["ok"]
 
 
 def account():
@@ -93,19 +108,24 @@ def problem():
 def state():
     acct = account()
     have = []
-    if os.path.isdir(OUT):
-        for f in sorted(os.listdir(OUT), key=str.lower):
-            if f.lower().endswith(AUDIO):
-                p = os.path.join(OUT, f)
-                name, ext = os.path.splitext(f)
-                have.append({"name": name, "kind": ext[1:].upper(), "mb": round(os.path.getsize(p) / 1e6, 1)})
+    for folder, src in ((OUT, ""), (SLSK, "Soulseek")):
+        if os.path.isdir(folder):
+            for f in os.listdir(folder):
+                if f.lower().endswith(AUDIO):
+                    p = os.path.join(folder, f)
+                    name, ext = os.path.splitext(f)
+                    have.append({"name": name, "kind": ext[1:].upper(), "mb": round(os.path.getsize(p) / 1e6, 1),
+                                 "src": src})
+    have.sort(key=lambda t: t["name"].lower())
+    slsk_links = {l.split("\t")[0] for l in read("soulseek.tsv").splitlines() if l}
     buy = []
     for line in read("to-buy.tsv").splitlines():
         name, link, free = (line.split("\t") + ["", ""])[:3]
         if name:
-            buy.append({"name": name, "link": link, "free": free})
+            buy.append({"name": name, "link": link, "free": free, "soulseek": link in slsk_links})
     usb = read("usb.txt")
     history = read("history.log").splitlines()
+    slsklog = read("soulseek.log").splitlines()
     usblog = read("usb.log").splitlines()
     return {
         "playlist": read("playlist.txt"), "usb": usb, "volumes": volumes(),
@@ -115,6 +135,7 @@ def state():
         "profile": acct.get("profile", ""), "browser": acct.get("browser", "chrome"),
         "playlists": acct.get("playlists", []), "problem": problem(),
         "have": have, "buy": buy,
+        "soulseekReady": soulseek_ready(), "lastSoulseek": slsklog[-1] if slsklog else "",
         "lastRun": history[-1] if history else "", "lastUsb": usblog[-1] if usblog else "",
     }
 

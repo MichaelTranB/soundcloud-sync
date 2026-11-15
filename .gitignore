@@ -9,3 +9,6 @@ __pycache__/
 account.json
 browser.txt
 .updated
+soulseek.csv
+soulseek.tsv
+soulseek.tsv.tmp

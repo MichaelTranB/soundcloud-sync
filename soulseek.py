@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""Soulseek helper for soulseek.sh (sockseek does the searching and downloading).
+
+  soulseek.py prepare DIR SLSK   writes DIR/soulseek.csv (Artist,Title for every track still to get) and
+                                 removes a Soulseek copy once the artist's own file has landed in the music folder
+  soulseek.py record  DIR SLSK   updates DIR/soulseek.tsv (SoundCloud link, name, file) from sockseek's index
+
+DIR is the app folder (to-buy.tsv lives there); SLSK is the "From Soulseek" folder inside the music folder.
+Standard library only.
+"""
+import csv, os, re, sys
+
+AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus", ".alac", ".aac")
+# Promo text uploaders put in titles; Soulseek files never carry it, so it only hurts the search.
+PROMO = re.compile(r"\s*[(\[][^)\]]*\b(?:free|download|dl|out now|premiere|buy|preview|clip|exclusive|support)\b[^)\]]*[)\]]", re.I)
+PREFIX = re.compile(r"^\s*(?:premiere|free download|free dl|out now)\s*[:|\-]\s*", re.I)
+
+
+def norm(s):
+    """Loose key for comparing names across yt-dlp's and sockseek's file-name clean-ups."""
+    return re.sub(r"\W+", "", s.lower())
+
+
+def split(name):
+    """'Uploader - Title' (to-buy.tsv) -> (artist, title). A title like 'Artist - Track' wins over the uploader,
+    which is often a label or a premiere channel."""
+    uploader, _, title = name.partition(" - ")
+    if not title:
+        return "", PROMO.sub("", uploader).strip()
+    title = PREFIX.sub("", PROMO.sub("", title)).strip(" *|")
+    if " - " in title:
+        artist, _, track = title.partition(" - ")
+        return artist.strip(), track.strip()
+    return uploader.strip(), title
+
+
+def to_get(d):
+    rows = []
+    try:
+        with open(os.path.join(d, "to-buy.tsv")) as f:
+            for line in f:
+                name, link = (line.rstrip("\n").split("\t") + [""])[:2]
+                if name and link:
+                    rows.append((link, name, *split(name)))
+    except OSError:
+        pass
+    return rows
+
+
+def load_got(d):
+    try:
+        with open(os.path.join(d, "soulseek.tsv")) as f:
+            return [l.rstrip("\n").split("\t") for l in f if l.count("\t") == 2]
+    except OSError:
+        return []
+
+
+def save_got(d, got):
+    tmp = os.path.join(d, "soulseek.tsv.tmp")
+    with open(tmp, "w") as f:
+        f.writelines("\t".join(g) + "\n" for g in got)
+    os.replace(tmp, os.path.join(d, "soulseek.tsv"))
+
+
+def prepare(d, slsk):
+    rows = to_get(d)
+    wanted = {link for link, *_ in rows}
+    music = os.path.dirname(slsk)
+    originals = {norm(os.path.splitext(f)[0]) for f in os.listdir(music) if f.lower().endswith(AUDIO)}
+    kept = []
+    for link, name, path in load_got(d):
+        if not os.path.exists(path):
+            continue  # moved or deleted by hand: forget it
+        if link not in wanted and norm(name) in originals:
+            os.remove(path)  # the artist's own file is here now; it replaces the Soulseek copy
+            print(f"replaced by the original: {os.path.basename(path)}")
+            continue
+        kept.append([link, name, path])
+    save_got(d, kept)
+    have = {k[0] for k in kept}
+    seen, out = set(), []
+    for link, name, artist, title in rows:
+        key = (artist.lower(), title.lower())
+        if link in have or not title or key in seen:
+            continue
+        seen.add(key)
+        out.append((artist, title))
+    with open(os.path.join(d, "soulseek.csv"), "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["Artist", "Title"])
+        w.writerows(out)
+    print(f"searching Soulseek for {len(out)} track(s)")
+
+
+def record(d, slsk):
+    index = os.path.join(slsk, ".index.sldl")
+    done = {}
+    try:
+        with open(index, newline="") as f:
+            for r in csv.DictReader(f):
+                if r.get("state") == "1" and r.get("filepath"):
+                    p = r["filepath"]
+                    p = p if os.path.isabs(p) else os.path.normpath(os.path.join(slsk, p))
+                    done[(r.get("artist", "").lower(), r.get("title", "").lower())] = p
+    except OSError:
+        pass
+    got = load_got(d)
+    have = {g[0] for g in got}
+    for link, name, artist, title in to_get(d):
+        p = done.get((artist.lower(), title.lower()))
+        if p and link not in have and os.path.exists(p):
+            got.append([link, name, p])
+            have.add(link)
+    save_got(d, got)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4 or sys.argv[1] not in ("prepare", "record"):
+        sys.exit(__doc__)
+    {"prepare": prepare, "record": record}[sys.argv[1]](sys.argv[2], sys.argv[3])
