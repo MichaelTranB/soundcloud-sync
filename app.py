@@ -36,10 +36,35 @@ def agent_app(who):
         places = (shutil.which("claude"), "~/.local/bin/claude", "~/.claude/local/claude", "/opt/homebrew/bin/claude",
                   "/usr/local/bin/claude")
         return next((p for p in map(lambda x: x and os.path.expanduser(x), places) if p and os.access(p, os.X_OK)), "")
-    if who == "codex":
-        return next((p for p in ("/Applications/Codex.app", os.path.expanduser("~/Applications/Codex.app"))
-                     if os.path.isdir(p)), "")
+    if who == "codex":  # the Codex app, or the ChatGPT app for Mac, which is now the same app (it includes Codex)
+        import plistlib
+        for p in ("/Applications/Codex.app", "~/Applications/Codex.app", "/Applications/ChatGPT.app",
+                  "~/Applications/ChatGPT.app"):
+            p = os.path.expanduser(p)
+            try:
+                with open(os.path.join(p, "Contents/Info.plist"), "rb") as f:
+                    if plistlib.load(f).get("CFBundleIdentifier") == "com.openai.codex":
+                        return p
+            except (OSError, ValueError):
+                pass
     return ""
+
+
+CHROME = "Google Chrome"
+EXT = {"claude": "fcoeoabgfenejglbffodgkkbkcdhcgfn", "codex": "hehggadaopoacecdllhhajmbjkdcmajg"}  # their Chrome add-ons
+
+
+def chrome_app():
+    return next((p for p in (f"/Applications/{CHROME}.app", os.path.expanduser(f"~/Applications/{CHROME}.app"))
+                 if os.path.isdir(p)), "")
+
+
+def open_chrome():
+    """Opens Chrome on The Crate's list of free links before the assistant starts, so its Chrome add-on is already
+    connected when it looks (a just-started Chrome takes a few seconds). True when Chrome had to be started."""
+    cold = subprocess.run(["pgrep", "-xq", CHROME]).returncode != 0
+    subprocess.run(["open", "-a", CHROME, f"http://localhost:{PORT}/free"], check=False)
+    return cold
 
 
 def agent_uses():
@@ -52,11 +77,11 @@ def agent_uses():
                 "/usr/local/bin/codex", "~/.local/bin/codex")}
 
 
-def claude_in_chrome():
-    """The Claude extension is in one of this Mac's Chrome profiles (its folder is there; nothing in it is read)."""
+def in_chrome(who):
+    """That assistant's Chrome add-on is in one of this Mac's Chrome profiles (its folder is there; nothing in it is
+    read)."""
     import glob
-    return bool(glob.glob(os.path.expanduser(
-        "~/Library/Application Support/Google/Chrome/*/Extensions/fcoeoabgfenejglbffodgkkbkcdhcgfn")))
+    return bool(glob.glob(os.path.expanduser(f"~/Library/Application Support/Google/Chrome/*/Extensions/{EXT[who]}")))
 
 
 def in_terminal(name, script):
@@ -72,7 +97,7 @@ def in_terminal(name, script):
 # It asks them once what it may do in their name, never pays or types a password, and only fetches audio.
 AGENT_BRIEF = """Please get the free downloads waiting in my music app, The Crate, using my Chrome (I'm signed in there).
 
-Open this page in Chrome: {page}
+{lead}Open this page in Chrome (The Crate has just opened it there): {page}
 It lists {n} songs whose artists give them away free, usually behind a gate (Hypeddit, ToneDen, Laylo...) that asks
 for a follow, like, repost, comment or email first. The Crate picks up each file that lands in my Downloads folder.
 
@@ -90,7 +115,8 @@ Reload the list page whenever you like: songs that have arrived drop off it.
 
 Never: pay or enter card details, type a password (if a site needs a sign-in, ask me to do it and wait), download
 or open an app or installer (.dmg, .pkg, .exe, .app), or join a paid membership (skip a Patreon post that's members
-only). Don't touch anything else in The Crate. If you can't use my Chrome, say so and stop.
+only). Don't touch anything else in The Crate. If you can't reach my Chrome yet, it may still be starting: wait 15 seconds
+and try again, up to 4 times, before you tell me and stop. Use my own Google Chrome, not a built-in browser.
 
 At the end, tell me in a short list what you got, and what you skipped and why.
 """
@@ -102,9 +128,10 @@ def free_rows():
             if len(p) > 2 and re.match(r"https?://\S+$", p[2])]
 
 
-def agent_task():
+def agent_task(who="claude"):
     n = len(free_rows())
-    return AGENT_BRIEF.format(page=f"http://localhost:{PORT}/free", n=n), n
+    lead = "Use the @Chrome plugin (my Google Chrome) for this.\n\n" if who == "codex" else ""
+    return AGENT_BRIEF.format(lead=lead, page=f"http://localhost:{PORT}/free", n=n), n
 
 
 def free_page():
@@ -702,7 +729,7 @@ def state():
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
         "have": have, "buy": buy, "watching": watching(),
-        "agents": [w for w in ("claude", "codex") if agent_app(w)], "claudeInChrome": claude_in_chrome(), "agentUses": agent_uses(),
+        "agents": [w for w in ("claude", "codex") if agent_app(w)], "claudeInChrome": in_chrome("claude"), "codexInChrome": in_chrome("codex"), "chrome": bool(chrome_app()), "agentUses": agent_uses(),
         "inboxWhy": {k: v.get("text", "") for k, v in freedl.load_json(DIR, freedl.WHY).items() if isinstance(v, dict)},
         "justGot": [k for k, t in _just_got.items() if time.time() - t < 600],
         "soulseekReady": soulseek_ready(), "soulseekUser": _slsk["user"],
@@ -856,7 +883,9 @@ class Handler(BaseHTTPRequestHandler):
             app = agent_app(who)
             if not app:
                 return self.send(400, {"error": "That assistant isn't on this Mac."})
-            task, n = agent_task()
+            if not chrome_app():
+                return self.send(400, {"error": "Get Google Chrome first: both assistants work in it."})
+            task, n = agent_task(who)
             if not n:
                 return self.send(400, {"error": "No free links to get right now."})
             if who == "claude":
@@ -865,15 +894,17 @@ class Handler(BaseHTTPRequestHandler):
                 brief = os.path.join(DIR, "agent-task.md")
                 with open(brief, "w") as f:
                     f.write(task)
+                wait = "echo 'Waiting a moment for Chrome to start...'; sleep 12\n" if open_chrome() else ""
                 in_terminal("agent-run.command", f"cd {shlex.quote(os.path.expanduser('~/Downloads'))} || exit 1\n"
-                            f"exec {shlex.quote(app)} --chrome \"$(cat {shlex.quote(brief)})\"\n")
+                            f"{wait}exec {shlex.quote(app)} --chrome \"$(cat {shlex.quote(brief)})\"\n")
                 msg = (f"Claude is opening in Terminal with your {n} free links. It asks you once what it may do "
                        "(follow, repost...), then works in Chrome. Files come in here by themselves.")
             else:
                 subprocess.run(["pbcopy"], input=task.encode(), check=False)
+                open_chrome()
                 subprocess.Popen(["open", app])
-                msg = (f"Codex is opening, and the request for your {n} free links is copied: paste it (⌘V) into a "
-                       "new chat with Codex's Chrome extension on. Files come in here by themselves.")
+                msg = (f"Codex is opening, and the request for your {n} free links is copied: in a new Codex chat "
+                       "type @Chrome, pick it, then paste (⌘V). Files come in here by themselves.")
             return self.send(200, dict(state(), agentMsg=msg))
         elif self.path == "/api/synctime":
             t = str(body.get("time", ""))

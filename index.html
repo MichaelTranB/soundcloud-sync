@@ -449,16 +449,17 @@ $('faq').onclick = e => { if (e.target === $('faq')) $('faq').close(); };  // a 
 const AGENT = { claude: 'Claude', codex: 'Codex' };
 const CLAUDE_EXT = 'https://chromewebstore.google.com/detail/fcoeoabgfenejglbffodgkkbkcdhcgfn';
 const CODEX_APP = 'https://developers.openai.com/codex/app';
-const CODEX_CHROME = 'https://developers.openai.com/codex/app/chrome-extension';
+const CODEX_CHROME = 'https://learn.chatgpt.com/docs/chrome-extension';
+const GET_CHROME = 'https://www.google.com/chrome/';
 let helperWho = '', helperDone = {}, helperMsg = '', helperKey = '';
 try { helperWho = localStorage.getItem('crateAgent') || ''; } catch (e) {}
 if (!AGENT[helperWho]) helperWho = '';
 // Which one the guide opens on, when the friend hasn't picked: the one furthest set up (installed counts most, then
-// Claude's Chrome extension), then the one they already use (its app or command is on the Mac). A tie goes to Claude:
+// its Chrome add-on), then the one they already use (its app or command is on the Mac). A tie goes to Claude:
 // it starts with one click and needs no pasting.
 function bestAgent(s) {
   const a = s.agents || [], u = s.agentUses || {};
-  const score = w => 4 * a.includes(w) + 2 * (w === 'claude' && !!s.claudeInChrome) + !!u[w];
+  const score = w => 4 * a.includes(w) + 2 * !!s[w + 'InChrome'] + !!u[w];
   return score('codex') > score('claude') ? 'codex' : 'claude';
 }
 const agentName = w => el('span', { className: 'ag ' + w, textContent: AGENT[w] });
@@ -477,12 +478,13 @@ function paintHelper(force) {
   const s = last; if (!s || !(force || $('helper').open)) return;
   const agents = s.agents || [], n = s.buy.filter(t => !live(t) && !waiting(t) && t.free).length;
   const who = helperWho || bestAgent(s), has = agents.includes(who);
-  const key = JSON.stringify([agents, s.claudeInChrome, n, who, helperDone, helperMsg]);
+  const key = JSON.stringify([agents, s.claudeInChrome, s.codexInChrome, s.chrome, n, who, helperDone, helperMsg]);
   if (key === helperKey && !force) return;
   helperKey = key;
   const b = t => el('b', { textContent: t });
   const answer = { title: 'Answer its one question', how: ['Say what it may do, like ', el('i', { textContent: 'follow and like are fine' }), '.'] };
-  const list = who === 'claude' ? [
+  const chrome = { title: 'Get Google Chrome', done: s.chrome, acts: [ext('Get Chrome ↗', GET_CHROME)], how: ['Both assistants work in Chrome.'] };
+  const list = [chrome, ...(who === 'claude' ? [
     { title: 'Install Claude', done: has, acts: helperDone.installing ? [] : [el('button', { textContent: 'Install Claude',
         onclick: e => helperAct(e.target, 'install-claude', () => { helperDone.installing = true; }) })],
       how: [helperDone.installing ? 'Installing in Terminal. This ticks when it\'s done.' : 'Needs a paid Claude plan.'] },
@@ -490,22 +492,22 @@ function paintHelper(force) {
       how: ['Press ', b('Add to Chrome'), ', then sign in.'] },
     { title: 'Start Claude', done: helperDone.claude,
       acts: [el('button', { textContent: 'Open Claude', onclick: e => helperAct(e.target, 'claude', () => { helperDone.claude = true; }) })],
-      how: ['Opens in Terminal, ready to go.'] },
+      how: ['Opens Chrome and Terminal, ready to go.'] },
     { title: 'First time: sign in', how: ['In Terminal, press ', kbd('Return'), ' through setup. Pick ', b('Claude account'), '.'] },
     answer
   ] : [
     { title: 'Get the Codex app', done: has, acts: [ext('Get Codex ↗', CODEX_APP)],
-      how: ['Sign in with ChatGPT. It must be the app, not the codex command.'] },
-    { title: 'Turn on Codex in Chrome', done: helperDone.codexChrome,
+      how: ['The ChatGPT app for Mac includes Codex. Sign in.'] },
+    { title: 'Add Codex to Chrome', done: s.codexInChrome || helperDone.codexChrome,
       acts: [ext('Show me ↗', CODEX_CHROME), el('button', { className: 'ghost', textContent: 'Done',
         onclick: () => { helperDone.codexChrome = true; paintHelper(); } })],
-      how: ['Add its Chrome extension, then press ', b('Done'), '.'] },
+      how: ['In the app: ', b('Settings › Computer Use › Chrome › Install'), '.'] },
     { title: 'Copy the request', done: helperDone.codex,
       acts: [el('button', { textContent: 'Copy and open Codex', onclick: e => helperAct(e.target, 'codex', () => { helperDone.codex = true; }) })],
-      how: ['Copies it and opens Codex.'] },
-    { title: 'Paste it into Codex', how: [...(helperDone.codex ? [b('Copied. ')] : []), 'New chat, ', kbd('⌘'), ' ', kbd('V'), ', then ', kbd('Return'), '.'] },
+      how: ['Opens Chrome and Codex, request copied.'] },
+    { title: 'Paste it into Codex', how: ['New chat, type ', b('@Chrome'), ' and pick it, then ', kbd('⌘'), ' ', kbd('V'), ' and ', kbd('Return'), '.'] },
     answer
-  ];
+  ])];
   // Later steps wait for the one before (nothing to open before it's installed), so only the current step has buttons.
   const next = list.findIndex(x => !x.done);
   $('helperHead').replaceChildren('Get them with ', agentName('claude'), ' or ', agentName('codex'));
@@ -520,7 +522,7 @@ function paintHelper(force) {
       el('span', { className: 'tick', ariaHidden: 'true', textContent: x.done ? '✓' : i + 1 }),
       el('div', { className: 't' }, el('b', { textContent: x.title }), el('span', { className: 'sr', textContent: x.done ? ' (done)' : '' }),
         ...(i === next ? [el('small', {}, ...x.how)] : [])),
-      ...(x.done || i !== next || !x.acts.length ? [] : [el('div', { className: 'acts' }, ...x.acts)]))),
+      ...(x.done || i !== next || !(x.acts || []).length ? [] : [el('div', { className: 'acts' }, ...x.acts)]))),
     ...(helperMsg ? [el('p', { className: 'note bad', textContent: helperMsg })] : []),
     el('p', { className: 'foot', textContent: `Keep Chrome open. To stop, close the ${who === 'claude' ? 'Terminal window' : 'Codex chat'}. It never pays or types a password.` }));
 }
