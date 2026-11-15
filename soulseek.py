@@ -42,6 +42,10 @@ REMASTER = re.compile(r"\s+-\s+(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?(?:\s+ve
 def split(name):
     """'Uploader - Title' (to-buy.tsv) -> (artist, title). A title like 'Artist - Track' wins over the uploader,
     which is often a label or a premiere channel."""
+    # Written the way people type them: "Artist – Track" (long dash), "Artist- Track", "{Flip}" braces, stray
+    # control characters between words. All made plain first, so the search sees "Artist - Track (Flip)".
+    name = re.sub(r"[\x00-\x1f\x7f]+", " ", name).replace("{", "(").replace("}", ")")
+    name = re.sub(r"\s+", " ", re.sub(r"\s+[\u2013\u2014]\s+|(?<=\w)[-\u2013\u2014]\s+(?=\S)", " - ", name)).strip()
     uploader, _, title = name.partition(" - ")
     if not title:
         return "", PROMO.sub("", uploader).strip()

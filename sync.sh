@@ -104,6 +104,8 @@ unread; wc -l < "$DIR/.unread" | tr -d ' ' >"$DIR/unread.txt"
 python3 "$DIR/tobuy.py" "$DIR/.archive-have" "$DIR/to-buy.tsv" <"$DIR/.listing"
 HAVE=$(wc -l < "$DIR/.archive-have" | tr -d ' ')
 fi
+# The Free Download button under each track still to get (yt-dlp doesn't report it): its link joins the list.
+python3 "$DIR/tobuy.py" --buttons "$DIR" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/free.log"
 # The artist's own free download, when the description links straight to a file (Dropbox, Drive...): top quality only.
 python3 "$DIR/freedl.py" "$DIR" "$OUT" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/free.log"
 # Tracks bought or unlocked by hand (Beatport, Hypeddit, Laylo...) waiting in Downloads.

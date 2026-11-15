@@ -101,10 +101,12 @@
   #viewNote .lead { color: var(--text); font-weight: 600; }
   #viewNote .step { display: flex; gap: 8px; align-items: baseline; }
   #viewNote .step b { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--line); color: var(--text); font-size: 12px; display: inline-grid; place-items: center; }
-  #viewNote .key { display: flex; flex-wrap: wrap; gap: 6px 18px; }
-  #viewNote .key button { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 7px 13px; font-size: 14px; font-weight: 600; }
-  #viewNote .key button b { margin-left: 7px; font-variant-numeric: tabular-nums; }
-  #viewNote .key button[aria-pressed="true"] { background: #1d1d27; border-color: currentColor; }
+  #viewNote .key { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  /* One line of filter pills, each in its own colour: All in the app's red, lightened to read on dark, then blue and amber as in the rows. */
+  #viewNote .key button { flex: none; background: transparent; color: var(--k); border: 1px solid color-mix(in srgb, var(--k) 35%, transparent); padding: 6px 11px; font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+  #viewNote .key button b { margin-left: 6px; font-variant-numeric: tabular-nums; }
+  #viewNote .key button[aria-pressed="true"] { background: color-mix(in srgb, var(--k) 16%, transparent); border-color: var(--k); }
+  #viewNote .key .all { --k: #ff6b7d; } #viewNote .key .near { --k: #6cc4dc; } #viewNote .key .far { --k: #f0a868; }
   #viewNote .key .near::before, #viewNote .key .far::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; background: currentColor; }
   #viewNote .near { color: #6cc4dc; } #viewNote .far { color: #f0a868; }
   #viewNote .got { color: var(--ok); font-weight: 600; }
@@ -192,7 +194,7 @@
     <h3>Where it looks</h3>
     <ol>
       <li><b>SoundCloud</b>: the artist's original file</li>
-      <li><b>Free download links</b> in the description</li>
+      <li><b>Free download links</b> in the description or behind the track's Free Download button</li>
       <li><b>Your Downloads</b>: anything you bought</li>
       <li><b>Soulseek</b>: download only, never shares your files</li>
     </ol>
@@ -254,7 +256,7 @@
       <div class="row"><select id="usb"></select><button class="act" id="copy">Copy Now</button></div>
       <div class="usbprog" id="usbProg" hidden><span id="usbIcon"></span><progress id="usbBar" max="1" value="0"></progress><span id="usbPct"></span></div>
       <div class="note" id="usbNote" role="status" aria-live="polite"></div>
-      <label class="note"><input type="checkbox" id="eject"> Eject the USB once new tracks are on it, so you can just pull it out</label>
+      <label class="note"><input type="checkbox" id="eject"> Eject the USB once a sync has put its new tracks on it, so you can just pull it out (never mid-sync)</label>
     </div>
     <div class="field">
       <label for="slskUser">Soulseek</label>
@@ -518,7 +520,7 @@ function draw() {
   $('buy').replaceChildren(...(rows.length ? rows : [el('div', { className: 'empty', textContent: none })]));
 }
 // Not found, split two ways: shared on Soulseek but the sharers were away (it'll likely come), or not there at all.
-const MISS = [['all', 'All'], ['near', 'On Soulseek, sharers away'], ['far', 'Not on Soulseek']];
+const MISS = [['all', 'All'], ['near', 'Sharers away'], ['far', 'Not on Soulseek']];
 const MISS_NOTE = { all: 'Mostly remixes and flips that only live on SoundCloud.',
   near: 'Someone shares it, but they were offline or busy: tried again next sync.',
   far: 'No top-quality copy on Soulseek: buy it or ask the artist.' };

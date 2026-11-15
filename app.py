@@ -240,7 +240,8 @@ def usb_result(lines):
                 tracks = lambda k: f"{k} new track{'s' if k != 1 else ''}"
                 if mid:  # a sync is still getting tracks: the page copies the next ones over by itself
                     text = (f"{tracks(n)} copied so far" if n else "Up to date so far") + (f" ({total} on {usb})" if total else "") + \
-                        ". Still syncing: new tracks go on as they arrive, then it's ejected. Keep it plugged in."
+                        ". Still syncing: new tracks go on as they arrive" + \
+                        (", then it's ejected. Keep it plugged in." if os.path.exists(os.path.join(DIR, "usb-eject.txt")) else ".")
                 else:
                     text = (f"Done: {tracks(n)} copied" + (f"; {usb} has all {total}." if total else f" to {usb}.") if n else
                             f"Done: {usb} has all {total} tracks." if total else f"{usb} already has every track.") + \
@@ -594,7 +595,7 @@ def state():
     return {
         "playlist": read("playlist.txt"), "service": svc, "capped": capped, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
-        "usbEject": not os.path.exists(os.path.join(DIR, "usb-keep.txt")),
+        "usbEject": os.path.exists(os.path.join(DIR, "usb-eject.txt")),  # off unless ticked
         "usbCopy": usb_copy(), "usbResult": usb_result(usblog),
         # new tracks passed the safety check since the last copy: they go on the next time it's plugged in
         "usbBehind": bool(usb) and newer("safety-ok.tsv", ".usb-done"),
@@ -740,12 +741,11 @@ class Handler(BaseHTTPRequestHandler):
             if name:
                 subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True)
         elif self.path == "/api/eject":
-            keep = os.path.join(DIR, "usb-keep.txt")
+            flag = os.path.join(DIR, "usb-eject.txt")
             if body.get("on"):
-                if os.path.exists(keep):
-                    os.remove(keep)
-            else:
-                open(keep, "w").close()
+                open(flag, "w").close()
+            elif os.path.exists(flag):
+                os.remove(flag)
         elif self.path == "/api/synctime":
             t = str(body.get("time", ""))
             if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t):
