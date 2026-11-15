@@ -790,11 +790,20 @@ def newer(a, b):
 
 def usb_follow():
     """While a sync runs and the USB is plugged in, tracks that passed the safety check since the last copy go on it
-    as they arrive (usb.sh doesn't eject mid-sync; the sync's own last copy does)."""
+    as they arrive (usb.sh doesn't eject mid-sync; the sync's own last copy does, or this once the sync is over)."""
     usb = read("usb.txt")
-    if usb and sync_running() and os.path.isdir(f"/Volumes/{usb}") and not usb_copy() and newer("safety-ok.tsv", ".usb-done"):
-        subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True,
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if not usb or not os.path.isdir(f"/Volumes/{usb}") or usb_copy():
+        return
+    if sync_running():
+        if not newer("safety-ok.tsv", ".usb-done"):
+            return
+        env = None
+    elif (usb_result(read("usb.log").splitlines()) or {}).get("mid"):
+        env = {**os.environ, "CRATE_FINAL": "1"}  # the sync ended without its last copy (stopped, or an older sync.sh)
+    else:
+        return
+    subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True, env=env,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def watch_downloads():
