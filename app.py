@@ -95,9 +95,9 @@ def in_terminal(name, script):
 
 # What Claude or Codex is asked to do: the friend's own assistant, in their own signed-in Chrome, with them watching.
 # It asks them once what it may do in their name, never pays or types a password, and only fetches audio.
-AGENT_BRIEF = """Please get the free downloads waiting in my music app, The Crate, using my Chrome (I'm signed in there).
+AGENT_BRIEF = """{lead}Please get the free downloads waiting in my music app, The Crate, using my Chrome (I'm signed in there).
 
-{lead}Open this page in Chrome (The Crate has just opened it there): {page}
+Open this page in Chrome (The Crate has just opened it there): {page}
 It lists {n} songs whose artists give them away free, usually behind a gate (Hypeddit, ToneDen, Laylo...) that asks
 for a follow, like, repost, comment or email first. The Crate picks up each file that lands in my Downloads folder.
 
@@ -130,7 +130,7 @@ def free_rows():
 
 def agent_task(who="claude"):
     n = len(free_rows())
-    lead = "Use the @Chrome plugin (my Google Chrome) for this.\n\n" if who == "codex" else ""
+    lead = "@Chrome " if who == "codex" else ""
     return AGENT_BRIEF.format(lead=lead, page=f"http://localhost:{PORT}/free", n=n), n
 
 
