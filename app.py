@@ -42,6 +42,22 @@ def agent_app(who):
     return ""
 
 
+def claude_in_chrome():
+    """The Claude extension is in one of this Mac's Chrome profiles (its folder is there; nothing in it is read)."""
+    import glob
+    return bool(glob.glob(os.path.expanduser(
+        "~/Library/Application Support/Google/Chrome/*/Extensions/fcoeoabgfenejglbffodgkkbkcdhcgfn")))
+
+
+def in_terminal(name, script):
+    """Runs a short script in a Terminal window the friend can watch and answer in."""
+    run = os.path.join(DIR, name)
+    with open(run, "w") as f:
+        f.write("#!/bin/zsh\n" + script)
+    os.chmod(run, 0o700)
+    subprocess.Popen(["open", "-a", "Terminal", run])
+
+
 # What Claude or Codex is asked to do: the friend's own assistant, in their own signed-in Chrome, with them watching.
 # It asks them once what it may do in their name, never pays or types a password, and only fetches audio.
 AGENT_BRIEF = """Please get the free downloads below for me, in my Chrome (I'm signed in there), one at a time.
@@ -654,7 +670,7 @@ def state():
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
         "have": have, "buy": buy, "watching": watching(),
-        "agents": [w for w in ("claude", "codex") if agent_app(w)],
+        "agents": [w for w in ("claude", "codex") if agent_app(w)], "claudeInChrome": claude_in_chrome(),
         "inboxWhy": {k: v.get("text", "") for k, v in freedl.load_json(DIR, freedl.WHY).items() if isinstance(v, dict)},
         "justGot": [k for k, t in _just_got.items() if time.time() - t < 600],
         "soulseekReady": soulseek_ready(), "soulseekUser": _slsk["user"],
@@ -799,6 +815,10 @@ class Handler(BaseHTTPRequestHandler):
                 os.remove(flag)
         elif self.path == "/api/agent":  # the Free links list, handed to Claude or Codex on this Mac
             who = str(body.get("who", ""))
+            if who == "install-claude":  # Anthropic's own installer, in a window they watch
+                in_terminal("claude-install.command", "curl -fsSL https://claude.ai/install.sh | bash && echo && "
+                            "echo 'Claude is installed. Go back to The Crate and press Next.'\n")
+                return self.send(200, state())
             app = agent_app(who)
             if not app:
                 return self.send(400, {"error": "That assistant isn't on this Mac."})
@@ -808,14 +828,11 @@ class Handler(BaseHTTPRequestHandler):
             if who == "claude":
                 # A Terminal window the friend watches and answers in: Claude with its Chrome connection, started
                 # in Downloads (where it renames the files), with the list as its first message.
-                brief, run = os.path.join(DIR, "agent-task.md"), os.path.join(DIR, "agent-run.command")
+                brief = os.path.join(DIR, "agent-task.md")
                 with open(brief, "w") as f:
                     f.write(task)
-                with open(run, "w") as f:
-                    f.write(f"#!/bin/zsh\ncd {shlex.quote(os.path.expanduser('~/Downloads'))} || exit 1\n"
+                in_terminal("agent-run.command", f"cd {shlex.quote(os.path.expanduser('~/Downloads'))} || exit 1\n"
                             f"exec {shlex.quote(app)} --chrome \"$(cat {shlex.quote(brief)})\"\n")
-                os.chmod(run, 0o700)
-                subprocess.Popen(["open", "-a", "Terminal", run])
                 msg = (f"Claude is opening in Terminal with your {n} free links. It asks you once what it may do "
                        "(follow, repost...), then works in Chrome. Files come in here by themselves.")
             else:

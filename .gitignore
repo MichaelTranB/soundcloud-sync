@@ -18,6 +18,7 @@ buttons.tsv
 buttons.tsv.tmp
 agent-task.md
 agent-run.command
+claude-install.command
 to-buy.tsv.tmp
 saved.json
 saved.json.tmp

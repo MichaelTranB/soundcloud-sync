@@ -58,6 +58,8 @@
   .setup { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; margin-bottom: 56px; }
   .field { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; }
   label { display: block; color: var(--text); font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+  /* A small icon in front of each card's title, in the app's lightened red. */
+  .ico { width: 18px; height: 18px; margin-right: 9px; vertical-align: -3px; fill: none; stroke: #ff6b7d; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .row { display: flex; gap: 10px; }
   input, select { flex: 1; min-width: 0; background: #09090e; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font: 15px inherit; font-family: inherit; }
   input:focus, select:focus, button:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
@@ -110,7 +112,8 @@
   #viewNote .key .near::before, #viewNote .key .far::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; background: currentColor; }
   #viewNote .near { color: #6cc4dc; } #viewNote .far { color: #f0a868; }
   #viewNote .got { color: var(--ok); font-weight: 600; }
-  #viewNote .agents { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  #viewNote .agents { margin-top: 6px; }
+  #viewNote .agents button { padding: 9px 16px; font-size: 14px; }
   h3 { font-size: 15px; font-weight: 600; color: var(--dim); margin: 28px 0 8px; display: flex; justify-content: space-between; align-items: center; }
   h3 em { font-size: 14px; color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
   .find { display: flex; align-items: center; gap: 10px; margin: 0 0 28px; }
@@ -146,6 +149,24 @@
   .step button, a.btn { padding: 10px 18px; font-size: 14px; }
   a.btn { display: inline-block; border-radius: 999px; background: var(--hot); color: #ffffff; font-weight: 700; text-decoration: none; white-space: nowrap; }
   .step:not(.next) a.btn, .step:not(.next) button { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  /* The Claude / Codex helper: a few numbered steps, the current one in red, each saying exactly what to press. */
+  #helper .lead { color: #c3c1d0; margin: 12px 0 6px; line-height: 1.55; }
+  #helper .pick { display: flex; gap: 6px; margin: 14px 0 6px; }
+  #helper .pick button { padding: 7px 16px; font-size: 14px; }
+  #helper .pick button[aria-pressed="true"] { background: #2a2a36; border-color: var(--dim); }
+  #helper .step { padding: 16px 0; }
+  #helper .lead + .step { border-top: 0; }
+  #helper .step .t small { line-height: 1.5; margin-top: 4px; }
+  #helper .step.next .t > b { color: var(--text); }
+  #helper .step:not(.next):not(.done) .t > b { color: #c3c1d0; font-weight: 600; }
+  #helper .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+  #helper .opt { border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+  #helper .opt .t { flex: 1 1 260px; }
+  #helper .opt small { display: block; color: var(--dim); font-size: 14.5px; margin-top: 2px; line-height: 1.5; }
+  #helper .opt button, #helper .opt a.btn { padding: 10px 18px; font-size: 14px; background: transparent; color: var(--text); border: 1px solid var(--line); }
+  #helper .ok { color: var(--ok); font-weight: 600; }
+  #helper .foot { color: var(--dim); font-size: 14px; line-height: 1.55; margin: 8px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
+  kbd { font: 600 13px var(--mono); color: var(--text); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; background: #1d1d27; white-space: nowrap; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   footer { color: var(--dim); font-size: 14px; margin-top: 56px; }
   .stat a.inl { color: var(--text); font-size: 14px; text-underline-offset: 3px; }
@@ -155,8 +176,8 @@
   #syncTime { flex: 0 1 140px; color-scheme: dark; }
   .acts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .ask b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--dim); font-size: 12px; margin-right: 6px; vertical-align: -1px; }
-  dialog#faq { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 18px; padding: 26px 30px 30px; width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; }
-  dialog#faq::backdrop { background: rgba(0, 0, 0, .65); }
+  dialog#faq, dialog#helper { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 18px; padding: 26px 30px 30px; width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; }
+  dialog#faq::backdrop, dialog#helper::backdrop { background: rgba(0, 0, 0, .65); }
   .faqTop { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .faqTop h2 { margin: 0; font-size: 24px; letter-spacing: -.02em; text-transform: none; color: var(--text); display: block; }
   .faqTop button { padding: 4px 13px; font-size: 20px; line-height: 1.2; }
@@ -219,6 +240,10 @@
     <h3>Do I keep it open?</h3>
     <p>No. Keep your Mac on at sync time and plug in your USB whenever.</p>
   </dialog>
+  <dialog id="helper" aria-labelledby="helperHead">
+    <div class="faqTop"><h2 id="helperHead">Let an assistant get them</h2><button class="ghost" id="helperClose" aria-label="Close">&times;</button></div>
+    <div id="helperBody"></div>
+  </dialog>
 
   <section class="start" id="start" aria-labelledby="startHead" hidden>
     <h2 id="startHead"><span>Get started <em id="startCount"></em></span><button class="ghost" id="startHide">Hide</button></h2>
@@ -235,7 +260,7 @@
 
   <section class="setup">
     <div class="field">
-      <label for="url">Your playlists</label>
+      <label for="url"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15V6"/><circle cx="18.5" cy="15.5" r="2.5"/><path d="M12 12H3M16 6H3M12 18H3"/></svg>Your playlists</label>
       <div class="row"><input id="url" placeholder="Paste a SoundCloud, Apple Music or Spotify playlist link" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="act" id="saveUrl">Add</button></div>
       <div class="note" id="urlNote">Saved playlists stay here. Tap one to sync it.</div>
       <div class="lists" id="saved"></div>
@@ -253,14 +278,14 @@
       </details>
     </div>
     <div class="field">
-      <label for="usb">USB drive</label>
+      <label for="usb"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="7" r="1"/><circle cx="4" cy="20" r="1"/><path d="M4.7 19.3 19 5M21 3l-3 1 2 2Z"/><path d="M9.26 7.68 5 12l2 5M10 14l5 2 3.5-3.5"/><path d="m18 12 1-1 1 1-1 1Z"/></svg>USB drive</label>
       <div class="row"><select id="usb"></select><button class="act" id="copy">Copy Now</button></div>
       <div class="usbprog" id="usbProg" hidden><span id="usbIcon"></span><progress id="usbBar" max="1" value="0"></progress><span id="usbPct"></span></div>
       <div class="note" id="usbNote" role="status" aria-live="polite"></div>
       <label class="note"><input type="checkbox" id="eject"> Eject the USB once a sync has put its new tracks on it, so you can just pull it out (never mid-sync)</label>
     </div>
     <div class="field">
-      <label for="slskUser">Soulseek</label>
+      <label for="slskUser"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/></svg>Soulseek</label>
       <div id="slskOk" hidden><span class="dot ok"></span>Signed in as <b id="slskName"></b>
         <button class="ghost" id="slskChange" style="margin-left:10px;padding:7px 14px;font-size:14px">Change</button>
         <div class="note">Every sync looks here for what SoundCloud won't give.</div></div>
@@ -272,7 +297,7 @@
       </div>
     </div>
     <div class="field">
-      <label for="syncTime">Auto sync</label>
+      <label for="syncTime"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Auto sync</label>
       <div class="row"><span class="every">Every day at</span><input id="syncTime" type="time" step="300" required><button class="act" id="saveTime">Save</button></div>
       <div class="note" id="timeNote">Keep your Mac on and plugged in at this time. If it's asleep, it syncs when it wakes.</div>
     </div>
@@ -349,7 +374,7 @@ function render(s) {
       : 'Apple Music showed only part of this playlist. The next sync reads it again.')
     : s.unread ? `Plus ${s.unread} song${s.unread > 1 ? 's' : ''} SoundCloud wouldn't show us yet (it slows down anyone who asks too fast). The next sync asks again.` : '';
   $('nBuy').textContent = s.buy.length;
-  paintSetup(s); last = s; draw(); paintStart(s);
+  paintSetup(s); last = s; draw(); paintStart(s); paintHelper();
 }
 
 // The Get started list: each step a friend needs once, ticked from what the app can see, with a button that opens
@@ -413,6 +438,86 @@ $('startHide').onclick = () => setHidden(true);
 $('faqOpen').onclick = () => $('faq').showModal();
 $('faqClose').onclick = () => $('faq').close();
 $('faq').onclick = e => { if (e.target === $('faq')) $('faq').close(); };  // a click on the dark backdrop closes it
+// Claude or Codex, step by step: it opens each free link in the friend's own Chrome and downloads the song, and The
+// Crate picks the files up from Downloads as usual. Steps tick from what the app can see; each says what to press.
+const AGENT = { claude: 'Claude', codex: 'Codex' };
+const CLAUDE_EXT = 'https://chromewebstore.google.com/detail/fcoeoabgfenejglbffodgkkbkcdhcgfn';
+const CODEX_APP = 'https://developers.openai.com/codex/app';
+const CODEX_CHROME = 'https://developers.openai.com/codex/app/chrome-extension';
+let helperWho = '', helperDone = {}, helperMsg = '', helperKey = '';
+function openHelper() { helperMsg = ''; paintHelper(true); $('helper').showModal(); }
+$('helperClose').onclick = () => $('helper').close();
+$('helper').onclick = e => { if (e.target === $('helper')) $('helper').close(); };
+const kbd = t => el('kbd', { textContent: t });
+const ext = (text, href) => el('a', { className: 'btn', href, target: '_blank', rel: 'noopener', textContent: text });
+function helperAct(btn, who, then) {
+  btn.disabled = true; helperMsg = '';
+  call('/api/agent', { who }).then(() => { then(); paintHelper(); })
+    .catch(e => { btn.disabled = false; helperMsg = e.message; paintHelper(); });
+}
+// Repainted only when something it shows changes, so the 3-second refresh never moves the keyboard focus.
+function paintHelper(force) {
+  const s = last; if (!s || !(force || $('helper').open)) return;
+  const agents = s.agents || [], n = s.buy.filter(t => !live(t) && !waiting(t) && t.free).length;
+  const who = agents.includes(helperWho) ? helperWho : agents[0] || '';
+  const key = JSON.stringify([agents, s.claudeInChrome, n, who, helperDone, helperMsg]);
+  if (key === helperKey && !force) return;
+  helperKey = key;
+  const songs = n + ' song' + (n === 1 ? '' : 's'), b = t => el('b', { textContent: t });
+  const err = helperMsg ? [el('p', { className: 'note bad', textContent: helperMsg })] : [];
+  if (!who) {  // neither on this Mac yet: the two ways to get one
+    $('helperHead').textContent = 'Let an assistant get them';
+    $('helperBody').replaceChildren(
+      el('p', { className: 'lead', textContent: 'Claude or Codex can open each free link in your Chrome and download the song for you. You need just one of them:' }),
+      el('div', { className: 'opt' }, el('div', { className: 't' }, b('Claude'), el('small', { textContent: helperDone.installing
+          ? 'Installing in the Terminal window that just opened (about a minute). This box moves on by itself when it\'s done.'
+          : 'Needs a paid Claude plan (Pro or Max). One click installs it in a Terminal window.' })),
+        ...(helperDone.installing ? [] : [el('button', { textContent: 'Install Claude',
+          onclick: e => helperAct(e.target, 'install-claude', () => { helperDone.installing = true; }) })])),
+      el('div', { className: 'opt' }, el('div', { className: 't' }, b('Codex'), el('small', { textContent:
+          'From OpenAI, with your ChatGPT account. Download the app, open it and sign in, then come back here.' })),
+        ext('Get Codex ↗', CODEX_APP)), ...err);
+    return;
+  }
+  const claude = who === 'claude';
+  const answer = { title: 'Answer its one question', how: ['It asks what it may do on the download pages. Type an answer, like ',
+    el('i', { textContent: 'Follow and like are fine, no reposts' }), ', and press ', kbd('Return'), '.'] };
+  const list = claude ? [
+    { title: 'Add Claude to Chrome', done: s.claudeInChrome, acts: [ext('Open the Chrome store ↗', CLAUDE_EXT)],
+      how: ['In Chrome, press ', b('Add to Chrome'), ', then sign in to Claude in the panel it opens. Come back here after.'] },
+    { title: 'Start Claude', done: helperDone.claude,
+      acts: [el('button', { textContent: 'Open Claude', onclick: e => helperAct(e.target, 'claude', () => { helperDone.claude = true; }) })],
+      how: [`A Terminal window opens with your ${songs} already filled in. Nothing to copy or paste.`] },
+    { title: 'First time only: sign in', how: ['In that Terminal window, press ', kbd('Return'), ' to accept each suggestion. When it asks how to sign in, pick ',
+      b('Claude account'), ' and finish in the browser. When it asks whether to trust the folder, press ', kbd('Return'), '.'] },
+    answer
+  ] : [
+    { title: 'Turn on Codex in Chrome', done: helperDone.codexChrome,
+      acts: [ext('Show me how ↗', CODEX_CHROME), el('button', { className: 'ghost', textContent: 'Done',
+        onclick: () => { helperDone.codexChrome = true; paintHelper(); } })],
+      how: ['One time only: add Codex\'s Chrome extension from the Codex app. The page shows where. Press ', b('Done'), ' when it\'s on.'] },
+    { title: 'Copy your list', done: helperDone.codex,
+      acts: [el('button', { textContent: 'Copy and open Codex', onclick: e => helperAct(e.target, 'codex', () => { helperDone.codex = true; }) })],
+      how: [`Copies the request for your ${songs} and opens Codex.`] },
+    { title: 'Paste it into Codex', how: [...(helperDone.codex ? [b('Your list is copied. ')] : []), 'Start a new chat in Codex, press ',
+      kbd('⌘'), ' ', kbd('V'), ' to paste, then ', kbd('Return'), '.'] },
+    answer
+  ];
+  const next = list.findIndex(x => !x.done);
+  const pick = agents.length > 1 ? [el('div', { className: 'pick' }, ...agents.map(w => {
+    const p = el('button', { className: 'ghost', textContent: AGENT[w], onclick: () => { helperWho = w; paintHelper(); } });
+    p.setAttribute('aria-pressed', w === who); return p; }))] : [];
+  $('helperHead').textContent = 'Get them with ' + AGENT[who];
+  $('helperBody').replaceChildren(...pick,
+    el('p', { className: 'lead', textContent: `${AGENT[who]} opens each free link in your Chrome, does what the page asks and downloads the song. ${list.length} steps:` }),
+    ...list.map((x, i) => el('div', { className: 'step' + (x.done ? ' done' : '') + (i === next ? ' next' : '') },
+      el('span', { className: 'tick', ariaHidden: 'true', textContent: x.done ? '✓' : i + 1 }),
+      el('div', { className: 't' }, el('b', { textContent: x.title }), el('span', { className: 'sr', textContent: x.done ? ' (done)' : '' }),
+        ...(x.done ? [] : [el('small', {}, ...x.how)])),
+      ...(x.done || !x.acts ? [] : [el('div', { className: 'acts' }, ...x.acts)]))),
+    ...err,
+    el('p', { className: 'foot', textContent: `Keep Chrome open while it works: each song lands in your music here by itself. To stop it, close the ${claude ? 'Terminal window' : 'Codex chat'}. It never pays, types a password or installs anything.` }));
+}
 $('startShow').onclick = () => { setHidden(false); $('start').scrollIntoView({ behavior: 'smooth' }); };
 
 // Search: every word typed must be in the track's name (both lists).
@@ -507,13 +612,10 @@ function draw() {
       step('1', 'Tap Free Download and do what the page asks (often a follow).'),
       step('2', 'Leave the file in Downloads.'),
       step('3', 'The Crate checks it, moves it into your music and ticks it off here. Nothing to tidy up.'),
-      // Claude or Codex on this Mac: one click hands them the whole list, to do in the friend's own Chrome.
-      ...((s.agents || []).length && freeAll.length ? [el('div', { className: 'agents' }, ...s.agents.map(w => {
-        const b = el('button', { textContent: 'Get them all with ' + (w === 'claude' ? 'Claude' : 'Codex') });
-        b.onclick = () => call('/api/agent', { who: w }).then(j => { agentMsg = j.agentMsg || ''; draw(); })
-          .catch(err => { agentMsg = err.message; draw(); });
-        return b; }))] : []),
-      ...(agentMsg ? [line('', agentMsg)] : [])]));
+      // Claude or Codex can do the clicking: the button opens a short guide, set up for what this Mac has.
+      ...(freeAll.length ? [el('div', { className: 'agents' }, el('button', { className: 'ghost',
+        textContent: '✨ Get them all with ' + ((s.agents || []).length === 1 ? AGENT[s.agents[0]] : 'Claude or Codex'),
+        onclick: openHelper }))] : [])]));
   const missRow = t => { const [k, txt] = why(t, s); return el('li', { className: 'shop' },
     nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : '') }, ...(k === 'wait' ? [el('span', { className: 'spin' })] : []), txt),
     ...shopLinks(t)); };
@@ -533,7 +635,6 @@ const MISS_NOTE = { all: 'Mostly remixes and flips that only live on SoundCloud.
   near: 'Someone shares it, but they were offline or busy: tried again next sync.',
   far: 'No top-quality copy on Soulseek: buy it or ask the artist.' };
 const missBy = (l, k) => k === 'all' ? l : l.filter(t => (/^On Soulseek/.test(t.why) ? 'near' : 'far') === k);
-let agentMsg = '';  // what the Claude / Codex button just did
 let missView = 'all';
 try { missView = localStorage.getItem('crateMiss') || 'all'; } catch (e) {}
 if (!MISS.some(([k]) => k === missView)) missView = 'all';
