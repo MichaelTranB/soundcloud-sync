@@ -115,7 +115,13 @@ Then for each song on that page, top to bottom:
    to the list page and wait a few seconds before the next song, so none of my accounts looks like a bot.
 Reload the list page whenever you like: songs that have arrived drop off it. At the end, close every tab you opened.
 
-Never: pay or enter card details, type a password (if a site needs a sign-in, ask me to do it and wait), download
+Keep going until every song is done or skipped: don't stop in the middle to wait for me. If a song needs me (a
+sign-in, a code sent to my phone, a "prove you're human" check), leave its tab open, tell me in one line which tab
+and what to do there, and carry on with the next song. Every few songs, look at those tabs again: once I've done my
+part, finish that song. When only those are left, keep checking them now and then for up to 30 minutes before you
+give me your final list.
+
+Never: pay or enter card details, type a password or a sign-in code (that's mine to do, as above), download
 or open an app or installer (.dmg, .pkg, .exe, .app), or join a paid membership (skip a Patreon post that's members
 only). Don't touch anything else in The Crate. If you can't reach my Chrome yet, it may still be starting: wait 15 seconds
 and try again, up to 4 times, before you tell me and stop. Use my own Google Chrome, not a built-in browser.
@@ -897,8 +903,14 @@ class Handler(BaseHTTPRequestHandler):
                 with open(brief, "w") as f:
                     f.write(task)
                 wait = "echo 'Waiting a moment for Chrome to start...'; sleep 12\n" if open_chrome() else ""
+                # A check that runs each time Claude goes to stop: while free links are left, it's sent back to
+                # the list once (agent_stop.py), so a sign-in or a question mid-list doesn't end the run.
+                hook = f"{shlex.quote(sys.executable)} {shlex.quote(os.path.join(DIR, 'agent_stop.py'))}"
+                with open(os.path.join(DIR, "agent-settings.json"), "w") as f:
+                    json.dump({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": hook}]}]}}, f)
                 in_terminal("agent-run.command", f"cd {shlex.quote(os.path.expanduser('~/Downloads'))} || exit 1\n"
-                            f"{wait}exec {shlex.quote(app)} --chrome \"$(cat {shlex.quote(brief)})\"\n")
+                            f"{wait}exec {shlex.quote(app)} --chrome --settings "
+                            f"{shlex.quote(os.path.join(DIR, 'agent-settings.json'))} \"$(cat {shlex.quote(brief)})\"\n")
                 msg = (f"Claude is opening in Terminal with your {n} free links. It asks you once what it may do "
                        "(follow, repost...), then works in Chrome. Files come in here by themselves.")
             else:

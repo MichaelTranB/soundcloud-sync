@@ -102,6 +102,18 @@ def has(hay, needle):
     return n > 0 and any(hay[i:i + n] == needle for i in range(len(hay) - n + 1))
 
 
+# Words that say nothing about which song a file is ("Edit", "Final"...), left out of hint()
+GENERIC = {"remix", "edit", "flip", "bootleg", "mix", "extended", "original", "version", "free", "download", "official",
+           "audio", "feat", "with", "master", "mastered", "final", "intro", "clean", "dirty", "radio", "club", "dub"}
+
+
+def hint(name, texts):
+    """True when a file's name shares a telling word (4+ letters) with the song: "Everybody (Zach Knows Edit)" for
+    "Zach Knows - Everybody - Kanye West, TY Dolla $ign (Zach Knows Edit)". Only used together with a click."""
+    w = {x for x in words(name) if len(x) >= 4 and x not in GENERIC}
+    return any(w & set(t) for t in texts)
+
+
 def wanted(name):
     """What a downloaded file's name must show to be this song: (title words, full title words with the
     version, [artist or uploader words])."""
@@ -180,7 +192,9 @@ def inbox_(d, out, folder, days):
     or DJ intro cut; a SoundCloud preview's length is not used). Top quality only, through the safety check. A zip
     is opened, and goes to the Trash once nothing else on the list is in it.
     Right after a Free Download click (claim()), a file that lands in Downloads counts as that track whatever its
-    name, when its length is within 2 s of SoundCloud's. Why a file wasn't kept goes to .inbox-why.json for the
+    name, when its length is within 2 s of SoundCloud's; when its name also shares a telling word with the song, it's
+    trusted like a named file (an extended cut is fine). Just clicked and named with the full title and version, a
+    shorter cut is taken too (the artist's own free version; at least 90 s, never a clip). Why a file wasn't kept goes to .inbox-why.json for the
     page."""
     try:
         with open(os.path.join(d, "to-buy.tsv")) as f:
@@ -234,8 +248,12 @@ def inbox_(d, out, folder, days):
         # Just clicked: a single file (not a zip) that came in after the click, if SoundCloud gave a length to check.
         named = {r[1] for r in cands}
         whole = {r[1] for r in cands if fits(r, True)}  # the full title with its version: a longer cut is fine
+        hinted = set()
         if not p.lower().endswith(".zip"):
             cands += [r for r in rows if r[1] in clicked and r[3] and r[1] not in named and mtime >= clicked[r[1]] - 5]
+            # Just clicked and the name points at the song too (a short name like "Everybody (Zach Knows Edit)"):
+            # trusted like a named file, so an extended cut is taken.
+            hinted = {r[1] for r in cands if r[1] not in named and hint(r[0], texts)}
         # Looked at once for these tracks; looked at again if the file changes or other tracks match it
         # (another song from a kept album zip added to the playlist).
         key = f"{p}\t{size}\t{' '.join(sorted(r[1] for r in cands))}"
@@ -252,7 +270,12 @@ def inbox_(d, out, folder, days):
                 # with its full title and version: within 5 s, or longer (an extended or DJ intro cut of the same
                 # song, up to 4 minutes more); never shorter (a preview or radio edit).
                 off = i["secs"] - float(secs) if i and secs else 0
-                fits_len = abs(off) <= (5 if link in named else 2) or (link in whole and 0 < off <= 240)
+                sure = link in named or link in hinted
+                fits_len = abs(off) <= (5 if sure else 2) or ((link in whole or link in hinted) and 0 < off <= 240)
+                # From the song's own gate (just clicked) and named with its full title and version: the artist's own
+                # free cut, even when SoundCloud's upload is longer (a mashup or an extended upload). Not a clip.
+                fits_len = fits_len or bool(i and link in whole and link in clicked and mtime >= clicked[link] - 5
+                                            and i["secs"] >= 90)
                 if not path:
                     if i and (link in named or fits_len):
                         print(f"in Downloads but only {i['kbps']} kbps, not kept: {os.path.basename(p)}")
@@ -264,6 +287,9 @@ def inbox_(d, out, folder, days):
                     if link in named:  # the name says it's this song, the length says another (shorter) version
                         why[link] = (f"{os.path.basename(p)} is {mmss(i['secs'])} long, not {mmss(float(secs))}: "
                                      "another version of the song, so it wasn't kept.")
+                    elif i and len(cands) == 1:  # came in just after the click, but its length is another song's
+                        why.setdefault(link, f"{os.path.basename(p)} came in after the click but is {mmss(i['secs'])} "
+                                             f"long, not {mmss(float(secs))}, so it wasn't taken as this song.")
                     continue  # another version of the song (or, just after a click, another file)
                 staged = os.path.join(tmpdir, f"track.{i['ext']}")
                 os.replace(path, staged)
