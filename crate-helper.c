@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 extern char **environ;
 static pid_t child = 0;
@@ -43,7 +44,11 @@ int main(int argc, char **argv) {
     char *args[3] = {0};
     if (strcmp(argv[1], "app") == 0) {
         snprintf(target, sizeof target, "%s/app.py", dir);
-        args[0] = "/opt/homebrew/bin/python3";
+        // Homebrew's Python (Apple chip, then Intel), else the one Apple's command line tools put in.
+        const char *py[] = {"/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"};
+        args[0] = (char *)py[2];
+        for (int i = 0; i < 3; i++)
+            if (access(py[i], X_OK) == 0) { args[0] = (char *)py[i]; break; }
         args[1] = target;
     } else if (strcmp(argv[1], "sync") == 0 || strcmp(argv[1], "usb") == 0) {
         snprintf(target, sizeof target, "%s/%s.sh", dir, argv[1]);

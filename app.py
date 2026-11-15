@@ -18,7 +18,8 @@ PLAYLIST_RE = re.compile(r"^https://(on\.|m\.|www\.)?soundcloud\.com/\S+$")
 PROFILE_RE = re.compile(r"^(?:https?://(?:www\.|m\.)?soundcloud\.com/)?([A-Za-z0-9_-]{1,60})/?$")
 # "none" lists public playlists only; the others borrow the SoundCloud session of that browser.
 BROWSERS = ("chrome", "safari", "brave", "firefox", "edge", "none")
-YTDLP = shutil.which("yt-dlp") or "/opt/homebrew/bin/yt-dlp"
+YTDLP = next((p for p in (shutil.which("yt-dlp"), os.path.expanduser("~/.local/bin/yt-dlp"), "/opt/homebrew/bin/yt-dlp",
+                          "/usr/local/bin/yt-dlp") if p and os.access(p, os.X_OK)), "yt-dlp")
 _slsk = {"at": 0.0, "ok": False}
 _lists = threading.Lock()  # one change to saved.json / playlist.txt at a time (the server is threaded)
 

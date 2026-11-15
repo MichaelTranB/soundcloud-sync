@@ -2,7 +2,7 @@
 # Syncs a SoundCloud playlist to the Mac: downloads the ORIGINAL file (WAV/FLAC/AIFF/MP3 as uploaded)
 # for every track whose artist switched downloads on, and lists the rest in "To Buy.txt".
 # It never records the stream: Go+ covers streaming, not keeping files.
-export PATH="/opt/homebrew/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 DIR="${0:A:h}"
 OUT="$HOME/Music/SoundCloud Sync"
 URL="${1:-$(cat "$DIR/playlist.txt" 2>/dev/null)}"

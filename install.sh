@@ -30,7 +30,7 @@ if [ ! -x "$HELPER" ] || [ "$(cat "$DIR/.crate-helper.sha" 2>/dev/null)" != "$SR
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>com.michael.crate-helper</string>
+<key>CFBundleIdentifier</key><string>com.thecrate.helper</string>
 <key>CFBundleName</key><string>Crate Helper</string>
 <key>CFBundleExecutable</key><string>crate-helper</string>
 <key>CFBundlePackageType</key><string>APPL</string>
@@ -39,7 +39,7 @@ if [ ! -x "$HELPER" ] || [ "$(cat "$DIR/.crate-helper.sha" 2>/dev/null)" != "$SR
 </dict></plist>
 EOF
   if clang -O2 -Wall -o "$HELPER" "$DIR/crate-helper.c" &&
-     codesign --force --sign - --identifier com.michael.crate-helper "$APPDIR"; then
+     codesign --force --sign - --identifier com.thecrate.helper "$APPDIR"; then
     echo "$SRC_SHA" > "$DIR/.crate-helper.sha"
     echo "Crate Helper built. Turn it on once: System Settings > Privacy & Security > Full Disk Access."
   else
@@ -49,6 +49,12 @@ EOF
 fi
 # The program a job runs: through the helper when it's there, else directly.
 run() { if [ -x "$HELPER" ]; then echo "<string>$HELPER</string><string>$1</string>"; else echo "$2"; fi; }
+
+# Jobs from before the rename: stop and remove them so nothing runs twice.
+for old in com.michael.soundcloud-sync.app com.michael.soundcloud-sync com.michael.soundcloud-sync.usb; do
+  launchctl bootout "gui/$(id -u)/$old" 2>/dev/null; rm -f "$AGENTS/$old.plist"
+done
+PY="$(for p in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do [ -x "$p" ] && echo "$p" && break; done)"
 
 job() { # label, body
   local p="$AGENTS/$1.plist"
@@ -66,10 +72,10 @@ EOF
   launchctl bootstrap "gui/$(id -u)" "$p"
 }
 
-job com.michael.soundcloud-sync.app "<key>ProgramArguments</key><array>$(run app "<string>/opt/homebrew/bin/python3</string><string>$DIR/app.py</string>")</array>
+job com.thecrate.app "<key>ProgramArguments</key><array>$(run app "<string>$PY</string><string>$DIR/app.py</string>")</array>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>"
-job com.michael.soundcloud-sync "<key>ProgramArguments</key><array>$(run sync "<string>$DIR/sync.sh</string>")</array>
+job com.thecrate.sync "<key>ProgramArguments</key><array>$(run sync "<string>$DIR/sync.sh</string>")</array>
 <key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>10</integer></dict>"
-job com.michael.soundcloud-sync.usb "<key>ProgramArguments</key><array>$(run usb "<string>$DIR/usb.sh</string>")</array>
+job com.thecrate.usb "<key>ProgramArguments</key><array>$(run usb "<string>$DIR/usb.sh</string>")</array>
 <key>StartOnMount</key><true/>"
 echo "Open http://localhost:4780"

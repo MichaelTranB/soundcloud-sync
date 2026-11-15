@@ -3,7 +3,7 @@
 # with sockseek; only lossless or 320 kbps MP3 is taken, and it lands in "From Soulseek" inside the music folder.
 # sockseek only downloads; it shares nothing. When the artist's own file arrives later, the Soulseek copy on
 # the Mac is removed (usb.sh never deletes, so the USB keeps what it already has).
-export PATH="/opt/homebrew/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 DIR="${0:A:h}"
 SLSK="${SLSK:-$HOME/Music/SoundCloud Sync/From Soulseek}"   # overridable for tests
 SOCKSEEK="${SOCKSEEK:-$HOME/.local/bin/sockseek}"
