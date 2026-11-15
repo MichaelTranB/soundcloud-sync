@@ -99,8 +99,9 @@
   .step .t { flex: 1 1 300px; min-width: 0; }
   .step .t small { display: block; color: var(--dim); font-size: 13px; margin-top: 2px; }
   .step.done .t b { color: var(--dim); font-weight: 600; }
-  .step button { padding: 9px 18px; font-size: 13px; }
-  .step:not(.next) button { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .step button, a.btn { padding: 9px 18px; font-size: 13px; }
+  a.btn { display: inline-block; border-radius: 999px; background: var(--hot); color: #ffffff; font-weight: 700; text-decoration: none; white-space: nowrap; }
+  .step:not(.next) a.btn, .step:not(.next) button { background: transparent; color: var(--text); border: 1px solid var(--line); }
   .help { color: var(--dim); font-size: 13px; padding: 12px 0; border-top: 1px solid var(--line); }
   .help button, .linkish { background: none; border: 0; padding: 0; color: var(--text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; font-size: inherit; border-radius: 0; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -259,12 +260,24 @@ function el(tag, props = {}, ...kids) {
   return e;
 }
 const search = (site, q) => site + encodeURIComponent(q);
+// A plain "Sign in to SoundCloud" link. It opens in this browser when this is the browser The Crate borrows the
+// sign-in from; otherwise The Crate opens the page in that browser instead (signing in here wouldn't help).
+const SIGNIN = 'https://soundcloud.com/signin';
+function thisBrowser() {
+  const u = navigator.userAgent;
+  return navigator.brave ? 'brave' : /Edg\//.test(u) ? 'edge' : /Firefox\//.test(u) ? 'firefox'
+    : /Chrome\//.test(u) ? 'chrome' : /Safari\//.test(u) ? 'safari' : '';
+}
+function scLink(text, cls) {
+  return el('a', { className: cls || '', href: SIGNIN, target: '_blank', rel: 'noopener', textContent: text,
+    onclick: e => { if (thisBrowser() !== last.browser) { e.preventDefault(); openStep('soundcloud'); } } });
+}
 
 function render(s) {
   $('alert').hidden = !s.problem;
   // A sign-in problem gets its fix right there: one button that opens SoundCloud's sign-in in that browser.
   if ($('alert').dataset.p !== s.problem) $('alert').dataset.p = s.problem, $('alert').replaceChildren(s.problem, ...(/signed in to SoundCloud|sign-in in .* has run out/.test(s.problem)
-    ? [' ', el('button', { className: 'fix', textContent: 'Sign in to SoundCloud', onclick: () => call('/api/open', { what: 'soundcloud' }) })] : []));
+    ? [' ', scLink('Sign in to SoundCloud ↗', 'btn fix')] : []));
   $('nHave').textContent = s.have.length; $('cHave').textContent = s.have.length || '';
   $('unread').hidden = !s.unread && !s.capped;
   $('unread').textContent = s.capped ? (s.service === 'spotify'
@@ -293,7 +306,7 @@ function steps(s) {
       btn: s.signIn === 'missing' ? 'Pick the browser' : 'Open the setting', go: s.signIn === 'missing' ? to('browser') : () => openStep('fda') },
     signin && { done: s.scLogin === 'ok', title: `Sign in to SoundCloud in ${bn}`,
       how: 'Artists who allow downloads give their original file (WAV, FLAC) to signed-in people only. Sign in as usual; this ticks after the next sync.',
-      btn: 'Open SoundCloud', go: () => openStep('soundcloud') },
+      btn: 'Sign in to SoundCloud', link: true },
     { done: s.soulseekReady && !s.soulseekBad, title: 'Sign in to Soulseek (recommended)',
       how: 'Finds the tracks SoundCloud, Spotify and Apple Music won\'t give you. Free: make up a new name and a password you use nowhere else, in the Soulseek box below.',
       btn: 'Go to Soulseek', go: to('slskUser') },
@@ -319,7 +332,7 @@ function paintStart(s) {
   startKey = key;
   const next = all.findIndex(x => !x.done);
   $('steps').replaceChildren(...all.map((x, i) => {
-    const b = !x.done && x.btn ? [el('button', { textContent: x.btn, onclick: x.go })] : [];
+    const b = !x.done && x.btn ? [x.link ? scLink(x.btn + ' ↗', 'btn') : el('button', { textContent: x.btn, onclick: x.go })] : [];
     return el('div', { className: 'step' + (x.done ? ' done' : '') + (i === next ? ' next' : '') },
       el('span', { className: 'tick', ariaHidden: 'true', textContent: x.done ? '✓' : i + 1 }),
       el('div', { className: 't' }, el('b', { textContent: x.title }), el('span', { className: 'sr', textContent: x.done ? ' (done)' : '' }),
