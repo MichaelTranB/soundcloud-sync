@@ -13,7 +13,10 @@ mkdir -p "$OUT"
 
 # Keep the downloader current by itself (SoundCloud changes often): at most once a week.
 if [ -z "$(find "$DIR/.updated" -mtime -7 2>/dev/null)" ]; then
-  brew upgrade yt-dlp >>"$DIR/update.log" 2>&1; touch "$DIR/.updated"
+  { if command -v uv >/dev/null && uv tool list 2>/dev/null | grep -q '^yt-dlp '; then uv tool upgrade yt-dlp
+    elif command -v brew >/dev/null && brew list yt-dlp >/dev/null 2>&1; then brew upgrade yt-dlp
+    else yt-dlp -U; fi; } >>"$DIR/update.log" 2>&1  # however it was installed (install.sh's own copy: -U)
+  touch "$DIR/.updated"
 fi
 # The virus scanner's list of known viruses: fresh every day (ClamAV's servers limit how often).
 if command -v freshclam >/dev/null && [ -z "$(find "$DIR/.virusdb" -mmin -1200 2>/dev/null)" ]; then
@@ -53,6 +56,8 @@ yt-dlp "${AUTH[@]}" --download-archive "$DIR/archive.txt" --skip-download --igno
   python3 "$DIR/tobuy.py" "$DIR/archive.txt" "$DIR/to-buy.tsv"
 # The artist's own free download, when the description links straight to a file (Dropbox, Drive...): top quality only.
 python3 "$DIR/freedl.py" "$DIR" "$OUT" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/free.log"
+# Tracks bought or unlocked by hand (Beatport, Hypeddit, Laylo...) waiting in Downloads.
+python3 "$DIR/freedl.py" inbox "$DIR" "$OUT" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/free.log"
 awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" > "$OUT/To Buy.txt"
 
 echo "$(date '+%F %R')  have: $(wc -l < "$DIR/archive.txt" | tr -d ' ')  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d ' ')" | tee -a "$DIR/history.log"

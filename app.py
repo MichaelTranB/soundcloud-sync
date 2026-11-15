@@ -5,7 +5,7 @@ Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so an
 in the browser cannot press the buttons.
 """
 import json, os, re, shutil, subprocess, threading, time, urllib.parse
-import audio, safety
+import audio, freedl, safety
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -72,8 +72,43 @@ def sign_in_status(b):
         return "missing"
 
 
+SLSK_SERVICE = "soundcloud-sync-soulseek"  # the Keychain item soulseek.sh reads
+SOCKSEEK = os.path.expanduser("~/.local/bin/sockseek")
+
+
+def soulseek_login(user, pw):
+    """Checks a Soulseek name and password with one test search, then saves them in the Keychain.
+    Soulseek makes the account the first time a new name signs in. '' when saved, else the reason in plain words."""
+    if not user or not pw:
+        return "Type a Soulseek name and a password."
+    if len(user) > 30 or len(pw) > 64 or any(c in user + pw for c in '"\\\n\r\t'):
+        return "Use a name up to 30 characters and a password up to 64, without quotes or backslashes."
+    if not os.access(SOCKSEEK, os.X_OK):
+        return "The Soulseek downloader isn't installed yet: run the installer again."
+    try:  # sockseek takes the sign-in only as arguments; this Mac's own user is the only one who could see them
+        r = subprocess.run([SOCKSEEK, "Daft Punk - Around the World", "-s", "--print", "results", "--no-config",
+                            "--no-progress", "--user", user, "--pass", pw], capture_output=True, text=True, timeout=90)
+        out = r.stdout + r.stderr
+    except subprocess.TimeoutExpired:
+        return "Soulseek didn't answer in time. Check the internet and try again."
+    if re.search(r"invalid ?pass|login failed|logged out|unauthor", out, re.I):
+        return "Soulseek said no: that name is taken with a different password. Try another name."
+    if re.search(r"error|exception", out, re.I):
+        return "Couldn't reach Soulseek right now. Try again in a minute."
+    while subprocess.run(["security", "delete-generic-password", "-s", SLSK_SERVICE],
+                         capture_output=True).returncode == 0:
+        pass
+    # `security -i` reads the command from stdin, so the password never shows in a process list.
+    r = subprocess.run(["security", "-i"], input=f'add-generic-password -U -s {SLSK_SERVICE} -a "{user}" '
+                       f'-T /usr/bin/security -w "{pw}"\n', capture_output=True, text=True)
+    if r.returncode or r.stderr.strip():
+        return "The Mac's Keychain wouldn't save it. Try again."
+    _slsk["at"] = 0.0
+    return ""
+
+
 def soulseek_ready():
-    """True once soulseek-login.sh saved a Soulseek sign-in (reads only the item's name, never the password)."""
+    """True once a Soulseek sign-in is saved (reads only the item's name, never the password)."""
     if time.time() - _slsk["at"] > 60:
         try:
             r = subprocess.run(["security", "find-generic-password", "-s", "soundcloud-sync-soulseek"],
@@ -291,6 +326,10 @@ class Handler(BaseHTTPRequestHandler):
             err = connect(m.group(1), browser)
             if err:
                 return self.send(400, {"error": err})
+        elif self.path == "/api/soulseek":
+            err = soulseek_login(str(body.get("user", "")).strip(), str(body.get("pass", "")))
+            if err:
+                return self.send(400, {"error": err})
         elif self.path == "/api/browser":
             b = str(body.get("browser", ""))
             if b not in BROWSERS:
@@ -329,5 +368,25 @@ class Handler(BaseHTTPRequestHandler):
         self.send(200, state())
 
 
+def watch_downloads():
+    """Every minute: still-to-get tracks bought or unlocked by hand land in Downloads; take them (freedl.inbox),
+    then copy anything new to the USB when it's plugged in."""
+    while True:
+        time.sleep(60)
+        if os.path.exists(os.path.join(DIR, ".running")):
+            continue  # a sync is running; it does the same at its end
+        try:
+            got = freedl.inbox(DIR, OUT)
+        except Exception as e:  # never stop the page; the error goes to free.log
+            got = []
+            with open(os.path.join(DIR, "free.log"), "a") as f:
+                f.write(f"{time.strftime('%F %R')}  Downloads pickup FAILED: {e!r}\n")
+        if got:
+            with open(os.path.join(DIR, "free.log"), "a") as f:
+                f.writelines(f"{time.strftime('%F %R')}  from Downloads: {os.path.basename(g[2])}\n" for g in got)
+            subprocess.Popen([os.path.join(DIR, "usb.sh")])
+
+
 if __name__ == "__main__":
+    threading.Thread(target=watch_downloads, daemon=True).start()
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

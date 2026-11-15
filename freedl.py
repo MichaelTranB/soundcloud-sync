@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fetches the artist's own free download when their SoundCloud description links straight to a file host.
 
+  freedl.py inbox DIR OUT   takes still-to-get tracks you downloaded by hand out of ~/Downloads (see inbox())
   freedl.py DIR OUT   reads DIR/to-buy.tsv, downloads what it can into OUT, records it in DIR/free.tsv
                       (link, name, file) and takes it off DIR/to-buy.tsv
 
@@ -9,7 +10,7 @@ Download gates (Hypeddit, ToneDen and the like), Bandcamp and hosts that need a 
 Mediafire) stay one click on the page. Only top quality is kept: lossless, or MP3/AAC at 320 kbps. A zip is
 opened and only its audio is taken. A link that gave a non-audio or low-quality file is not tried again.
 """
-import os, re, sys, tempfile, urllib.parse, urllib.request, zipfile
+import os, re, shutil, stat, sys, tempfile, time, urllib.parse, urllib.request, zipfile
 from audio import info, top_quality
 
 MAX = 2_000_000_000  # bytes; nothing an artist gives away is bigger
@@ -78,6 +79,113 @@ def best_audio(tmp, title):
     return path, i
 
 
+def song_key(name):
+    """The song's own title, squeezed: "Label - Artist - Song (Extended Mix)" -> "song"."""
+    title = name.partition(" - ")[2] or name
+    return norm(re.sub(r"[(\[][^)\]]*[)\]]", "", title.rsplit(" - ", 1)[-1])), norm(title.rsplit(" - ", 1)[-1])
+
+
+def file_name(out, name, ext, tag):
+    safe = re.sub(r'[/:\x00-\x1f]', "-", name).strip(". ")[:200]
+    dest = os.path.join(out, f"{safe}.{ext}")
+    return dest if not os.path.exists(dest) else os.path.join(out, f"{safe} ({tag}).{ext}")
+
+
+def record(d, got):
+    """Adds (link, name, file) to free.tsv and takes those tracks off to-buy.tsv."""
+    if not got:
+        return
+    with open(os.path.join(d, "free.tsv"), "a") as f:
+        f.writelines("\t".join(g) + "\n" for g in got)
+    done = {g[1] for g in got}
+    path = os.path.join(d, "to-buy.tsv")
+    with open(path) as f:
+        rows = [l for l in f if l.split("\t")[0] not in done]
+    with open(path + ".tmp", "w") as f:
+        f.writelines(rows)
+    os.replace(path + ".tmp", path)
+
+
+def inbox(d, out, folder=os.path.expanduser("~/Downloads"), days=30):
+    """Takes still-to-get tracks you downloaded by hand (a Hypeddit or Laylo gate, a Bandcamp purchase, any
+    link) out of Downloads: the song's title must be in the file's name, and when SoundCloud gave a length,
+    within 5 s of it (same version). Top quality only, through the safety check. A zip is opened and stays."""
+    try:
+        with open(os.path.join(d, "to-buy.tsv")) as f:
+            rows = [(l.rstrip("\n").split("\t") + ["", "", "", ""])[:4] for l in f if l.strip()]
+    except OSError:
+        return []
+    rows = [r for r in rows if len(song_key(r[0])[0]) >= 3]
+    if not rows:
+        return []
+    seen_path = os.path.join(d, "inbox-seen.txt")
+    try:
+        with open(seen_path) as f:
+            seen = {l.rstrip("\n") for l in f}
+    except OSError:
+        seen = set()
+    now, files = time.time(), []
+    try:
+        for root, dirs, names in os.walk(folder):
+            dirs[:] = [x for x in dirs if not x.startswith(".") and root == folder]  # Downloads and one level in
+            for n in names:
+                p = os.path.join(root, n)
+                try:
+                    st = os.lstat(p)
+                except OSError:
+                    continue
+                if (n.lower().endswith(AUDIO_EXT + (".zip",)) and not n.startswith(".") and stat.S_ISREG(st.st_mode)
+                        and 10 < now - st.st_mtime < days * 86400 and f"{p}\t{st.st_size}" not in seen):
+                    files.append((p, st.st_size))
+    except OSError:  # no permission to read Downloads (the Crate Helper switch is off)
+        return []
+    got, new_seen = [], []
+    for p, size in files:
+        base = norm(os.path.splitext(os.path.basename(p))[0])
+        if p.lower().endswith(".zip"):
+            try:
+                with zipfile.ZipFile(p) as z:
+                    base += "".join(norm(m) for m in z.namelist())
+            except (OSError, zipfile.BadZipFile):
+                continue
+        # the most specific title wins ("Intro" never takes "Intro (VIP)")
+        cands = sorted((r for r in rows if song_key(r[0])[0] in base), key=lambda r: -len(song_key(r[0])[1]))
+        for row in cands:
+            name, link, _, secs = row
+            if not secs and song_key(name)[1] not in base:
+                continue
+            with tempfile.TemporaryDirectory(dir=out, prefix=".inbox-") as tmpdir:
+                tmp = os.path.join(tmpdir, "download" + (".zip" if p.lower().endswith(".zip") else ""))
+                shutil.copyfile(p, tmp)
+                path, i = best_audio(tmp, name.partition(" - ")[2] or name)
+                if not path:
+                    if i:
+                        print(f"in Downloads but only {i['kbps']} kbps, not kept: {os.path.basename(p)}")
+                        break
+                    continue  # not audio, or no track of this name in the zip
+                if secs and abs(i["secs"] - float(secs)) > 5:
+                    continue  # another version of the song
+                dest = file_name(out, name, i["ext"], "download")
+                os.replace(path, dest)
+            if not p.lower().endswith(".zip"):
+                os.remove(p)  # moved into the music folder
+            got.append((link, name, dest))
+            rows.remove(row)
+            print(f"from Downloads: {os.path.basename(dest)} ({'lossless' if i['lossless'] else str(i['kbps']) + ' kbps'})")
+            if not os.path.exists(p):
+                break  # a zip (an album) can hold more than one track still to get
+        if cands and os.path.exists(p):  # looked at once; a new download (another size) is looked at again
+            new_seen.append(f"{p}\t{size}")
+    if new_seen:
+        with open(seen_path, "a") as f:
+            f.writelines(x + "\n" for x in new_seen)
+    record(d, got)
+    if got:
+        import safety
+        safety.check(d, out)
+    return got
+
+
 def main(d, out):
     rows, kept, got = [], [], []
     try:
@@ -113,23 +221,17 @@ def main(d, out):
                     f.write(free + "\n")
                 kept.append(row)
                 continue
-            safe = re.sub(r'[/:\x00-\x1f]', "-", name).strip(". ")[:200]
-            dest = os.path.join(out, f"{safe}.{i['ext']}")
-            if os.path.exists(dest):
-                dest = os.path.join(out, f"{safe} (free download).{i['ext']}")
+            dest = file_name(out, name, i["ext"], "free download")
             os.replace(path, dest)
             got.append((link, name, dest))
             print(f"free download: {os.path.basename(dest)} ({'lossless' if i['lossless'] else str(i['kbps']) + ' kbps'})")
-    if got:
-        with open(os.path.join(d, "free.tsv"), "a") as f:
-            f.writelines("\t".join(g) + "\n" for g in got)
-        tmp = os.path.join(d, "to-buy.tsv.tmp")
-        with open(tmp, "w") as f:
-            f.writelines("\t".join(r) + "\n" for r in kept)
-        os.replace(tmp, os.path.join(d, "to-buy.tsv"))
+    record(d, got)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) == 4 and sys.argv[1] == "inbox":
+        inbox(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) == 3:
+        main(sys.argv[1], sys.argv[2])
+    else:
         sys.exit(__doc__)
-    main(sys.argv[1], sys.argv[2])
