@@ -22,6 +22,7 @@ if [ -z "$(find "$DIR/.updated" -mtime -7 2>/dev/null)" ]; then
 fi
 # The virus scanner's list of known viruses: fresh every day (ClamAV's servers limit how often).
 zsh "$DIR/clamav.sh" >>"$DIR/update.log" 2>&1  # installs it if missing; refreshes the list at most daily
+zsh "$DIR/sockseek.sh" >>"$DIR/update.log" 2>&1  # the Soulseek downloader, if missing or out of date
 
 # A Spotify or Apple Music playlist: those services only stream, so nothing downloads from them. playlists.py reads
 # the track list from the playlist's public page and writes the to-get list; Soulseek, Downloads and the shop links
