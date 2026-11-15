@@ -4,7 +4,7 @@
 Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so another website open
 in the browser cannot press the buttons.
 """
-import json, os, re, shutil, subprocess, time, urllib.parse
+import json, os, re, shutil, subprocess, threading, time, urllib.parse
 import audio
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -21,6 +21,7 @@ BROWSERS = ("chrome", "safari", "brave", "firefox", "edge", "none")
 YTDLP = shutil.which("yt-dlp") or "/opt/homebrew/bin/yt-dlp"
 _signed = {"at": 0.0, "ok": False}
 _slsk = {"at": 0.0, "ok": False}
+_lists = threading.Lock()  # one change to saved.json / playlist.txt at a time (the server is threaded)
 
 
 def read(name, default=""):
@@ -65,9 +66,14 @@ def soulseek_ready():
 
 
 def saved():
-    """Playlists he added or picked, newest first: [{'title', 'url'}]."""
+    """Playlists he added or picked, newest first: [{'title', 'url'}]. Before the first save, the playlist
+    already syncing (set up before this list existed) shows as the one entry."""
+    raw = read("saved.json")
+    if not raw:
+        cur = read("playlist.txt")
+        return [{"title": cur.rstrip("/").split("/")[-1].replace("-", " "), "url": cur}] if PLAYLIST_RE.match(cur) else []
     try:
-        return [p for p in json.loads(read("saved.json") or "[]") if PLAYLIST_RE.match(str(p.get("url", "")))]
+        return [p for p in json.loads(raw) if PLAYLIST_RE.match(str(p.get("url", "")))]
     except (ValueError, AttributeError):
         return []
 
@@ -81,6 +87,11 @@ def save_list(lists):
 
 def remember(url, title):
     """Adds (or moves to the front) a playlist in the saved list and makes it the one that syncs."""
+    with _lists:
+        _remember(url, title)
+
+
+def _remember(url, title):
     save_list([{"title": title, "url": url}] + [p for p in saved() if p["url"] != url])
     with open(os.path.join(DIR, "playlist.txt"), "w") as f:
         f.write(url + "\n")
@@ -267,9 +278,10 @@ class Handler(BaseHTTPRequestHandler):
             remember(url, known[url])
         elif self.path == "/api/forget":
             url = str(body.get("url", ""))
-            save_list([p for p in saved() if p["url"] != url])
-            if read("playlist.txt") == url:
-                os.remove(os.path.join(DIR, "playlist.txt"))
+            with _lists:
+                save_list([p for p in saved() if p["url"] != url])
+                if read("playlist.txt") == url:
+                    os.remove(os.path.join(DIR, "playlist.txt"))
         elif self.path == "/api/usb":
             name = str(body.get("name", ""))
             if name and name not in volumes():
