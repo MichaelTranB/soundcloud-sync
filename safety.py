@@ -99,17 +99,28 @@ def quarantine(d, path, reason, log):
     q = os.path.join(d, "Quarantine")
     os.makedirs(q, exist_ok=True)
     name = "".join(c if ord(c) >= 32 else "?" for c in os.path.basename(path))
+    # Room for "YYYYmmdd-HHMMSS-NNNN " within the 255-byte name limit
+    short = name.encode()[:220].decode(errors="ignore")
     stamp, n = time.strftime('%Y%m%d-%H%M%S'), 1
-    dest = os.path.join(q, f"{stamp} {name}")
+    dest = os.path.join(q, f"{stamp} {short}")
     while os.path.lexists(dest):  # same name blocked in the same second: never overwrite
         n += 1
-        dest = os.path.join(q, f"{stamp}-{n} {name}")
+        dest = os.path.join(q, f"{stamp}-{n} {short}")
     try:
         shutil.move(path, dest)
         if not os.path.islink(dest):
             os.chmod(dest, 0o600 if os.path.isfile(dest) else 0o700)
-    except OSError:
+    except FileNotFoundError:
         return  # already gone (another run moved it)
+    except OSError as e:
+        # Couldn't move it: still never listed as safe, so it never reaches the USB; take away its run permission.
+        try:
+            if not os.path.islink(path):
+                os.chmod(path, 0o600 if os.path.isfile(path) else 0o700)
+        except OSError:
+            pass
+        log(f"BLOCKED {name}: {reason}. COULD NOT MOVE it to Quarantine ({e.strerror}); left in place, not copied.")
+        return
     log(f"BLOCKED {name}: {reason}. Moved to Quarantine.")
 
 
