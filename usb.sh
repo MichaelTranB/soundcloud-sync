@@ -1,7 +1,8 @@
 #!/bin/zsh
 # Copies the music folder to the chosen USB when it is plugged in. Runs after every sync and whenever
 # any drive is mounted, so tracks downloaded while the USB was away land on it the next time it appears.
-# Only ever ADDS tracks: no track on the USB is deleted or overwritten (only its To Buy.txt list is updated).
+# Only ever ADDS tracks: no track on the USB is deleted or overwritten. Only music goes on it: the to-buy list stays
+# on the Mac (the page shows it), and the list older versions put on the USB is taken off.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 DIR="${0:A:h}"
 SRC="${SRC:-$HOME/Music/SoundCloud Sync}"   # both overridable for tests
@@ -34,10 +35,9 @@ cut -f1 "$DIR/safety-ok.tsv" 2>/dev/null | while IFS= read -r p; do [ -f "$SRC/$
 NEW=$(while IFS= read -r p; do [ -e "$DEST/SoundCloud Sync/$p" ] || echo x; done <"$LIST" | wc -l | tr -d ' ')
 TOTAL=$(wc -l <"$LIST" | tr -d ' ')
 echo "$$ copying $NEW" >"$STATE"
-# To Buy.txt is The Crate's own list, so the USB always gets the latest one.
+rm -f "$DEST/SoundCloud Sync/To Buy.txt"  # The Crate's own list, put there by older versions: not music
 if rsync -a --ignore-existing --out-format='%n' --files-from="$LIST" "$SRC/" "$DEST/SoundCloud Sync/" \
-     >"$DIR/.usb-progress" 2>"$DIR/.usb-err" &&
-   { [ ! -f "$SRC/To Buy.txt" ] || cp "$SRC/To Buy.txt" "$DEST/SoundCloud Sync/To Buy.txt" 2>"$DIR/.usb-err"; }; then
+     >"$DIR/.usb-progress" 2>"$DIR/.usb-err"; then
   echo "$(date '+%F %R')  copied to \"$NAME\" ($NEW new, $TOTAL on it${MID:+, sync still running})" >> "$DIR/usb.log"
   touch "$DIR/.usb-done"
   [ -n "$MID" ] && [ "$NEW" -gt 0 ] && touch "$DIR/.usb-mid"  # tracks went on mid-sync: the last copy ejects
