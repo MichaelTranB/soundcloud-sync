@@ -287,8 +287,13 @@ function thisBrowser() {
 }
 function scLink(text, cls) {
   return el('a', { className: cls || '', href: SIGNIN, target: '_blank', rel: 'noopener', textContent: text,
-    onclick: e => { if (thisBrowser() !== last.browser) { e.preventDefault(); openStep('soundcloud'); } } });
+    onclick: e => { if (thisBrowser() !== last.browser) { e.preventDefault(); openStep('soundcloud'); } else watchSignin(); } });
 }
+
+// Signing in happens in another tab: when this page is back in front and the sign-in isn't confirmed yet, The Crate
+// checks again within seconds (and keeps checking closely for 5 minutes).
+const watchSignin = () => call('/api/signin', {}).catch(() => {});
+addEventListener('focus', () => { if (last && last.playlist && !last.service && last.scLogin !== 'ok') watchSignin(); });
 
 function render(s) {
   $('alert').hidden = !s.problem;
@@ -323,7 +328,7 @@ function steps(s) {
         : 'The helper is missing: install the Xcode command line tools, then run the install line again.',
       btn: s.signIn === 'missing' ? 'Pick the browser' : 'Open the setting', go: s.signIn === 'missing' ? to('browser') : () => openStep('fda') },
     signin && { done: s.scLogin === 'ok', title: `Sign in to SoundCloud in ${bn}`,
-      how: 'Artists who allow downloads only give the original file to people who are signed in. This ticks after the next sync.',
+      how: s.scChecking ? 'Checking your SoundCloud sign-in…' : 'Artists who allow downloads only give the original file to people who are signed in. Sign in, come back here, and this ticks within seconds.',
       btn: 'Sign in to SoundCloud', link: true },
     { done: s.soulseekReady && !s.soulseekBad, title: 'Sign in to Soulseek (recommended)',
       how: 'Finds what SoundCloud, Spotify and Apple Music won\'t give you. Free: make up a name and a new password below.',
@@ -477,7 +482,7 @@ function paintSetup(s) {
   b.replaceChildren(...(s.running ? [el('span', { className: 'spin' }), 'Syncing'] : ['Sync Now']));
 
   const bn = { chrome: 'Chrome', safari: 'Safari', brave: 'Brave', firefox: 'Firefox', edge: 'Edge' }[s.browser] || '';
-  const sw = { ok: s.scLogin === 'none' || s.scLogin === 'invalid' ? ['warn', 'Not signed in (' + bn + ')'] : ['ok', (s.scLogin === 'ok' ? 'Signed in, ' : 'Via ') + bn], blocked: ['warn', 'Needs Full Disk Access'], missing: ['warn', bn + ' not found'], off: ['', 'Off'] }[s.signIn] || ['', 'Off'];
+  const sw = { ok: s.scLogin === 'none' || s.scLogin === 'invalid' ? ['warn', 'Not signed in (' + bn + ')'] : ['ok', (s.scLogin === 'ok' ? 'Signed in, ' : s.scChecking ? 'Checking sign-in, ' : 'Via ') + bn], blocked: ['warn', 'Needs Full Disk Access'], missing: ['warn', bn + ' not found'], off: ['', 'Off'] }[s.signIn] || ['', 'Off'];
   $('signWord').replaceChildren(el('i', { className: 'dot ' + sw[0] }), sw[1],
     ...(s.signIn === 'ok' && (s.scLogin === 'none' || s.scLogin === 'invalid') ? [el('br'), scLink('Sign in ↗', 'inl')] : []));
   $('usbWord').replaceChildren(el('i', { className: 'dot ' + (s.usbPlugged ? 'ok' : s.usb ? 'warn' : '') }),

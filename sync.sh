@@ -117,3 +117,18 @@ awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" >
 # Every new file must be real audio (and pass the virus scan) before it stays or reaches the USB.
 python3 "$DIR/safety.py" check "$DIR" "$OUT" 2>>"$DIR/safety.log"
 "$DIR/usb.sh"
+# The Crate keeps itself up to date: once a day it takes the newest version from GitHub (only a clean step forward on
+# main; a copy someone changed by hand is left alone). The page restarts on it at once; the sync's own parts are new
+# from the next sync. Running the install line again does the same by hand.
+if [ "$(git -C "$DIR" symbolic-ref -q --short HEAD 2>/dev/null)" = main ] && [ -z "$(find "$DIR/.app-updated" -mtime -1 2>/dev/null)" ]; then
+  OLD="$(git -C "$DIR" rev-parse HEAD)"
+  if git -C "$DIR" pull -q --ff-only origin main >>"$DIR/update.log" 2>&1; then
+    touch "$DIR/.app-updated"
+    if [ "$(git -C "$DIR" rev-parse HEAD)" != "$OLD" ]; then
+      echo "$(date '+%F %R')  The Crate updated itself to $(git -C "$DIR" log -1 --format='%h, %cd' --date=short)" >>"$DIR/update.log"
+      launchctl kickstart -k "gui/$(id -u)/com.thecrate.app" 2>/dev/null
+    fi
+  else
+    echo "$(date '+%F %R')  Couldn't update The Crate; tries again next sync." >>"$DIR/update.log"
+  fi
+fi
