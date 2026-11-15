@@ -197,6 +197,36 @@ def apply_sync_time():
     _sched["applied"] = t
 
 
+def usb_copy():
+    """The copy to the USB running now (usb.sh writes .usb-copy): its stage ("checking" the files first, then
+    "copying"), the tracks copied so far and how many it's copying. None when no copy runs."""
+    try:
+        pid, stage, total = read(".usb-copy").split()[:3]
+        os.kill(int(pid), 0)
+        total = int(total)
+    except (ValueError, OSError):
+        return None
+    done = sum(1 for l in read(".usb-progress").splitlines() if l and not l.endswith("/"))
+    return {"stage": stage, "done": min(done, total), "total": total}
+
+
+def usb_result(lines):
+    """How the last copy ended (usb.log), for the page: when, whether it worked, and what to say."""
+    for i in range(len(lines) - 1, max(len(lines) - 30, -1), -1):
+        m = re.match(r"(\d{4}-\d\d-\d\d \d\d:\d\d)  (copied to \"(.*)\" \((\d+) new\)|COPY FAILED to \"(.*?)\"(?:: (.*))?)$",
+                     lines[i])
+        if m:
+            at = time.mktime(time.strptime(m.group(1), "%Y-%m-%d %H:%M"))
+            if m.group(3) is not None:
+                n = int(m.group(4))
+                ejected = any("ejected" in l for l in lines[i + 1:])
+                text = (f"Done: {n} new track{'s' if n != 1 else ''} copied to {m.group(3)}." if n else
+                        f"{m.group(3)} already has every track.") + (" Ejected: safe to unplug." if ejected else "")
+                return {"at": at, "ok": True, "text": text}
+            return {"at": at, "ok": False, "text": f"Couldn't copy to {m.group(5)}: " + (m.group(6) or "something went wrong. Try Copy Now again.")}
+    return None
+
+
 def sync_running():
     """True while sync.sh runs: .running holds its process number (a flag left by a killed sync doesn't count)."""
     try:
@@ -542,6 +572,7 @@ def state():
         "playlist": read("playlist.txt"), "service": svc, "capped": capped, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
         "usbEject": not os.path.exists(os.path.join(DIR, "usb-keep.txt")),
+        "usbCopy": usb_copy(), "usbResult": usb_result(usblog),
         "running": running, "phase": phase, "syncTime": sync_time(),
         "signIn": sign_in_status(browser()),
         "profile": acct.get("profile", ""), "browser": browser(),
@@ -708,8 +739,16 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/signin":  # the sign-in link was used, or the page is back in front
             _login["soon"] = time.time() + 300
         elif self.path == "/api/copy":
-            subprocess.Popen([os.path.join(DIR, "usb.sh")])
-            time.sleep(0.4)
+            usb = read("usb.txt")
+            if not usb or not os.path.isdir(f"/Volumes/{usb}"):
+                return self.send(400, {"error": f"Plug in {usb or 'your USB'} first."})
+            if not usb_copy():  # one already running: the page just shows it
+                subprocess.Popen([os.path.join(DIR, "usb.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+                for _ in range(10):  # until it says it has started, so the page shows it straight away
+                    time.sleep(0.1)
+                    if usb_copy():
+                        break
         else:
             return self.send(404, {"error": "not found"})
         self.send(200, state())

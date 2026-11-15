@@ -23,10 +23,21 @@
   button { font: inherit; font-weight: 700; border: 0; border-radius: 999px; cursor: pointer; padding: 14px 26px; background: var(--hot); color: #ffffff; transition: transform .08s, opacity .2s; }
   button:active { transform: scale(.97); }
   button:disabled { opacity: .45; cursor: default; }
+  button[aria-busy="true"]:disabled { opacity: .8; }  /* working, not unavailable */
+  /* One filled red button per section (its main action); everything else stays an outline. */
+  button.act { padding: 10px 20px; flex: none; }
   button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 10px 18px; font-weight: 600; }
   .big { font-size: 17px; padding: 18px 34px; }
-  .spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #ffffff; border-top-color: transparent; animation: r 1s linear infinite; vertical-align: -1px; margin-right: 8px; }
+  .spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: r 1s linear infinite; vertical-align: -1px; margin-right: 8px; }
   @keyframes r { to { transform: rotate(360deg); } }
+  progress#usbBar { display: block; width: 100%; height: 8px; margin-top: 12px; appearance: none; -webkit-appearance: none; border: 0; border-radius: 999px; background: var(--line); overflow: hidden; color: var(--hot); }
+  progress#usbBar::-webkit-progress-bar { background: var(--line); border-radius: 999px; }
+  progress#usbBar::-webkit-progress-value { background: var(--hot); border-radius: 999px; transition: width .5s ease; }
+  progress#usbBar::-moz-progress-bar { background: var(--hot); border-radius: 999px; }
+  progress#usbBar:indeterminate { background: linear-gradient(90deg, var(--line) 0 35%, var(--hot) 50%, var(--line) 65% 100%) 0 0 / 300% 100%; animation: slide 1.3s ease-in-out infinite; }
+  progress#usbBar:indeterminate::-webkit-progress-bar { background: transparent; }
+  @keyframes slide { from { background-position: 100% 0; } to { background-position: 0 0; } }
+  @media (prefers-reduced-motion: reduce) { progress#usbBar:indeterminate { animation: none; } }
   @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 
   .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin: 40px 0 28px; }
@@ -199,7 +210,7 @@
   <section class="setup">
     <div class="field">
       <label for="url">Your playlists</label>
-      <div class="row"><input id="url" placeholder="Paste a SoundCloud, Apple Music or Spotify playlist link" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="ghost" id="saveUrl">Add</button></div>
+      <div class="row"><input id="url" placeholder="Paste a SoundCloud, Apple Music or Spotify playlist link" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="act" id="saveUrl">Add</button></div>
       <div class="note" id="urlNote">Saved playlists stay here. Tap one to sync it.</div>
       <div class="lists" id="saved"></div>
       <details><summary>Or find them on your profile</summary>
@@ -217,8 +228,9 @@
     </div>
     <div class="field">
       <label for="usb">USB drive</label>
-      <div class="row"><select id="usb"></select><button class="ghost" id="copy">Copy Now</button></div>
-      <div class="note" id="usbNote"></div>
+      <div class="row"><select id="usb"></select><button class="act" id="copy">Copy Now</button></div>
+      <progress id="usbBar" hidden></progress>
+      <div class="note" id="usbNote" role="status" aria-live="polite"></div>
       <label class="note"><input type="checkbox" id="eject"> Eject the USB once new tracks are on it, so you can just pull it out</label>
     </div>
     <div class="field">
@@ -229,13 +241,13 @@
       <div id="slskForm"><div class="note" id="slskStatus" style="margin:0 0 10px"></div>
       <div class="row"><input id="slskUser" placeholder="Soulseek name" spellcheck="false" autocapitalize="off" autocomplete="off">
         <input id="slskPass" type="password" placeholder="Password" autocomplete="new-password">
-        <button class="ghost" id="slskSave">Sign in</button></div>
+        <button class="act" id="slskSave">Sign in</button></div>
       <div class="note" id="slskNote">New to Soulseek? Make up a name and a new password; the account is made for you. Kept in your Mac's Keychain.</div>
       </div>
     </div>
     <div class="field">
       <label for="syncTime">Auto sync</label>
-      <div class="row"><span class="every">Every day at</span><input id="syncTime" type="time" step="300" required><button class="ghost" id="saveTime">Save</button></div>
+      <div class="row"><span class="every">Every day at</span><input id="syncTime" type="time" step="300" required><button class="act" id="saveTime">Save</button></div>
       <div class="note" id="timeNote">Keep your Mac on and plugged in at this time. If it's asleep, it syncs when it wakes.</div>
     </div>
   </section>
@@ -295,6 +307,7 @@ function scLink(text, cls) {
 const watchSignin = () => call('/api/signin', {}).catch(() => {});
 addEventListener('focus', () => { if (last && last.playlist && !last.service && last.scLogin !== 'ok') watchSignin(); });
 
+let copyAsked = 0;  // when Copy Now was clicked: the button shows it at once, before the copy reports in
 function render(s) {
   $('alert').hidden = !s.problem;
   // A sign-in problem gets its fix right there: the SoundCloud sign-in link, or the Full Disk Access setting.
@@ -497,11 +510,21 @@ function paintSetup(s) {
     sel.replaceChildren(el('option', { value: '', textContent: names.length ? 'Choose a drive' : 'Plug a USB in' }),
       ...names.map(n => el('option', { value: n, textContent: n, selected: n === s.usb })));
   }
-  $('copy').disabled = !s.usbPlugged;
+  // Copy Now: a spinner and a bar while it runs, then how it went (or why it couldn't), for a few minutes.
+  const cp = s.usbCopy || (copyAsked && Date.now() - copyAsked < 4000 ? { stage: 'starting' } : null);
+  $('copy').disabled = !s.usbPlugged || !!cp; $('copy').setAttribute('aria-busy', !!cp);
+  $('copy').replaceChildren(...(cp ? [el('span', { className: 'spin' }), 'Copying'] : ['Copy Now']));
+  const bar = $('usbBar'); bar.hidden = !cp;
+  if (cp && cp.stage === 'copying' && cp.total) { bar.max = cp.total; bar.value = cp.done; } else bar.removeAttribute('value');
   $('eject').checked = s.usbEject;
   if (document.activeElement !== $('syncTime') && !$('syncTime').dataset.dirty) $('syncTime').value = s.syncTime;
-  $('usbNote').textContent = !s.usb ? 'Pick your USB once. After that it fills by itself.'
-    : s.usbPlugged ? 'New tracks copy over after every sync.' : 'Tracks wait here and copy the moment it is plugged in.';
+  const res = s.usbResult && Date.now() / 1000 - s.usbResult.at < 600 ? s.usbResult : null;
+  say('usbNote', cp ? (cp.stage === 'copying' && cp.total ? 'Copying ' + cp.done + ' of ' + cp.total + ' new tracks to ' + s.usb + '. Keep it plugged in.'
+      : cp.stage === 'copying' ? 'Updating ' + s.usb + '…' : 'Getting ready: checking the files before they go on ' + s.usb + '…')
+    : res && !res.ok ? res.text
+    : res ? res.text
+    : !s.usb ? 'Pick your USB once. After that it fills by itself.'
+    : s.usbPlugged ? 'New tracks copy over after every sync.' : 'Tracks wait here and copy the moment it is plugged in.', !cp && res && !res.ok);
 
   // Signed in and working: just the green status. Otherwise the reason and the sign-in boxes.
   const slskGood = s.soulseekReady && !s.soulseekBad;
@@ -563,7 +586,13 @@ $('saveTime').onclick = () => {
     .catch(e => say('timeNote', e.message, true));
 };
 $('eject').onchange = e => call('/api/eject', { on: e.target.checked }).catch(err => say('usbNote', err.message, true));
-$('copy').onclick = () => call('/api/copy', {}).catch(e => say('usbNote', e.message, true));
+$('copy').onclick = () => {
+  copyAsked = Date.now(); $('copy').disabled = true; $('copy').setAttribute('aria-busy', true);
+  $('copy').replaceChildren(el('span', { className: 'spin' }), 'Copying');
+  $('usbBar').hidden = false; $('usbBar').removeAttribute('value'); say('usbNote', 'Starting the copy…');
+  call('/api/copy', {}).catch(e => { copyAsked = 0; $('copy').disabled = false; $('copy').setAttribute('aria-busy', false); $('copy').replaceChildren('Copy Now');
+    $('usbBar').hidden = true; say('usbNote', e.message, true); });
+};
 $('sync').onclick = () => call('/api/sync', {}).catch(e => say('urlNote', e.message, true));
 
 $('q').oninput = draw;

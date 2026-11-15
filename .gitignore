@@ -45,3 +45,6 @@ clamav.log
 sync-time.txt
 .signin-check.json
 .app-updated
+.usb-copy
+.usb-progress
+.usb-err
