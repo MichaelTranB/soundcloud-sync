@@ -260,7 +260,7 @@ def record(d, slsk):
 JOB = re.compile(r"SongJob: (searching|downloading|succeeded|failed)(?: \[([^\]]*)\])?: (.*)")
 WHY = {
     "no search results": "Not on Soulseek in top quality (lossless or a real 320 MP3, same length).",
-    "all downloads failed": "On Soulseek, but everyone sharing it was offline or busy. Tried again next sync.",
+    "all downloads failed": "On Soulseek, but everyone sharing it was offline or busy. The app will try again next sync.",
 }
 
 

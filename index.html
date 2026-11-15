@@ -128,7 +128,17 @@
      anywhere in top quality (soft amber, needs buying). A file from Downloads that wasn't kept is amber too. */
   li .why.near { color: #6cc4dc; }
   li .why.far, li .why.bad { color: #f0a868; }
-  li .why.wait { color: var(--text); }
+  li .why.wait, li .why.work { color: var(--text); }
+  /* What a free link needs: a small pill, then the price or reason. Paid or members only in amber; gone or skipped
+     greyed; free in green. */
+  li .why .chip { font: 700 12px var(--mono); padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; margin-right: 8px; white-space: nowrap; }
+  li .why.paid { color: #f0a868; }
+  li .why.gone, li .why.skip { color: var(--dim); }
+  li .why .by { color: var(--dim); }
+  li .why button.undo { background: none; border: 0; padding: 0; margin-left: 8px; color: var(--dim); font-size: 13.5px; text-decoration: underline dotted; }
+  #viewNote .run { display: flex; flex-wrap: wrap; align-items: center; color: var(--text); font-weight: 600; }
+  #viewNote .run .bar { flex: 1 1 100%; height: 4px; margin-top: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  #viewNote .run .bar i { display: block; height: 100%; background: var(--hot); transition: width .6s ease; }
   .tag.new { color: var(--ok); border-color: #35502a; }
   .state { font: 700 13px var(--mono); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; display: inline-flex; align-items: center; }
   .state .dot { width: 7px; height: 7px; margin-right: 6px; }
@@ -491,7 +501,7 @@ function helperAct(btn, who, then) {
 // Repainted only when something it shows changes, so the 3-second refresh never moves the keyboard focus.
 function paintHelper(force) {
   const s = last; if (!s || !(force || $('helper').open)) return;
-  const agents = s.agents || [], n = s.buy.filter(t => !live(t) && !waiting(t) && t.free).length;
+  const agents = s.agents || [], n = s.buy.filter(t => !live(t) && !waiting(t) && t.free && !notFree(t)).length;
   const who = helperWho || bestAgent(s), has = agents.includes(who);
   const key = JSON.stringify([agents, s.claudeInChrome, s.codexInChrome, s.chrome, n, who, helperDone, helperMsg]);
   if (key === helperKey && !force) return;
@@ -553,7 +563,8 @@ const SERVICE = { 'open.spotify.com': 'Spotify', 'music.apple.com': 'Apple Music
 const host = u => { try { return new URL(u).hostname; } catch (e) { return ''; } };
 function shopLinks(t) {
   return [
-    ...(/^https?:\/\//.test(t.free) ? [el('a', { className: 'free', title: 'The artist\'s own free download (often asks you to follow or repost first)', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download',
+    ...(/^https?:\/\//.test(t.free) ? [el('a', notFree(t) ? { title: 'The artist\'s link (not free: see the note above)', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Artist\'s link' }
+      : { className: 'free', title: 'The artist\'s own free download (often asks you to follow or repost first)', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download',
       onclick: () => { call('/api/watch', { link: t.link }).catch(() => {}); } })] : []),
     el('a', { href: t.link, target: '_blank', rel: 'noopener', title: SERVICE[host(t.link)] ? 'The song on ' + SERVICE[host(t.link)] + ' (it only streams: the file comes from Soulseek or a shop)' : 'The track on SoundCloud: look for a Download or Buy link under it', textContent: SERVICE[host(t.link)] || 'SoundCloud' }),
     el('span', { className: 'shops', title: 'Searches in each shop. Not every track is sold everywhere: try Bandcamp and Beatport first', textContent: 'Buy:' }),
@@ -564,13 +575,20 @@ function shopLinks(t) {
     el('a', { href: search('https://www.qobuz.com/us-en/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Qobuz' })];
 }
 
+// What a free link needs (found by The Crate, or by Claude or Codex while it worked): [row style, pill].
+const NEEDS = { paid: ['paid', 'Paid'], members: ['paid', 'Members only'], gone: ['gone', 'Link gone'],
+  skipped: ['skip', 'Skipped'], free: ['act', 'Free'], gate: ['act', 'Free'], patreon: ['', 'Patreon'] };
+const notFree = t => ['paid', 'members', 'gone'].includes((t.needs || {}).kind);
 // Why a track isn't here yet, in plain words: what to do comes first when there's something to do.
 function why(t, s) {
   if (/^https?:\/\//.test(t.free)) {
+    const run = s.helperRun;
+    if (run && run.on === t.link) return ['work', (AGENT[run.who] || 'Your assistant') + ' is getting this…'];
     if ((s.watching || []).includes(t.link)) return ['wait', 'Watching the Downloads folder on your Mac for this track… finish the download and leave the file there; it\'s added by itself.'];
     const no = (s.inboxWhy || {})[t.link];
     if (no) return ['bad', no];
-    return ['act', 'Free from the artist: tap Free Download (it may ask for a follow or repost). The download is added by itself.'];
+    const nd = t.needs || {}, [k, chip] = NEEDS[nd.kind] || ['act', ''];
+    return [k, nd.note || 'Free from the artist: tap Free Download.', chip, nd.by];
   }
   return [/^On Soulseek/.test(t.why) ? 'near' : /^Not (on|found)/.test(t.why) ? 'far' : '', t.why];
 }
@@ -586,7 +604,8 @@ function draw() {
   const have = s.have.filter(t => hit(t.name, w));
   const nowAll = s.buy.filter(live), waitAll = s.buy.filter(waiting);
   // The tabs never overlap: with Getting now they add up to "Left to find" up top.
-  const freeAll = s.buy.filter(t => !live(t) && !waiting(t) && t.free);
+  // free links that turned out paid, members only or gone go last
+  const freeAll = s.buy.filter(t => !live(t) && !waiting(t) && t.free).sort((a, b) => notFree(a) - notFree(b));
   const missAll = s.buy.filter(t => !live(t) && !waiting(t) && !t.free);
   const now = nowAll.filter(t => hit(t.name, w)), wait = waitAll.filter(t => hit(t.name, w));
   const free = freeAll.filter(t => hit(t.name, w)), miss = missAll.filter(t => hit(t.name, w));
@@ -634,6 +653,10 @@ function draw() {
         b.onclick = () => { missView = k; try { localStorage.setItem('crateMiss', k); } catch (e) {} draw(); };
         return b; })),
       line('', MISS_NOTE[missView]), line('', auto)]
+    : s.helperRun ? [el('div', { className: 'run' }, el('span', { className: 'spin' }),
+        `${AGENT[s.helperRun.who] || 'Your assistant'} is getting them: ${s.helperRun.done} of ${s.helperRun.n} done`,
+        el('span', { className: 'bar' }, el('i', { style: `width:${Math.round(100 * s.helperRun.done / Math.max(1, s.helperRun.n))}%` }))),
+      line('', 'Keep Chrome open. Each file is checked and moved into your music as it lands.')]
     : [line('lead', 'Free from the artist, in three steps:'),
       step('1', 'Tap Free Download and do what the page asks (often a follow).'),
       step('2', 'Leave the file in the Downloads folder on your Mac.'),
@@ -641,8 +664,13 @@ function draw() {
       // Claude or Codex can do the clicking: the button opens a short guide, set up for what this Mac has.
       ...(freeAll.length ? [el('div', { className: 'agents' }, el('button', { className: 'ghost',
         onclick: openHelper }, '✨ Have ', agentName('claude'), ' or ', agentName('codex'), ' download them'))] : [])]));
-  const missRow = t => { const [k, txt] = why(t, s); return el('li', { className: 'shop' },
-    nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : '') }, ...(k === 'wait' ? [el('span', { className: 'spin' })] : []), txt,
+  const BY = { claude: 'Claude', codex: 'Codex', you: 'you' };
+  const missRow = t => { const [k, txt, chip, by] = why(t, s); return el('li', { className: 'shop' },
+    nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : '') }, ...(k === 'wait' || k === 'work' ? [el('span', { className: 'spin' })] : []),
+      ...(chip ? [el('b', { className: 'chip', textContent: chip })] : []), txt,
+      // set by Claude, Codex or you: who said so, and a way to take it back
+      ...(BY[by] ? [el('span', { className: 'by', textContent: ' · ' + (by === 'you' ? 'set by you' : 'checked by ' + BY[by]) }),
+        el('button', { className: 'undo', title: 'Clear this, so the song counts as free again', onclick: () => call('/api/needs', { link: t.link, kind: '' }) }, 'Not right?')] : []),
       // The file was turned away only for its length: one tap says it IS this song (still quality and safety checked)
       ...((s.inboxFile || {})[t.link] ? [' ', el('button', { className: 'ghost', onclick: () => call('/api/take', { link: t.link }) }, 'Use this file')] : [])),
     ...shopLinks(t)); };
