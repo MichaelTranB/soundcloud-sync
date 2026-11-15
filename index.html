@@ -255,7 +255,7 @@
         <ul id="now"></ul>
       </div>
       <div class="tabs" role="tablist" aria-label="Left to find">
-        <button role="tab" data-v="all"><span>Left to find</span><b id="cBuy"></b></button>
+        <button role="tab" data-v="free"><span>Free links</span><b id="cFree"></b></button>
         <button role="tab" data-v="wait"><span>Waiting to search</span><b id="cWait"></b></button>
         <button role="tab" data-v="miss"><span>Not found</span><b id="cMiss"></b></button>
       </div>
@@ -410,14 +410,17 @@ function draw() {
   const w = words(), q = w.length > 0;
   const have = s.have.filter(t => hit(t.name, w));
   const nowAll = s.buy.filter(live), waitAll = s.buy.filter(waiting);
-  const missAll = s.buy.filter(t => !live(t) && !waiting(t));
-  const now = nowAll.filter(t => hit(t.name, w)), wait = waitAll.filter(t => hit(t.name, w)), miss = missAll.filter(t => hit(t.name, w));
-  const n = have.length + now.length + wait.length + miss.length;
+  // The tabs never overlap: with Getting now they add up to "Left to find" up top.
+  const freeAll = s.buy.filter(t => !live(t) && !waiting(t) && t.free);
+  const missAll = s.buy.filter(t => !live(t) && !waiting(t) && !t.free);
+  const now = nowAll.filter(t => hit(t.name, w)), wait = waitAll.filter(t => hit(t.name, w));
+  const free = freeAll.filter(t => hit(t.name, w)), miss = missAll.filter(t => hit(t.name, w));
+  const n = have.length + now.length + wait.length + free.length + miss.length;
   $('qNote').textContent = q ? `${n} match${n === 1 ? '' : 'es'}` : '';
   $('cHave').textContent = q ? have.length + ' of ' + s.have.length : s.have.length || '';
   const count = (part, all) => q ? part.length + ' of ' + all.length : all.length;
   $('cNow').textContent = nowAll.length ? count(now, nowAll) : '';
-  $('cBuy').textContent = count([...now, ...miss, ...wait], s.buy);  // the same number as up top
+  $('cFree').textContent = count(free, freeAll);
   $('cWait').textContent = count(wait, waitAll);
   $('cMiss').textContent = count(miss, missAll);
   $('nowBox').hidden = !s.running && !nowAll.length;
@@ -441,22 +444,23 @@ function draw() {
     ? (!s.soulseekReady ? 'Sign in to Soulseek above and the next sync looks for these. Or buy them now.'
       : s.running ? 'The sync looks for these one at a time, slowly, so Soulseek never blocks you.'
       : 'The next sync looks for these, one at a time.')
-    : view === 'miss' ? 'Searched, but no top-quality copy turned up. Buy it, or it\'s tried again later. ' + downloads : downloads;
+    : view === 'miss' ? 'Searched on Soulseek, but no top-quality copy turned up; tried again later. Mostly remixes and flips that exist only on SoundCloud. Buy it, or ask the artist. ' + downloads
+    : 'The artist gives these away: open the link and do what the page asks (often a follow). ' + downloads.split('? ')[1];
   const missRow = t => { const [k, txt] = why(t, s); return el('li', { className: 'shop' },
     nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : ''), textContent: txt }), ...shopLinks(t)); };
   const waitRow = t => el('li', { className: s.soulseekReady ? '' : 'shop' }, nameEl(t),
     ...(t.state === 'queued' ? [el('span', { className: 'state' }, el('i', { className: 'dot' }), 'Next up')] : []),
     ...(s.soulseekReady ? [] : shopLinks(t)));
   const byTurn = l => l.sort((a, b) => (b.state === 'queued') - (a.state === 'queued'));
-  const rows = view === 'wait' ? byTurn(wait).map(waitRow) : view === 'miss' ? miss.map(missRow)
-    : [...now.map(t => el('li', {}, nameEl(t), el('span', { className: 'state on' }, el('i', { className: 'dot live' }), STATE[t.state]))),
-      ...miss.map(missRow), ...byTurn(wait).map(waitRow)];
+  const rows = view === 'wait' ? byTurn(wait).map(waitRow) : view === 'miss' ? miss.map(missRow) : free.map(missRow);
   const none = !s.buy.length ? 'Nothing left to get. Every track is on your Mac.' : q ? 'No match.'
-    : view === 'wait' ? 'Nothing waiting: every track still to get has been searched.' : 'Nothing here.';
+    : view === 'wait' ? 'Nothing waiting: every track still to get has been searched.'
+    : view === 'free' ? 'No free links among the tracks still to get.' : 'Nothing here.';
   $('buy').replaceChildren(...(rows.length ? rows : [el('div', { className: 'empty', textContent: none })]));
 }
-let view = 'all';
-try { view = localStorage.getItem('crateView') || 'all'; } catch (e) {}
+let view = 'free';
+try { view = localStorage.getItem('crateView') || 'free'; } catch (e) {}
+if (!['free', 'wait', 'miss'].includes(view)) view = 'free';
 for (const x of document.querySelectorAll('.tabs button')) x.onclick = () => {
   view = x.dataset.v; try { localStorage.setItem('crateView', view); } catch (e) {} draw(); };
 
