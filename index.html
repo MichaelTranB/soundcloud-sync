@@ -69,7 +69,7 @@
   .tag.lossless { color: var(--ok); border-color: #35502a; }
   .tag.low { color: #e0a040; border-color: #6b4a1a; }
   li a { color: var(--dim); font-size: 13.5px; text-decoration: none; border-bottom: 1px dotted var(--dim); white-space: nowrap; }
-  #buy li .n { flex-basis: 100%; }  /* still to get: the name on its line, the links together under it */
+  #buy li .n, #wait li.shop .n { flex-basis: 100%; }  /* still to get: the name on its line, the links together under it */
   li .shops { color: var(--dim); font-size: 13.5px; margin-left: 8px; }
   li a.free { color: var(--ok); border-bottom-style: solid; border-color: var(--ok); font-weight: 700; }
   li a:hover { color: var(--hot); border-color: var(--hot); }
@@ -146,36 +146,34 @@
     <div class="faqTop"><h2 id="faqHead">How it works</h2><button class="ghost" id="faqClose" aria-label="Close">&times;</button></div>
 
     <h3>What it does</h3>
-    <p>Paste a playlist link. Every day at your Auto sync time (or when you hit Sync Now) it grabs any new tracks into Music &rsaquo; SoundCloud Sync on your Mac, then copies them to your USB whenever it's plugged in. It only adds tracks; nothing on your USB gets deleted.</p>
+    <p>Gets every track in your playlist onto your Mac, then your USB. Daily at your Auto sync time, or on Sync Now. It never deletes anything.</p>
 
-    <h3>Where it looks, in order</h3>
+    <h3>Where it looks</h3>
     <ol>
-      <li><b>SoundCloud</b>: the artist's original file, if they turned downloads on.</li>
-      <li><b>Free download links</b> in the track description (Dropbox, Google Drive and so on).</li>
-      <li><b>Your Downloads folder</b>: anything you bought or unlocked yourself gets picked up and filed.</li>
-      <li><b>Soulseek</b>, the file-sharing network a lot of DJs use. Download only; it never shares your files.</li>
+      <li><b>SoundCloud</b>: the artist's original file</li>
+      <li><b>Free download links</b> in the description</li>
+      <li><b>Your Downloads</b>: anything you bought</li>
+      <li><b>Soulseek</b>: download only, never shares your files</li>
     </ol>
-    <p>Anything it can't find stays under Still to get, with links to Bandcamp, Beatport, Traxsource, Juno and Qobuz.</p>
-    <p>Spotify and Apple Music only stream, so for those it reads the track list and gets the files from steps 3 and 4.</p>
+    <p>Not found? You get shop links. Spotify and Apple Music only stream, so those use steps 3 and 4.</p>
 
     <h3>Quality</h3>
-    <p>Lossless (WAV, FLAC, AIFF) or 320 kbps MP3. Nothing lower is kept. It never records a stream.</p>
-    <p>SoundCloud originals come as the artist uploaded them; anything under 320 is marked in your list. Soulseek files have to match the track's length within 5 seconds, so you get the same mix, not an extended or radio edit.</p>
+    <p>Lossless or 320 kbps only, never a recorded stream. Soulseek files must match the track's length, so you get the same mix.</p>
 
     <h3>Is it safe?</h3>
-    <p>Every file is checked before it's kept: it has to actually be audio, and it's virus scanned. Anything else goes to a Quarantine folder and never reaches your USB.</p>
+    <p>Every file is checked to be real audio and virus scanned. Anything else is quarantined.</p>
 
     <h3>Why Full Disk Access?</h3>
-    <p>To get original files, The Crate uses the SoundCloud sign-in already in your browser, so you never type a SoundCloud password into it. macOS locks the folder where browsers keep sign-ins, and Full Disk Access is the only switch that opens it. You turn it on for Crate Helper, a small part of The Crate. Your sign-in is only ever sent to SoundCloud. Switch it off any time; you'd just miss the originals.</p>
+    <p>It uses the SoundCloud sign-in already in your browser, and macOS keeps that locked. Full Disk Access unlocks it. Your sign-in only ever goes to SoundCloud.</p>
 
     <h3>What it uses</h3>
-    <p>Free, open-source tools, all running on your Mac: <b>yt-dlp</b> for SoundCloud, <b>sockseek</b> for Soulseek, and <b>ClamAV</b> (from Cisco) for the virus scan. No account with us, no AI, nothing uploaded.</p>
+    <p>Free, open-source tools on your Mac: <b>yt-dlp</b> (SoundCloud), <b>sockseek</b> (Soulseek), <b>ClamAV</b> (virus scan). No account, no AI, nothing uploaded.</p>
 
-    <h3>Why is it taking so long to get my songs?</h3>
-    <p>Soulseek only allows so many searches a minute, so a big playlist takes a few hours the first time. After that it only looks for new tracks. Tracks nobody has are tried again after 1, 2, 4, then 7 days.</p>
+    <h3>Why does it take so long?</h3>
+    <p>Soulseek limits searches, so a big playlist takes a few hours the first time. After that, only new tracks.</p>
 
-    <h3>Do I need to keep it open?</h3>
-    <p>No, it runs in the background. Keep your Mac on and plugged in at your Auto sync time (if it's asleep, it syncs when it wakes up), and plug in your USB whenever you want the tracks.</p>
+    <h3>Do I keep it open?</h3>
+    <p>No. Keep your Mac on at sync time and plug in your USB whenever.</p>
   </dialog>
 
   <section class="start" id="start" aria-labelledby="startHead" hidden>
@@ -252,8 +250,16 @@
         <h3>Getting now <em id="cNow"></em></h3>
         <ul id="now"></ul>
       </div>
-      <h3 id="missHead">Not found <em id="cMiss"></em></h3>
-      <ul id="buy"></ul>
+      <div id="waitBox" hidden>
+        <h3>Waiting to search <em id="cWait"></em></h3>
+        <div class="note" id="waitNote"></div>
+        <ul id="wait"></ul>
+      </div>
+      <div id="missBox">
+        <h3 id="missHead">Not found <em id="cMiss"></em></h3>
+        <div class="note" id="missNote">Searched, but no top-quality copy turned up. Buy it from a shop below, or it's tried again later.</div>
+        <ul id="buy"></ul>
+      </div>
     </div>
   </section>
   <footer id="foot"></footer>
@@ -384,33 +390,44 @@ function shopLinks(t) {
 // Why a track isn't here yet, in plain words: what to do comes first when there's something to do.
 function why(t, s) {
   if (/^https?:\/\//.test(t.free)) return ['act', 'Free from the artist: tap Free Download (it may ask for a follow or repost), then leave the file in Downloads.'];
-  if (t.why) return ['', t.why];
-  if (!s.soulseekReady) return ['', 'Not looked for on Soulseek: sign in to Soulseek above and the next sync looks.'];
-  return ['', 'Not looked for on Soulseek yet: the next sync looks.'];
+  return ['', t.why];
 }
+// Three groups, never mixed: being fetched right now, not looked for yet, and looked for but not found.
+const live = t => t.state === 'downloading' || t.state === 'searching';
+const searched = t => /^https?:\/\//.test(t.free) || !!t.why;
+const waiting = t => !live(t) && (t.state === 'queued' || !searched(t));
 
 let last = null;
 function draw() {
   const s = last; if (!s) return;
   const w = words(), q = w.length > 0;
   const have = s.have.filter(t => hit(t.name, w));
-  const now = s.buy.filter(t => STATE[t.state] && hit(t.name, w));
-  const miss = s.buy.filter(t => !STATE[t.state] && hit(t.name, w));
-  $('qNote').textContent = q ? `${have.length + now.length + miss.length} match${have.length + now.length + miss.length === 1 ? '' : 'es'}` : '';
+  const nowAll = s.buy.filter(live), waitAll = s.buy.filter(waiting);
+  const missAll = s.buy.filter(t => !live(t) && !waiting(t));
+  const now = nowAll.filter(t => hit(t.name, w)), wait = waitAll.filter(t => hit(t.name, w)), miss = missAll.filter(t => hit(t.name, w));
+  const n = have.length + now.length + wait.length + miss.length;
+  $('qNote').textContent = q ? `${n} match${n === 1 ? '' : 'es'}` : '';
   $('cHave').textContent = q ? have.length + ' of ' + s.have.length : s.have.length || '';
-  const nowAll = s.buy.filter(t => STATE[t.state]).length;
-  $('nowBox').hidden = !s.running;
-  $('cNow').textContent = nowAll ? (q ? now.length + ' of ' + nowAll : nowAll) : '';
-  $('cMiss').textContent = q ? miss.length + ' of ' + (s.buy.length - nowAll) : (s.buy.length - nowAll) || '';
-  $('missHead').hidden = !s.buy.length || (!q && s.buy.length === nowAll);
+  const count = (part, all) => all.length ? (q ? part.length + ' of ' + all.length : all.length) : '';
+  $('cNow').textContent = count(now, nowAll);
+  $('cWait').textContent = count(wait, waitAll);
+  $('cMiss').textContent = count(miss, missAll);
+  $('nowBox').hidden = !s.running && !nowAll.length;
+  $('waitBox').hidden = !waitAll.length;
+  $('missBox').hidden = !missAll.length;
+  $('waitNote').textContent = !s.soulseekReady ? 'Sign in to Soulseek above and the next sync looks for these. Or buy them now.'
+    : s.running ? 'The sync looks for these one at a time, slowly, so Soulseek never blocks you.'
+    : 'The next sync looks for these, one at a time.';
   const phase = s.phase === 'soundcloud' ? (s.service ? 'Reading the playlist…' : 'Checking SoundCloud for new tracks and the artists\' own files…')
-    : s.phase === 'soulseek' && !nowAll ? 'Looking on Soulseek…' : '';
+    : s.phase === 'soulseek' && !nowAll.length ? 'Looking on Soulseek…' : '';
   $('now').replaceChildren(
     ...(phase ? [el('div', { className: 'phase' }, el('i', { className: 'dot live' }), phase)] : []),
-    ...now.sort((a, b) => (a.state === 'queued') - (b.state === 'queued')).map(t => el('li', {},
-      nameEl(t),
-      el('span', { className: 'state' + (t.state === 'queued' ? '' : ' on') },
-        el('i', { className: 'dot' + (t.state === 'queued' ? '' : ' live') }), STATE[t.state]))));
+    ...now.map(t => el('li', {}, nameEl(t),
+      el('span', { className: 'state on' }, el('i', { className: 'dot live' }), STATE[t.state]))));
+  $('wait').replaceChildren(...(wait.length ? wait.sort((a, b) => (b.state === 'queued') - (a.state === 'queued')).map(t => el('li', { className: s.soulseekReady ? '' : 'shop' }, nameEl(t),
+    ...(t.state === 'queued' ? [el('span', { className: 'state' }, el('i', { className: 'dot' }), 'Next up')] : []),
+    ...(s.soulseekReady ? [] : shopLinks(t))))
+    : q ? [el('div', { className: 'empty', textContent: 'No match.' })] : []));
 
   $('have').replaceChildren(...(have.length ? have.map(t => el('li', {},
     el('span', { className: 'n', textContent: t.name }),
@@ -422,8 +439,10 @@ function draw() {
 
   $('buy').replaceChildren(...(miss.length ? miss.map(t => { const [k, txt] = why(t, s); return el('li', {},
     nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : ''), textContent: txt }), ...shopLinks(t)); })
-    : s.buy.length && q ? [el('div', { className: 'empty', textContent: 'No match.' })] : []));
-  if (!s.buy.length) $('buy').replaceChildren(el('div', { className: 'empty', textContent: 'Nothing left to get. Every track is on your Mac.' }));
+    : q ? [el('div', { className: 'empty', textContent: 'No match.' })] : []));
+  if (!s.buy.length) { $('missBox').hidden = false; $('missHead').hidden = $('missNote').hidden = true;
+    $('buy').replaceChildren(el('div', { className: 'empty', textContent: 'Nothing left to get. Every track is on your Mac.' })); }
+  else $('missHead').hidden = $('missNote').hidden = false;
 }
 
 function paintSetup(s) {

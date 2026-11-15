@@ -43,3 +43,4 @@ unread.txt
 .service
 clamav.log
 sync-time.txt
+.signin-check.json

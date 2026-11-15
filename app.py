@@ -328,6 +328,22 @@ def login_seen(text):
 
 
 _login = {"at": 0.0, "state": "", "profile": "", "busy": False}  # the page's own re-check (sign_in_check)
+LOGIN_FILE = os.path.join(DIR, ".signin-check.json")  # kept on disk, so a restart doesn't forget a fresh sign-in
+try:
+    with open(LOGIN_FILE) as f:
+        _saved = json.load(f)
+    if _saved.get("browser") == browser():
+        _login.update(at=float(_saved["at"]), state=str(_saved["state"]), profile=str(_saved.get("profile", "")))
+except (OSError, ValueError, KeyError, TypeError, NameError):
+    pass
+
+
+def save_login(b):
+    try:
+        with open(LOGIN_FILE, "w") as f:
+            json.dump({"browser": b, "at": _login["at"], "state": _login["state"], "profile": _login["profile"]}, f)
+    except OSError as e:
+        print(f"couldn't save the sign-in check: {e!r}", file=sys.stderr)
 
 
 def has_cookies(folder):
@@ -394,6 +410,7 @@ def sign_in_check(b):
         print(f"sign-in check failed: {e!r}", file=sys.stderr)
     finally:
         _login.update(at=time.time(), busy=False)
+        save_login(b)
 
 
 def profile_name(b, folder):
