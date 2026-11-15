@@ -54,9 +54,10 @@ def fetch(url, dest):
             f.write(chunk)
 
 
-def best_audio(tmp, name):
+def best_audio(tmp, name, secs=None):
     """The downloaded file itself, or from a zip the top-quality track whose file name carries the song's title
-    as whole words (the same matching the Downloads pickup uses); the full title with its version first."""
+    as whole words (the same matching the Downloads pickup uses); the full title with its version first, then the
+    one whose length matches SoundCloud's (a pack often holds the original and an extended mix)."""
     if not zipfile.is_zipfile(tmp):
         i = info(tmp)
         return (tmp, i) if top_quality(i) else (None, i)
@@ -74,13 +75,14 @@ def best_audio(tmp, name):
             i = info(out)
             if top_quality(i):
                 b = words(os.path.splitext(base)[0])
-                picks.append((has(b, short), has(b, full), i["lossless"], out, i))
+                off = abs(i["secs"] - float(secs)) if secs and i.get("secs") else 0
+                picks.append((has(b, short), has(b, full), off <= 5, i["lossless"], -off, out, i))
     # One track: it's the download. Several: only one whose file name carries the title, never a guess.
     if len(picks) > 1:
         picks = [p for p in picks if p[0]]
     if not picks:
         return None, None
-    *_, path, i = max(picks, key=lambda p: p[:3])
+    *_, path, i = max(picks, key=lambda p: p[:5])
     return path, i
 
 
@@ -174,7 +176,9 @@ def inbox(d, out, folder=os.path.expanduser("~/Downloads"), days=30):
 def inbox_(d, out, folder, days):
     """Takes still-to-get tracks you downloaded by hand (a Hypeddit or Laylo gate, a Bandcamp purchase, any
     link) out of Downloads: the song's title (whole words) and its artist must be in the file's name, and when
-    SoundCloud gave a length, within 5 s of it (same version; a SoundCloud preview's length is not used). Top quality only, through the safety check. A zip is opened and stays.
+    SoundCloud gave a length, within 5 s of it, or longer when the full title with its version is there (an extended
+    or DJ intro cut; a SoundCloud preview's length is not used). Top quality only, through the safety check. A zip
+    is opened, and goes to the Trash once nothing else on the list is in it.
     Right after a Free Download click (claim()), a file that lands in Downloads counts as that track whatever its
     name, when its length is within 2 s of SoundCloud's. Why a file wasn't kept goes to .inbox-why.json for the
     page."""
@@ -229,6 +233,7 @@ def inbox_(d, out, folder, days):
         cands = sorted((r for r in rows if fits(r) and (r[3] or fits(r, True))), key=lambda r: -len(wanted(r[0])[1]))
         # Just clicked: a single file (not a zip) that came in after the click, if SoundCloud gave a length to check.
         named = {r[1] for r in cands}
+        whole = {r[1] for r in cands if fits(r, True)}  # the full title with its version: a longer cut is fine
         if not p.lower().endswith(".zip"):
             cands += [r for r in rows if r[1] in clicked and r[3] and r[1] not in named and mtime >= clicked[r[1]] - 5]
         # Looked at once for these tracks; looked at again if the file changes or other tracks match it
@@ -236,14 +241,18 @@ def inbox_(d, out, folder, days):
         key = f"{p}\t{size}\t{' '.join(sorted(r[1] for r in cands))}"
         if not cands or key in seen:
             continue
+        took = len(got)
         for row in cands:
             name, link, _, secs = row
             with tempfile.TemporaryDirectory(dir=d, prefix=".inbox-") as tmpdir:  # outside the music folder
                 tmp = os.path.join(tmpdir, "download" + (".zip" if p.lower().endswith(".zip") else ""))
                 shutil.copyfile(p, tmp)
-                path, i = best_audio(tmp, name)
-                # Matched only by the click (any name): the length must agree closely (2 s), not just roughly.
-                fits_len = not (i and secs and abs(i["secs"] - float(secs)) > (5 if link in named else 2))
+                path, i = best_audio(tmp, name, secs)
+                # Matched only by the click (any name): the length must agree closely (2 s), not just roughly. Named
+                # with its full title and version: within 5 s, or longer (an extended or DJ intro cut of the same
+                # song, up to 4 minutes more); never shorter (a preview or radio edit).
+                off = i["secs"] - float(secs) if i and secs else 0
+                fits_len = abs(off) <= (5 if link in named else 2) or (link in whole and 0 < off <= 240)
                 if not path:
                     if i and (link in named or fits_len):
                         print(f"in Downloads but only {i['kbps']} kbps, not kept: {os.path.basename(p)}")
@@ -252,7 +261,7 @@ def inbox_(d, out, folder, days):
                         break
                     continue  # not audio, or no track of this name in the zip
                 if not fits_len:
-                    if link in named:  # the name says it's this song, the length says another version
+                    if link in named:  # the name says it's this song, the length says another (shorter) version
                         why[link] = (f"{os.path.basename(p)} is {mmss(i['secs'])} long, not {mmss(float(secs))}: "
                                      "another version of the song, so it wasn't kept.")
                     continue  # another version of the song (or, just after a click, another file)
@@ -272,6 +281,12 @@ def inbox_(d, out, folder, days):
             print(f"from Downloads: {os.path.basename(dest)} ({'lossless' if i['lossless'] else str(i['kbps']) + ' kbps'})")
             if not os.path.exists(p):
                 break  # a zip (an album) can hold more than one track still to get
+        if len(got) > took and p.lower().endswith(".zip") and os.path.exists(p):
+            # Tidy Downloads: a zip a track came from goes to the Trash (recoverable) once nothing else on the
+            # list is in it.
+            if not any(r in rows for r in cands):
+                trash(p)
+                continue
         if os.path.exists(p):
             new_seen.append(key)
     if new_seen:
@@ -285,6 +300,19 @@ def inbox_(d, out, folder, days):
     if got:
         safety.check(d, out)
     return got
+
+
+def trash(p):
+    """Moves a file to the Trash (it can be put back), never deleting it."""
+    t = os.path.expanduser("~/.Trash")
+    base, ext = os.path.splitext(os.path.basename(p))
+    dest, k = os.path.join(t, base + ext), 1
+    while os.path.exists(dest):
+        dest, k = os.path.join(t, f"{base} {k}{ext}"), k + 1
+    try:
+        shutil.move(p, dest)
+    except OSError:
+        pass
 
 
 def mmss(secs):
@@ -328,7 +356,7 @@ def main(d, out):
                 print(f"free download failed, will retry: {name}: {e}")
                 kept.append(row)
                 continue
-            path, i = best_audio(tmp, name)
+            path, i = best_audio(tmp, name, row[3])
             if not path:
                 why = f"only {i['kbps']} kbps" if i else "no audio in it"
                 print(f"free download skipped ({why}), not top quality: {name}")
