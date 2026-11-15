@@ -13,7 +13,8 @@ mkdir -p "$DEST/SoundCloud Sync"
 # Only files that passed the safety check (safety.py) are copied. During a sync the check runs at its end.
 [ -e "$DIR/.running" ] || python3 "$DIR/safety.py" check "$DIR" "$SRC" 2>>"$DIR/safety.log"
 LIST="$DIR/.usb-list"
-{ cut -f1 "$DIR/safety-ok.tsv" 2>/dev/null; echo "To Buy.txt"; } | while IFS= read -r p; do [ -f "$SRC/$p" ] && echo "$p"; done >"$LIST"
+# "./" first: rsync would read a name starting with # or ; as a comment
+{ cut -f1 "$DIR/safety-ok.tsv" 2>/dev/null; echo "To Buy.txt"; } | while IFS= read -r p; do [ -f "$SRC/$p" ] && echo "./$p"; done >"$LIST"
 if rsync -a --ignore-existing --files-from="$LIST" "$SRC/" "$DEST/SoundCloud Sync/" 2>>"$DIR/usb.log"; then
   echo "$(date '+%F %R')  copied to \"$NAME\"" >> "$DIR/usb.log"
 else

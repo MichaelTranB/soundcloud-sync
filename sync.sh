@@ -41,21 +41,31 @@ if [ -n "$STORE" ] && ls "$STORE" >/dev/null 2>&1; then AUTH=(--cookies-from-bro
 elif [ -n "$STORE" ] && [ -d "$STORE" ]; then echo "sign-in blocked: operation not permitted ($BROWSER)" >"$DIR/signin.log"; fi
 
 # New tracks only (archive.txt remembers what is already here).
+: >"$DIR/.originals"
 yt-dlp "${AUTH[@]}" -f download --download-archive "$DIR/archive.txt" --ignore-errors --no-overwrites \
+  --print-to-file after_move:"%(extractor_key)s %(id)s	%(filepath)s" "$DIR/.originals" \
   --embed-metadata -o "$OUT/%(uploader)s - %(title)s.%(ext)s" "$URL" >"$DIR/last-run.log" 2>&1
+# The safety check right away: an original it blocks (moved to Quarantine) counts as not got, so the free
+# download, Downloads pickup and Soulseek still look for it (blocked-originals.txt; never downloaded again).
+python3 "$DIR/safety.py" check "$DIR" "$OUT" 2>>"$DIR/safety.log"
+while IFS=$'\t' read -r key p; do
+  [ -n "$p" ] && [ ! -e "$p" ] && echo "${key:l}" >>"$DIR/blocked-originals.txt"
+done <"$DIR/.originals"
+touch "$DIR/blocked-originals.txt"
+grep -vxFf "$DIR/blocked-originals.txt" "$DIR/archive.txt" >"$DIR/.archive-have" || :  # (exit 1: none left)
 
 # Everything in the playlist with no artist download: the list still to get, each with the artist's
 # own free-download link when their description has one.
 # Tracks already downloaded are skipped by ID before SoundCloud is asked about them, so a playlist that keeps
 # growing doesn't make every sync re-read all of it (yt-dlp only reads the archive here; it never writes it
 # without a download or --force-write-archive).
-yt-dlp "${AUTH[@]}" --download-archive "$DIR/archive.txt" --skip-download --ignore-errors --ignore-no-formats-error --dump-json "$URL" 2>>"$DIR/last-run.log" |
-  python3 "$DIR/tobuy.py" "$DIR/archive.txt" "$DIR/to-buy.tsv"
+yt-dlp "${AUTH[@]}" --download-archive "$DIR/.archive-have" --skip-download --ignore-errors --ignore-no-formats-error --dump-json "$URL" 2>>"$DIR/last-run.log" |
+  python3 "$DIR/tobuy.py" "$DIR/.archive-have" "$DIR/to-buy.tsv"
 # The artist's own free download, when the description links straight to a file (Dropbox, Drive...): top quality only.
 python3 "$DIR/freedl.py" "$DIR" "$OUT" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/free.log"
 awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" > "$OUT/To Buy.txt"
 
-echo "$(date '+%F %R')  have: $(wc -l < "$DIR/archive.txt" | tr -d ' ')  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d ' ')" | tee -a "$DIR/history.log"
+echo "$(date '+%F %R')  have: $(wc -l < "$DIR/.archive-have" | tr -d ' ')  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d ' ')" | tee -a "$DIR/history.log"
 # Last fallback for whatever is still to get: Soulseek, through sockseek (download-only).
 "$DIR/soulseek.sh"
 # Every new file must be real audio (and pass the virus scan) before it stays or reaches the USB.
