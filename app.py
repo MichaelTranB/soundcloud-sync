@@ -5,7 +5,7 @@ Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so an
 in the browser cannot press the buttons.
 """
 import json, os, re, shutil, subprocess, threading, time, urllib.parse
-import audio, freedl, safety, soulseek
+import audio, freedl, playlists, safety, soulseek
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -15,6 +15,11 @@ PORT = 4780
 HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 PLAYLIST_RE = re.compile(r"^https://(on\.|m\.|www\.)?soundcloud\.com/\S+$")
+
+
+def is_playlist(url):
+    """A SoundCloud, Spotify or Apple Music playlist link."""
+    return bool(PLAYLIST_RE.match(url) or playlists.service(url))
 PROFILE_RE = re.compile(r"^(?:https?://(?:www\.|m\.)?soundcloud\.com/)?([A-Za-z0-9_-]{1,60})/?$")
 # "none" lists public playlists only; the others borrow the SoundCloud session of that browser.
 BROWSERS = ("chrome", "safari", "brave", "firefox", "edge", "none")
@@ -140,9 +145,9 @@ def saved():
     raw = read("saved.json")
     if not raw:
         cur = read("playlist.txt")
-        return [{"title": cur.rstrip("/").split("/")[-1].replace("-", " "), "url": cur}] if PLAYLIST_RE.match(cur) else []
+        return [{"title": cur.rstrip("/").split("/")[-1].replace("-", " "), "url": cur}] if is_playlist(cur) else []
     try:
-        return [p for p in json.loads(raw) if PLAYLIST_RE.match(str(p.get("url", "")))]
+        return [p for p in json.loads(raw) if is_playlist(str(p.get("url", "")))]
     except (ValueError, AttributeError):
         return []
 
@@ -167,7 +172,14 @@ def _remember(url, title):
 
 
 def title_of(url):
-    """The playlist's name from SoundCloud (no sign-in needed for a public playlist or a private Share link)."""
+    """The playlist's name from SoundCloud (no sign-in needed for a public playlist or a private Share link),
+    Spotify or Apple Music (public playlists)."""
+    if playlists.service(url):
+        try:
+            p = playlists.read(url)
+        except Exception:  # their page changed or didn't answer: the plain message below says so
+            return None
+        return p["title"][:120] if p["tracks"] else None
     try:
         r = subprocess.run([YTDLP, "--flat-playlist", "--dump-single-json", "--no-warnings", url],
                            capture_output=True, text=True, timeout=120)
@@ -299,6 +311,8 @@ def profile_name(b, folder):
 
 def problem():
     """One plain line when the last sync could not sign in or reach SoundCloud; empty when fine."""
+    if playlists.service(read("playlist.txt")):
+        return ""  # a Spotify or Apple Music playlist: no SoundCloud sign-in involved
     log = (read("last-run.log") + read("signin.log")).lower()
     b = browser()
     name = {"chrome": "Chrome", "safari": "Safari", "brave": "Brave", "edge": "Edge", "firefox": "Firefox"}.get(b, "")
@@ -377,8 +391,14 @@ def state():
     usblog = read("usb.log").splitlines()
     safelog = read("safety.log").splitlines()
     qdir = os.path.join(DIR, "Quarantine")
+    svc = playlists.service(read("playlist.txt"))
+    try:  # Spotify shows only its first 100 tracks to a page without a Spotify sign-in
+        capped = bool(svc) and json.loads(read(".service") or "{}").get("service") == svc and \
+            json.loads(read(".service"))["capped"]
+    except (ValueError, KeyError):
+        capped = False
     return {
-        "playlist": read("playlist.txt"), "usb": usb, "unread": unread, "volumes": volumes(),
+        "playlist": read("playlist.txt"), "service": svc, "capped": capped, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
         "usbEject": not os.path.exists(os.path.join(DIR, "usb-keep.txt")),
         "running": running, "phase": phase,
@@ -433,10 +453,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {"error": "bad request"})
         if self.path == "/api/playlist":
             url = str(body.get("url", "")).strip()
-            if not PLAYLIST_RE.match(url):
-                return self.send(400, {"error": "That doesn't look like a SoundCloud link."})
+            if not is_playlist(url):
+                return self.send(400, {"error": "That doesn't look like a SoundCloud, Apple Music or Spotify playlist link."})
             url = url.split("?")[0].rstrip("/")
             title = title_of(url)
+            svc = {"spotify": "Spotify", "apple": "Apple Music"}.get(playlists.service(url))
+            if not title and svc:
+                return self.send(400, {"error": f"{svc} didn't open that playlist. Make sure it's public "
+                                                "(Share > Copy link to playlist), then paste it again."})
             if not title:
                 return self.send(400, {"error": "SoundCloud didn't open that link. For a private playlist, use its "
                                                 "Share link (it ends in /s-…)."})

@@ -23,6 +23,9 @@ def norm(s):
     return re.sub(r"\W+", "", s.lower())
 
 
+REMASTER = re.compile(r"\s+-\s+(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?(?:\s+version)?\s*$", re.I)
+
+
 def split(name):
     """'Uploader - Title' (to-buy.tsv) -> (artist, title). A title like 'Artist - Track' wins over the uploader,
     which is often a label or a premiere channel."""
@@ -41,9 +44,12 @@ def to_get(d):
     try:
         with open(os.path.join(d, "to-buy.tsv")) as f:
             for line in f:
-                name, link, _, secs = (line.rstrip("\n").split("\t") + ["", "", ""])[:4]
+                name, link, _, secs, artist, title = (line.rstrip("\n").split("\t") + [""] * 5)[:6]
                 if name and link:
-                    rows.append((link, name, *split(name), "" if CUT.search(name) else secs))
+                    # Spotify and Apple Music rows carry the artist and title apart (playlists.py): taken as they
+                    # are, first artist only (the one in file names), without a " - Remastered 2011" kind of tail.
+                    at = (artist.split(", ")[0], REMASTER.sub("", title)) if artist and title else split(name)
+                    rows.append((link, name, *at, "" if CUT.search(name) else secs))
     except OSError:
         pass
     return rows

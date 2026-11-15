@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Syncs a SoundCloud playlist to the Mac: downloads the ORIGINAL file (WAV/FLAC/AIFF/MP3 as uploaded)
-# for every track whose artist switched downloads on, and lists the rest in "To Buy.txt".
+# for every track whose artist switched downloads on, and lists the rest in "To Buy.txt". A Spotify or Apple Music
+# playlist goes straight to the Soulseek and shop-link steps (those services only stream).
 # It never records the stream: Go+ covers streaming, not keeping files.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 DIR="${0:A:h}"
@@ -24,6 +25,16 @@ if command -v freshclam >/dev/null && [ -z "$(find "$DIR/.virusdb" -mmin -1200 2
   freshclam --quiet >>"$DIR/update.log" 2>&1; touch "$DIR/.virusdb"
 fi
 
+# A Spotify or Apple Music playlist: those services only stream, so nothing downloads from them. playlists.py reads
+# the track list from the playlist's public page and writes the to-get list; Soulseek, Downloads and the shop links
+# then work the same as for SoundCloud tracks that aren't free.
+case "$URL" in https://open.spotify.com/*|https://music.apple.com/*|https://embed.music.apple.com/*) STREAM=1 ;; esac
+if [ -n "$STREAM" ]; then
+  python3 "$DIR/playlists.py" tobuy "$URL" "$DIR" >"$DIR/last-run.log" 2>&1 || echo "Couldn't read the playlist page" >>"$DIR/last-run.log"
+  echo 0 >"$DIR/unread.txt"
+  HAVE=$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(s["count"])' "$DIR/.service" 2>/dev/null || echo 0)
+  HAVE=$(( HAVE - $(wc -l < "$DIR/to-buy.tsv") ))
+else
 # Original files only download for a signed-in account: the SoundCloud sign-in already in his browser
 # (Chrome unless he picked another in the app; an empty browser.txt means none). macOS lets yt-dlp read it
 # only when this runs through Crate Helper with Full Disk Access on.
@@ -86,12 +97,14 @@ for pause in 120 600; do
 done
 unread; wc -l < "$DIR/.unread" | tr -d ' ' >"$DIR/unread.txt"
 python3 "$DIR/tobuy.py" "$DIR/.archive-have" "$DIR/to-buy.tsv" <"$DIR/.listing"
+HAVE=$(wc -l < "$DIR/.archive-have" | tr -d ' ')
+fi
 # The artist's own free download, when the description links straight to a file (Dropbox, Drive...): top quality only.
 python3 "$DIR/freedl.py" "$DIR" "$OUT" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/free.log"
 # Tracks bought or unlocked by hand (Beatport, Hypeddit, Laylo...) waiting in Downloads.
 python3 "$DIR/freedl.py" inbox "$DIR" "$OUT" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/free.log"
 
-echo "$(date '+%F %R')  have: $(wc -l < "$DIR/.archive-have" | tr -d ' ')  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d ' ')" | tee -a "$DIR/history.log"
+echo "$(date '+%F %R')  have: $HAVE  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d ' ')" | tee -a "$DIR/history.log"
 # Last fallback for whatever is still to get: Soulseek, through sockseek (download-only).
 "$DIR/soulseek.sh"
 # The list for the USB, after every source had its turn (a track on the Mac is never on it).

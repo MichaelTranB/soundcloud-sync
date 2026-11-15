@@ -97,7 +97,7 @@
   <header>
     <div>
       <h1>The <span>Crate</span></h1>
-      <div class="sub">Your SoundCloud playlist, as real files, ready for the USB.</div>
+      <div class="sub">Your SoundCloud, Apple Music or Spotify playlist, as real files, ready for the USB.</div>
     </div>
     <button class="big" id="sync">Sync Now</button>
   </header>
@@ -113,7 +113,7 @@
   <section class="setup">
     <div class="field">
       <label for="url">Your playlists</label>
-      <div class="row"><input id="url" placeholder="Paste a SoundCloud playlist link" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="ghost" id="saveUrl">Add</button></div>
+      <div class="row"><input id="url" placeholder="Paste a SoundCloud, Apple Music or Spotify playlist link" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="ghost" id="saveUrl">Add</button></div>
       <div class="note" id="urlNote">Paste a playlist link once and it stays here. Tap one to make it the one that syncs.</div>
       <div class="lists" id="saved"></div>
       <details><summary>Or find them on your profile</summary>
@@ -188,8 +188,11 @@ const search = (site, q) => site + encodeURIComponent(q);
 function render(s) {
   $('alert').hidden = !s.problem; $('alert').textContent = s.problem;
   $('nHave').textContent = s.have.length; $('cHave').textContent = s.have.length || '';
-  $('unread').hidden = !s.unread;
-  $('unread').textContent = s.unread ? `Plus ${s.unread} song${s.unread > 1 ? 's' : ''} SoundCloud wouldn't show us yet (it slows down anyone who asks too fast). The next sync asks again.` : '';
+  $('unread').hidden = !s.unread && !s.capped;
+  $('unread').textContent = s.capped ? (s.service === 'spotify'
+      ? 'Spotify shows only the first 100 songs of a playlist without a Spotify sign-in, so songs after the 100th aren\'t listed. Split it into playlists of 100 or fewer, or use the same playlist on Apple Music or SoundCloud.'
+      : 'Apple Music showed only part of this playlist. The next sync reads it again.')
+    : s.unread ? `Plus ${s.unread} song${s.unread > 1 ? 's' : ''} SoundCloud wouldn't show us yet (it slows down anyone who asks too fast). The next sync asks again.` : '';
   $('nBuy').textContent = s.buy.length; $('cBuy').textContent = s.buy.length || '';
   paintSetup(s); last = s; draw();
 }
@@ -200,10 +203,12 @@ const hit = (name, w) => w.every(x => name.toLowerCase().includes(x));
 const nameEl = t => el('span', { className: 'n', textContent: t.name });
 const STATE = { downloading: 'Downloading', searching: 'Searching Soulseek', queued: 'Next up on Soulseek' };
 
+const SERVICE = { 'open.spotify.com': 'Spotify', 'music.apple.com': 'Apple Music' };
+const host = u => { try { return new URL(u).hostname; } catch (e) { return ''; } };
 function shopLinks(t) {
   return [
     ...(/^https?:\/\//.test(t.free) ? [el('a', { className: 'free', title: 'The artist\'s own free download (often asks you to follow or repost first)', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download' })] : []),
-    el('a', { href: t.link, target: '_blank', rel: 'noopener', title: 'The track on SoundCloud: look for a Download or Buy link under it', textContent: 'SoundCloud' }),
+    el('a', { href: t.link, target: '_blank', rel: 'noopener', title: SERVICE[host(t.link)] ? 'The song on ' + SERVICE[host(t.link)] + ' (it only streams: the file comes from Soulseek or a shop)' : 'The track on SoundCloud: look for a Download or Buy link under it', textContent: SERVICE[host(t.link)] || 'SoundCloud' }),
     el('span', { className: 'shops', title: 'Searches in each shop. Not every track is sold everywhere: try Bandcamp and Beatport first', textContent: 'Buy:' }),
     el('a', { href: search('https://bandcamp.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Bandcamp' }),
     el('a', { href: search('https://www.beatport.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Beatport' }),
@@ -234,7 +239,7 @@ function draw() {
   $('cNow').textContent = nowAll ? (q ? now.length + ' of ' + nowAll : nowAll) : '';
   $('cMiss').textContent = q ? miss.length + ' of ' + (s.buy.length - nowAll) : (s.buy.length - nowAll) || '';
   $('missHead').hidden = !s.buy.length || (!q && s.buy.length === nowAll);
-  const phase = s.phase === 'soundcloud' ? 'Checking SoundCloud for new tracks and the artists\' own files…'
+  const phase = s.phase === 'soundcloud' ? (s.service ? 'Reading the playlist…' : 'Checking SoundCloud for new tracks and the artists\' own files…')
     : s.phase === 'soulseek' && !nowAll ? 'Looking on Soulseek…' : '';
   $('now').replaceChildren(
     ...(phase ? [el('div', { className: 'phase' }, el('i', { className: 'dot live' }), phase)] : []),
@@ -319,7 +324,7 @@ async function call(path, body) {
 function say(id, text, bad) { const n = $(id); n.textContent = text; n.className = 'note' + (bad ? ' bad' : ''); }
 
 $('saveUrl').onclick = () => {
-  $('saveUrl').disabled = true; say('urlNote', 'Reading the playlist name from SoundCloud…');
+  $('saveUrl').disabled = true; say('urlNote', 'Reading the playlist…');
   call('/api/playlist', { url: $('url').value.trim() })
     .then(s => { $('url').value = ''; say('urlNote', (s.saved[0] || {}).title + ' saved and set to sync.'); })
     .catch(e => say('urlNote', e.message, true)).finally(() => { $('saveUrl').disabled = false; });

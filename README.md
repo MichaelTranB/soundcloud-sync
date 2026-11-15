@@ -1,6 +1,7 @@
 # The Crate
 
-Keeps a SoundCloud playlist on your Mac as real, top-quality music files, and puts them on your DJ USB by itself.
+Keeps a SoundCloud, Apple Music or Spotify playlist on your Mac as real, top-quality music files, and puts them on
+your DJ USB by itself.
 Free sources come first. Everything runs on your own Mac; no account with us, nothing to pay.
 
 ## Install (Mac)
@@ -17,9 +18,10 @@ curl -fsSL https://raw.githubusercontent.com/MichaelTranB/soundcloud-sync/main/g
 
 ## First use (about 2 minutes)
 
-1. **Playlist:** paste your SoundCloud playlist link on the page.
+1. **Playlist:** paste your SoundCloud, Apple Music or Spotify playlist link on the page (Spotify and Apple Music:
+   a public playlist; Spotify shows The Crate its first 100 songs).
 2. **SoundCloud sign-in:** be signed in to soundcloud.com in Chrome (or Safari). The Crate borrows that sign-in, so
-   it can fetch the artists' original files.
+   it can fetch the artists' original files. With several Chrome profiles, it finds the one signed in.
 3. **One switch:** a Finder window and System Settings open on *Full Disk Access*. Drag **Crate Helper** into the
    list and switch it on. (macOS needs this before any app can read your browser's sign-in.)
 4. **Soulseek (optional, for tracks the artist didn't make free):** sign in on the page with a free Soulseek
@@ -36,6 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/MichaelTranB/soundcloud-sync/main/g
    if it's on your list, top quality only.
 5. Anything still missing is listed on the page (and in *To Buy.txt* on the USB) with links to get it.
 
+Spotify and Apple Music only stream, so their songs come from Soulseek, Downloads or a shop (steps 3 to 5).
 Never YouTube rips or recorded streams: low quality.
 
 ## The USB
