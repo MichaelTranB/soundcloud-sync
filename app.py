@@ -4,7 +4,7 @@
 Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so another website open
 in the browser cannot press the buttons.
 """
-import json, os, plistlib, re, shutil, subprocess, sys, threading, time, urllib.parse
+import json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, urllib.parse
 import audio, freedl, playlists, safety, soulseek
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -27,6 +27,133 @@ YTDLP = next((p for p in (shutil.which("yt-dlp"), os.path.expanduser("~/.local/b
                           "/usr/local/bin/yt-dlp") if p and os.access(p, os.X_OK)), "yt-dlp")
 _slsk = {"at": 0.0, "ok": False, "user": ""}
 _lists = threading.Lock()  # one change to saved.json / playlist.txt at a time (the server is threaded)
+
+
+def agent_app(who):
+    """Claude Code (its claude command) or the Codex app, when this Mac has one: the Free links button hands it the
+    list. The Crate works the same without them."""
+    if who == "claude":
+        places = (shutil.which("claude"), "~/.local/bin/claude", "~/.claude/local/claude", "/opt/homebrew/bin/claude",
+                  "/usr/local/bin/claude")
+        return next((p for p in map(lambda x: x and os.path.expanduser(x), places) if p and os.access(p, os.X_OK)), "")
+    if who == "codex":  # the Codex app, or the ChatGPT app for Mac, which is now the same app (it includes Codex)
+        import plistlib
+        for p in ("/Applications/Codex.app", "~/Applications/Codex.app", "/Applications/ChatGPT.app",
+                  "~/Applications/ChatGPT.app"):
+            p = os.path.expanduser(p)
+            try:
+                with open(os.path.join(p, "Contents/Info.plist"), "rb") as f:
+                    if plistlib.load(f).get("CFBundleIdentifier") == "com.openai.codex":
+                        return p
+            except (OSError, ValueError):
+                pass
+    return ""
+
+
+CHROME = "Google Chrome"
+EXT = {"claude": "fcoeoabgfenejglbffodgkkbkcdhcgfn", "codex": "hehggadaopoacecdllhhajmbjkdcmajg"}  # their Chrome add-ons
+
+
+def chrome_app():
+    return next((p for p in (f"/Applications/{CHROME}.app", os.path.expanduser(f"~/Applications/{CHROME}.app"))
+                 if os.path.isdir(p)), "")
+
+
+def open_chrome():
+    """Opens Chrome on The Crate's list of free links before the assistant starts, so its Chrome add-on is already
+    connected when it looks (a just-started Chrome takes a few seconds). True when Chrome had to be started."""
+    cold = subprocess.run(["pgrep", "-xq", CHROME]).returncode != 0
+    subprocess.run(["open", "-a", CHROME, f"http://localhost:{PORT}/free"], check=False)
+    return cold
+
+
+def agent_uses():
+    """Which assistant this person already uses, from what's on the Mac (an app or command is there; nothing in it is
+    read): picks the one the Claude/Codex guide opens on when neither is set up yet."""
+    there = lambda *ps: any(os.path.exists(os.path.expanduser(p)) for p in ps)
+    return {"claude": bool(agent_app("claude")) or there("/Applications/Claude.app", "~/Applications/Claude.app"),
+            "codex": bool(agent_app("codex")) or bool(shutil.which("codex")) or there(
+                "/Applications/ChatGPT.app", "~/Applications/ChatGPT.app", "/opt/homebrew/bin/codex",
+                "/usr/local/bin/codex", "~/.local/bin/codex")}
+
+
+def in_chrome(who):
+    """That assistant's Chrome add-on is in one of this Mac's Chrome profiles (its folder is there; nothing in it is
+    read)."""
+    import glob
+    return bool(glob.glob(os.path.expanduser(f"~/Library/Application Support/Google/Chrome/*/Extensions/{EXT[who]}")))
+
+
+def in_terminal(name, script):
+    """Runs a short script in a Terminal window the friend can watch and answer in."""
+    run = os.path.join(DIR, name)
+    with open(run, "w") as f:
+        f.write("#!/bin/zsh\n" + script)
+    os.chmod(run, 0o700)
+    subprocess.Popen(["open", "-a", "Terminal", run])
+
+
+# What Claude or Codex is asked to do: the friend's own assistant, in their own signed-in Chrome, with them watching.
+# It asks them once what it may do in their name, never pays or types a password, and only fetches audio.
+AGENT_BRIEF = """{lead}Please get the free downloads waiting in my music app, The Crate, using my Chrome (I'm signed in there).
+
+Open this page in Chrome (The Crate has just opened it there): {page}
+It lists {n} songs whose artists give them away free, usually behind a gate (Hypeddit, ToneDen, Laylo...) that asks
+for a follow, like, repost, comment or email first. The Crate picks up each file that lands in my Downloads folder.
+
+Before you start, ask me ONCE which gate steps you may do in my name, so you don't have to ask again for each:
+following or liking on SoundCloud (or Spotify, Instagram...), reposting, a comment (and what text), signing up with
+my email (which one), connecting an account. Skip any song that needs something I didn't allow.
+
+Then for each song on that page, top to bottom:
+1. Click its Free Download link ON THAT PAGE: the click tells The Crate which song is coming, so no renaming is
+   needed. (Don't type the link's address yourself.)
+2. Do the gate steps I allowed and download the best quality offered: WAV, FLAC or AIFF over MP3; MP3 only at
+   320 kbps.
+3. Once the file has started downloading, close every tab that song opened (the gate page, SoundCloud, the
+   download page): keep only the list page open, so a long list doesn't fill Chrome and slow the Mac. Then go back
+   to the list page and wait a few seconds before the next song, so none of my accounts looks like a bot.
+Reload the list page whenever you like: songs that have arrived drop off it. At the end, close every tab you opened.
+
+Never: pay or enter card details, type a password (if a site needs a sign-in, ask me to do it and wait), download
+or open an app or installer (.dmg, .pkg, .exe, .app), or join a paid membership (skip a Patreon post that's members
+only). Don't touch anything else in The Crate. If you can't reach my Chrome yet, it may still be starting: wait 15 seconds
+and try again, up to 4 times, before you tell me and stop. Use my own Google Chrome, not a built-in browser.
+
+At the end, tell me in a short list what you got, and what you skipped and why.
+"""
+
+
+def free_rows():
+    """The songs still to get that have the artist's own free link: (name, track link, free link)."""
+    return [p[:3] for p in (l.split("\t") for l in read("to-buy.tsv").splitlines())
+            if len(p) > 2 and re.match(r"https?://\S+$", p[2])]
+
+
+def agent_task(who="claude"):
+    n = len(free_rows())
+    lead = "@Chrome " if who == "codex" else ""
+    return AGENT_BRIEF.format(lead=lead, page=f"http://localhost:{PORT}/free", n=n), n
+
+
+def free_page():
+    """The list Claude or Codex works from: each song's Free Download link and nothing else of The Crate. A click
+    here tells The Crate which song is coming (as in the app), so the downloaded file needs no renaming."""
+    from html import escape
+    rows = free_rows()
+    items = "".join(f'<li><span>{escape(n)}</span> <a href="{escape(f)}" target="_blank" rel="noopener" '
+                    f'data-link="{escape(t)}">Free Download</a></li>' for n, t, f in rows)
+    return f"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Crate: free downloads</title>
+<style>body{{font:16px/1.5 -apple-system,system-ui,sans-serif;background:#0c0c12;color:#f0eef8;max-width:760px;margin:32px auto;padding:0 16px}}
+p{{color:#a4a2b6}} li{{margin:10px 0}} a{{color:#ff6b7d;font-weight:600;margin-left:8px}}</style>
+<h1>Free downloads: {len(rows)} left</h1>
+<p>Click each song's Free Download link here, one at a time: the click tells The Crate which song is coming.
+Songs that have arrived drop off this list when the page is reloaded.</p>
+<ol>{items}</ol>
+<script>for (const a of document.querySelectorAll('a[data-link]')) a.addEventListener('click', () =>
+  fetch('/api/watch', {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ link: a.dataset.link }}) }}));</script>
+"""
 
 
 def read(name, default=""):
@@ -240,7 +367,8 @@ def usb_result(lines):
                 tracks = lambda k: f"{k} new track{'s' if k != 1 else ''}"
                 if mid:  # a sync is still getting tracks: the page copies the next ones over by itself
                     text = (f"{tracks(n)} copied so far" if n else "Up to date so far") + (f" ({total} on {usb})" if total else "") + \
-                        ". Still syncing: new tracks go on as they arrive, then it's ejected. Keep it plugged in."
+                        ". Still syncing: new tracks go on as they arrive" + \
+                        (", then it's ejected. Keep it plugged in." if os.path.exists(os.path.join(DIR, "usb-eject.txt")) else ".")
                 else:
                     text = (f"Done: {tracks(n)} copied" + (f"; {usb} has all {total}." if total else f" to {usb}.") if n else
                             f"Done: {usb} has all {total} tracks." if total else f"{usb} already has every track.") + \
@@ -594,7 +722,7 @@ def state():
     return {
         "playlist": read("playlist.txt"), "service": svc, "capped": capped, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
-        "usbEject": not os.path.exists(os.path.join(DIR, "usb-keep.txt")),
+        "usbEject": os.path.exists(os.path.join(DIR, "usb-eject.txt")),  # off unless ticked
         "usbCopy": usb_copy(), "usbResult": usb_result(usblog),
         # new tracks passed the safety check since the last copy: they go on the next time it's plugged in
         "usbBehind": bool(usb) and newer("safety-ok.tsv", ".usb-done"),
@@ -603,6 +731,7 @@ def state():
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
         "have": have, "buy": buy, "watching": watching(),
+        "agents": [w for w in ("claude", "codex") if agent_app(w)], "claudeInChrome": in_chrome("claude"), "codexInChrome": in_chrome("codex"), "chrome": bool(chrome_app()), "agentUses": agent_uses(),
         "inboxWhy": {k: v.get("text", "") for k, v in freedl.load_json(DIR, freedl.WHY).items() if isinstance(v, dict)},
         "justGot": [k for k, t in _just_got.items() if time.time() - t < 600],
         "soulseekReady": soulseek_ready(), "soulseekUser": _slsk["user"],
@@ -678,6 +807,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, f.read(), "image/svg+xml" if svg else "image/png")
         if self.path == "/api/state":
             return self.send(200, state())
+        if self.path.split("?")[0] == "/free":  # the list Claude or Codex works from
+            return self.send(200, free_page().encode(), "text/html; charset=utf-8")
         self.send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -740,12 +871,43 @@ class Handler(BaseHTTPRequestHandler):
             if name:
                 subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True)
         elif self.path == "/api/eject":
-            keep = os.path.join(DIR, "usb-keep.txt")
+            flag = os.path.join(DIR, "usb-eject.txt")
             if body.get("on"):
-                if os.path.exists(keep):
-                    os.remove(keep)
+                open(flag, "w").close()
+            elif os.path.exists(flag):
+                os.remove(flag)
+        elif self.path == "/api/agent":  # the Free links list, handed to Claude or Codex on this Mac
+            who = str(body.get("who", ""))
+            if who == "install-claude":  # Anthropic's own installer, in a window they watch
+                in_terminal("claude-install.command", "curl -fsSL https://claude.ai/install.sh | bash && echo && "
+                            "echo 'Claude is installed. Go back to The Crate and press Next.'\n")
+                return self.send(200, state())
+            app = agent_app(who)
+            if not app:
+                return self.send(400, {"error": "That assistant isn't on this Mac."})
+            if not chrome_app():
+                return self.send(400, {"error": "Get Google Chrome first: both assistants work in it."})
+            task, n = agent_task(who)
+            if not n:
+                return self.send(400, {"error": "No free links to get right now."})
+            if who == "claude":
+                # A Terminal window the friend watches and answers in: Claude with its Chrome connection, started
+                # in Downloads (where it renames the files), with the list as its first message.
+                brief = os.path.join(DIR, "agent-task.md")
+                with open(brief, "w") as f:
+                    f.write(task)
+                wait = "echo 'Waiting a moment for Chrome to start...'; sleep 12\n" if open_chrome() else ""
+                in_terminal("agent-run.command", f"cd {shlex.quote(os.path.expanduser('~/Downloads'))} || exit 1\n"
+                            f"{wait}exec {shlex.quote(app)} --chrome \"$(cat {shlex.quote(brief)})\"\n")
+                msg = (f"Claude is opening in Terminal with your {n} free links. It asks you once what it may do "
+                       "(follow, repost...), then works in Chrome. Files come in here by themselves.")
             else:
-                open(keep, "w").close()
+                subprocess.run(["pbcopy"], input=task.encode(), check=False)
+                open_chrome()
+                subprocess.Popen(["open", app])
+                msg = (f"Codex is opening, and the request for your {n} free links is copied: in a new Codex chat "
+                       "type @Chrome, pick it, then paste (⌘V). Files come in here by themselves.")
+            return self.send(200, dict(state(), agentMsg=msg))
         elif self.path == "/api/synctime":
             t = str(body.get("time", ""))
             if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t):

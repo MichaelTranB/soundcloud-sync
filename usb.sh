@@ -48,13 +48,13 @@ else
   grep -q -i 'read-only' "$DIR/.usb-err" && fail "the drive is read-only. Use a drive formatted exFAT, FAT32 or Mac."
   fail "$(grep -v '^rsync error' "$DIR/.usb-err" | tail -1 | sed 's/^rsync: //')"
 fi
-# New tracks landed: eject the USB (unless "Eject when done" is off on the page) and say it's safe to unplug.
+# New tracks landed: say so, and eject the USB only if "Eject" is ticked on the page (off unless chosen).
 if [ -n "$MID" ]; then
   [ "$NEW" -gt 0 ] && [ -z "$VOLUMES" ] && osascript -e "display notification \"$NEW new on $NAME so far. Still syncing: keep it plugged in.\" with title \"The Crate\"" 2>/dev/null
 elif { [ "$NEW" -gt 0 ] || [ -e "$DIR/.usb-mid" ]; } && [ -z "$VOLUMES" ]; then
   rm -f "$DIR/.usb-mid"
   [ "$NEW" = 0 ] && MSG="All $TOTAL tracks on $NAME." || { [ "$NEW" = 1 ] && MSG="1 new track on $NAME." || MSG="$NEW new tracks on $NAME."; }
-  if [ ! -e "$DIR/usb-keep.txt" ]; then
+  if [ -e "$DIR/usb-eject.txt" ]; then
     sync; diskutil eject "$DEST" >/dev/null 2>&1 && { MSG="$MSG Safe to unplug."; echo "$(date '+%F %R')  ejected \"$NAME\"" >> "$DIR/usb.log"; }
   fi
   osascript -e "display notification \"$MSG\" with title \"The Crate\" sound name \"Glass\"" 2>/dev/null

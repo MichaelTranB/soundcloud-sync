@@ -14,6 +14,11 @@ soulseek.tsv
 soulseek.tsv.tmp
 free.tsv
 free-tried.txt
+buttons.tsv
+buttons.tsv.tmp
+agent-task.md
+agent-run.command
+claude-install.command
 to-buy.tsv.tmp
 saved.json
 saved.json.tmp
@@ -30,6 +35,7 @@ safety-ok.tsv.tmp
 .archive-have
 blocked-originals.txt
 usb-keep.txt
+usb-eject.txt
 .free-*
 .inbox-*
 .sockseek-*

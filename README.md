@@ -45,6 +45,9 @@ safety check and Full Disk Access.
 
 1. The artist's **original upload** on SoundCloud, when downloads are on.
 2. The artist's **free download link** when it points straight to a file (Dropbox, Google Drive, pixeldrain...).
+   The Crate also reads each missing track's **Free Download button** (the link under the track on SoundCloud, often
+   Hypeddit or ToneDen), which the description doesn't always repeat. Gates that ask for a follow first go in the
+   **Free links** list for you to click; the file then comes in through step 4.
 3. **Soulseek:** lossless first, then MP3 at a real 320 kbps, same title and same length as the SoundCloud track.
 4. **Downloads folder:** got one yourself? A free gate (Hypeddit, Laylo), Bandcamp "name your price", or bought
    it (Beatport, Bandcamp, Traxsource...)? Just leave the file in Downloads. The Crate picks it up within a minute
@@ -57,8 +60,8 @@ Never YouTube rips or recorded streams: low quality.
 ## The USB
 
 - New tracks are copied after every sync (daily at your **Auto sync** time, or **Sync Now**) and the moment the USB is plugged in.
-- When new tracks land, it ejects the USB and tells you it's safe to unplug. (Turn that off on the page if you'd
-  rather keep it plugged in.)
+- When new tracks land, it tells you. Tick **Eject the USB…** on the page to have it ejected then too, so you can
+  just pull it out (off unless you tick it; never while a sync is still adding tracks).
 - It only adds files. Nothing on the USB is ever deleted or overwritten.
 
 ## Safety
