@@ -23,7 +23,8 @@ BROWSER="$(cat "$DIR/browser.txt" 2>/dev/null || echo chrome)"
 AUTH=()
 case "$BROWSER" in
   chrome) STORE="$HOME/Library/Application Support/Google/Chrome" ;;
-  safari) STORE="$HOME/Library/Containers/com.apple.Safari/Data/Library/Cookies" ;;
+  safari) STORE="$HOME/Library/Cookies"  # where yt-dlp looks first; newer Macs keep it in Safari's container
+          [ -e "$STORE/Cookies.binarycookies" ] || STORE="$HOME/Library/Containers/com.apple.Safari/Data/Library/Cookies" ;;
   brave) STORE="$HOME/Library/Application Support/BraveSoftware/Brave-Browser" ;;
   edge) STORE="$HOME/Library/Application Support/Microsoft Edge" ;;
   firefox) STORE="$HOME/Library/Application Support/Firefox" ;;

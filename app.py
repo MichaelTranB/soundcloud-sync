@@ -59,8 +59,11 @@ def sign_in_status(b):
     missing: that browser isn't on this Mac. off: no sign-in chosen."""
     if b not in COOKIE_DIRS:
         return "off"
+    d = os.path.expanduser(COOKIE_DIRS[b])
+    if b == "safari" and os.path.exists(os.path.expanduser("~/Library/Cookies/Cookies.binarycookies")):
+        d = os.path.expanduser("~/Library/Cookies")  # where yt-dlp looks first (sync.sh does the same)
     try:
-        os.listdir(os.path.expanduser(COOKIE_DIRS[b]))
+        os.listdir(d)
         return "ok"
     except PermissionError:
         return "blocked"
