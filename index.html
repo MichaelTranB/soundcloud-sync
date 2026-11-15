@@ -105,6 +105,9 @@
   .help button, .linkish { background: none; border: 0; padding: 0; color: var(--text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; font-size: inherit; border-radius: 0; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   footer { color: var(--dim); font-size: 12px; margin-top: 40px; font-family: var(--mono); }
+  .alert .fix { display: inline-block; margin: 10px 0 0; padding: 9px 18px; font-size: 14px; }
+  .every { color: var(--dim); font-size: 13px; align-self: center; white-space: nowrap; }
+  #syncTime { flex: 0 1 140px; color-scheme: dark; }
   .acts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .ask b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--dim); font-size: 12px; margin-right: 6px; vertical-align: -1px; }
   dialog#faq { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 18px; padding: 26px 30px 30px; width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; }
@@ -138,7 +141,7 @@
     <div class="faqTop"><h2 id="faqHead">How it works</h2><button class="ghost" id="faqClose" aria-label="Close">&times;</button></div>
 
     <h3>What it does</h3>
-    <p>Paste a playlist link. Every night (or when you hit Sync Now) it grabs any new tracks into Music &rsaquo; SoundCloud Sync on your Mac, then copies them to your USB whenever it's plugged in. It only adds tracks; nothing on your USB gets deleted.</p>
+    <p>Paste a playlist link. Every day at your Auto sync time (or when you hit Sync Now) it grabs any new tracks into Music &rsaquo; SoundCloud Sync on your Mac, then copies them to your USB whenever it's plugged in. It only adds tracks; nothing on your USB gets deleted.</p>
 
     <h3>Where it looks, in order</h3>
     <ol>
@@ -161,7 +164,7 @@
     <p>Soulseek only allows so many searches a minute, so a big playlist takes a few hours the first time. After that it only looks for new tracks. Tracks nobody has are tried again after 1, 2, 4, then 7 days.</p>
 
     <h3>Do I need to keep it open?</h3>
-    <p>No. It runs in the background. Just leave your Mac on (or asleep) and plug in your USB when you want the tracks.</p>
+    <p>No, it runs in the background. Keep your Mac on and plugged in at your Auto sync time (if it's asleep, it syncs when it wakes up), and plug in your USB whenever you want the tracks.</p>
   </dialog>
 
   <section class="start" id="start" aria-labelledby="startHead" hidden>
@@ -214,6 +217,11 @@
       <div class="note" id="slskNote">Finds the tracks SoundCloud won't let you download. No account yet? Pick a name nobody has and a new password you use nowhere else: Soulseek makes the account the first time. Saved in your Mac's Keychain only.</div>
       </div>
     </div>
+    <div class="field">
+      <label for="syncTime">Auto sync</label>
+      <div class="row"><span class="every">Every day at</span><input id="syncTime" type="time" step="300" required><button class="ghost" id="saveTime">Save</button></div>
+      <div class="note" id="timeNote">Keep your Mac on and plugged in at this time. If it's asleep, it syncs as soon as it wakes up. If it's shut down, it waits for the next day.</div>
+    </div>
   </section>
 
   <div class="find">
@@ -253,7 +261,10 @@ function el(tag, props = {}, ...kids) {
 const search = (site, q) => site + encodeURIComponent(q);
 
 function render(s) {
-  $('alert').hidden = !s.problem; $('alert').textContent = s.problem;
+  $('alert').hidden = !s.problem;
+  // A sign-in problem gets its fix right there: one button that opens SoundCloud's sign-in in that browser.
+  if ($('alert').dataset.p !== s.problem) $('alert').dataset.p = s.problem, $('alert').replaceChildren(s.problem, ...(/signed in to SoundCloud|sign-in in .* has run out/.test(s.problem)
+    ? [' ', el('button', { className: 'fix', textContent: 'Sign in to SoundCloud', onclick: () => call('/api/open', { what: 'soundcloud' }) })] : []));
   $('nHave').textContent = s.have.length; $('cHave').textContent = s.have.length || '';
   $('unread').hidden = !s.unread && !s.capped;
   $('unread').textContent = s.capped ? (s.service === 'spotify'
@@ -293,7 +304,7 @@ function steps(s) {
       how: 'Plug in the USB you DJ from and pick it below. New tracks copy over by themselves.', btn: 'Pick the USB', go: to('usb') },
     { done: !!s.lastRun, title: 'Run your first sync',
       how: s.running ? 'Running. The first one takes a while (Soulseek is searched slowly so nobody gets blocked).'
-        : 'After this, it runs by itself every night at 3:10 while the Mac is on.', btn: s.running ? '' : 'Sync Now', go: () => $('sync').click() },
+        : 'After this, it runs by itself every day at ' + clock(s.syncTime || '03:10') + ' (change it under Auto sync). Keep your Mac on then.', btn: s.running ? '' : 'Sync Now', go: () => $('sync').click() },
   ].filter(Boolean);
 }
 let startKey = '', startHidden = false;
@@ -428,7 +439,7 @@ function paintSetup(s) {
   b.replaceChildren(...(s.running ? [el('span', { className: 'spin' }), 'Syncing'] : ['Sync Now']));
 
   const bn = { chrome: 'Chrome', safari: 'Safari', brave: 'Brave', firefox: 'Firefox', edge: 'Edge' }[s.browser] || '';
-  const sw = { ok: ['ok', 'Via ' + bn], blocked: ['warn', 'Needs Full Disk Access'], missing: ['warn', bn + ' not found'], off: ['', 'Off'] }[s.signIn] || ['', 'Off'];
+  const sw = { ok: s.scLogin === 'none' || s.scLogin === 'invalid' ? ['warn', 'Not signed in (' + bn + ')'] : ['ok', (s.scLogin === 'ok' ? 'Signed in, ' : 'Via ') + bn], blocked: ['warn', 'Needs Full Disk Access'], missing: ['warn', bn + ' not found'], off: ['', 'Off'] }[s.signIn] || ['', 'Off'];
   $('signWord').replaceChildren(el('i', { className: 'dot ' + sw[0] }), sw[1]);
   $('usbWord').replaceChildren(el('i', { className: 'dot ' + (s.usbPlugged ? 'ok' : s.usb ? 'warn' : '') }),
     !s.usb ? 'No USB chosen' : s.usbPlugged ? s.usb : s.usb + ' (unplugged)');
@@ -440,6 +451,7 @@ function paintSetup(s) {
   }
   $('copy').disabled = !s.usbPlugged;
   $('eject').checked = s.usbEject;
+  if (document.activeElement !== $('syncTime') && !$('syncTime').dataset.dirty) $('syncTime').value = s.syncTime;
   $('usbNote').textContent = !s.usb ? 'Pick your USB once. After that it fills by itself.'
     : s.usbPlugged ? 'New tracks copy over after every sync.' : 'Tracks wait here and copy the moment it is plugged in.';
 
@@ -494,6 +506,14 @@ $('browser').onchange = e => call('/api/browser', { browser: e.target.value }).t
 $('profile').onkeydown = e => { if (e.key === 'Enter') $('connect').click(); };
 $('url').onkeydown = e => { if (e.key === 'Enter') $('saveUrl').click(); };
 $('usb').onchange = e => { e.target.blur(); call('/api/usb', { name: e.target.value }).catch(err => say('usbNote', err.message, true)); };
+function clock(t) { const [h, m] = t.split(':').map(Number); return (h % 12 || 12) + ':' + String(m).padStart(2, '0') + (h < 12 ? 'am' : 'pm'); }
+$('syncTime').oninput = () => { $('syncTime').dataset.dirty = '1'; };
+$('saveTime').onclick = () => {
+  const t = $('syncTime').value;
+  if (!t) return say('timeNote', 'Pick a time first.', true);
+  call('/api/synctime', { time: t }).then(() => { delete $('syncTime').dataset.dirty; say('timeNote', 'Saved. It syncs every day at ' + clock(t) + '. Keep your Mac on and plugged in then.'); })
+    .catch(e => say('timeNote', e.message, true));
+};
 $('eject').onchange = e => call('/api/eject', { on: e.target.checked }).catch(err => say('usbNote', err.message, true));
 $('copy').onclick = () => call('/api/copy', {}).catch(e => say('usbNote', e.message, true));
 $('sync').onclick = () => call('/api/sync', {}).catch(e => say('urlNote', e.message, true));

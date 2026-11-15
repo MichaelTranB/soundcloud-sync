@@ -98,8 +98,11 @@ EOF
 
 job com.thecrate.app "<key>ProgramArguments</key><array>$(run app "<string>$PY</string><string>$DIR/app.py</string>")</array>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>"
+# The daily auto sync, at the time picked on the page (sync-time.txt, 24-hour), else 3:10am.
+T="$(cat "$DIR/sync-time.txt" 2>/dev/null)"
+case "$T" in [01][0-9]:[0-5][0-9]|2[0-3]:[0-5][0-9]) ;; *) T=03:10 ;; esac
 job com.thecrate.sync "<key>ProgramArguments</key><array>$(run sync "<string>$DIR/sync.sh</string>")</array>
-<key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>10</integer></dict>"
+<key>StartCalendarInterval</key><dict><key>Hour</key><integer>$((10#${T%%:*}))</integer><key>Minute</key><integer>$((10#${T##*:}))</integer></dict>"
 job com.thecrate.usb "<key>ProgramArguments</key><array>$(run usb "<string>$DIR/usb.sh</string>")</array>
 <key>StartOnMount</key><true/>"
 

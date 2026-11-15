@@ -4,7 +4,7 @@
 Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so another website open
 in the browser cannot press the buttons.
 """
-import json, os, re, shutil, subprocess, sys, threading, time, urllib.parse
+import json, os, plistlib, re, shutil, subprocess, sys, threading, time, urllib.parse
 import audio, freedl, playlists, safety, soulseek
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -44,10 +44,39 @@ def volumes():
         return []
 
 
+BROWSER_APPS = {"com.google.chrome": "chrome", "com.apple.safari": "safari", "com.brave.browser": "brave",
+                "com.microsoft.edgemac": "edge", "org.mozilla.firefox": "firefox"}
+
+
+def default_browser():
+    """The Mac's own default web browser (System Settings > Desktop & Dock), when it's one the sync can borrow a
+    sign-in from; Safari when none was ever picked. A copy set up before this (it has a playlist) stays on Chrome."""
+    if read("playlist.txt"):
+        return "chrome"
+    try:
+        with open(os.path.expanduser(
+                "~/Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist"), "rb") as f:
+            handlers = plistlib.load(f).get("LSHandlers", [])
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        handlers = []
+    for h in handlers:
+        if h.get("LSHandlerURLScheme") in ("https", "http"):
+            return BROWSER_APPS.get(str(h.get("LSHandlerRoleAll", "")).lower(), "safari")
+    return "safari"
+
+
 def browser():
-    """The browser whose SoundCloud sign-in the sync borrows: Chrome until he picks another; "none" = no sign-in."""
+    """The browser whose SoundCloud sign-in the sync borrows: the Mac's default until one is picked on the page;
+    "none" = no sign-in. The first guess is saved, since sync.sh reads the same file."""
     b = read("browser.txt", None)
-    return "chrome" if b is None else (b or "none")
+    if b is None:
+        b = default_browser()
+        try:
+            with open(os.path.join(DIR, "browser.txt"), "w") as f:
+                f.write(b + "\n")
+        except OSError:
+            pass
+    return b or "none"
 
 
 # Where each browser keeps its sign-ins. macOS lets the sync read them only after Crate Helper gets Full Disk Access.
@@ -122,6 +151,43 @@ def sync_phase():
         return "soulseek" if os.path.getmtime(os.path.join(DIR, "soulseek-pass.log")) >= started else "soundcloud"
     except OSError:
         return "soundcloud"
+
+
+SYNC_PLIST = os.path.expanduser("~/Library/LaunchAgents/com.thecrate.sync.plist")
+_sched = {"applied": ""}  # the auto-sync time last confirmed in the daily job's schedule
+
+
+def sync_time():
+    """The daily auto-sync time, "HH:MM" (24-hour), picked on the page; 03:10 until then."""
+    t = read("sync-time.txt")
+    return t if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t) else "03:10"
+
+
+def apply_sync_time():
+    """Puts the picked time into the daily sync job (launchd) and reloads it. Reloading would stop a sync that job
+    started, so while one runs this waits: state() calls it again on the next refresh. Only this copy's own job."""
+    t = sync_time()
+    if _sched["applied"] == t:
+        return
+    try:
+        with open(SYNC_PLIST, "rb") as f:
+            pl = plistlib.load(f)
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return
+    if DIR.rstrip("/") + "/" not in json.dumps(pl.get("ProgramArguments", [])):
+        return
+    h, m = (int(x) for x in t.split(":"))
+    if pl.get("StartCalendarInterval") != {"Hour": h, "Minute": m}:
+        if sync_running():
+            return
+        pl["StartCalendarInterval"] = {"Hour": h, "Minute": m}
+        with open(SYNC_PLIST, "wb") as f:
+            plistlib.dump(pl, f)
+        job = f"gui/{os.getuid()}"
+        subprocess.run(["launchctl", "bootout", job + "/com.thecrate.sync"], capture_output=True)
+        if subprocess.run(["launchctl", "bootstrap", job, SYNC_PLIST], capture_output=True).returncode:
+            return
+    _sched["applied"] = t
 
 
 def sync_running():
@@ -396,6 +462,7 @@ def lossy_kbps(p):
 
 
 def state():
+    apply_sync_time()  # a time picked while a sync ran goes in once it's done
     acct = account()
     have = []
     free = {l.split("\t")[2] for l in read("free.tsv").splitlines() if l.count("\t") == 2}
@@ -439,7 +506,7 @@ def state():
         "playlist": read("playlist.txt"), "service": svc, "capped": capped, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
         "usbEject": not os.path.exists(os.path.join(DIR, "usb-keep.txt")),
-        "running": running, "phase": phase,
+        "running": running, "phase": phase, "syncTime": sync_time(),
         "signIn": sign_in_status(browser()),
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
@@ -584,6 +651,13 @@ class Handler(BaseHTTPRequestHandler):
                     os.remove(keep)
             else:
                 open(keep, "w").close()
+        elif self.path == "/api/synctime":
+            t = str(body.get("time", ""))
+            if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t):
+                return self.send(400, {"error": "Pick a time."})
+            with open(os.path.join(DIR, "sync-time.txt"), "w") as f:
+                f.write(t + "\n")
+            apply_sync_time()
         elif self.path == "/api/sync":
             if not read("playlist.txt"):
                 return self.send(400, {"error": "Add your playlist link first."})

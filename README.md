@@ -29,13 +29,13 @@ The page ticks off each step by itself:
 2. **Let The Crate use your SoundCloud sign-in** (SoundCloud playlists only): the button opens System Settings at
    *Full Disk Access* and a Finder window. Drag **Crate Helper** into the list and switch it on. macOS asks this of
    any app that reads a browser's sign-in; nothing is sent anywhere.
-3. **Sign in to SoundCloud** in Chrome (or the browser you picked), as usual. Artists who allow downloads give their
+3. **Sign in to SoundCloud** in your web browser (Safari, Chrome, Brave, Edge or Firefox), as usual. Artists who allow downloads give their
    original WAV/FLAC only to signed-in people.
 4. **Soulseek (recommended):** finds what SoundCloud, Spotify and Apple Music won't give you. Make up a new name
    and a password you use nowhere else; Soulseek creates the account the first time. Kept in your Mac's Keychain.
 5. **Virus scanner:** installed already; if not, the button installs it.
 6. **USB (optional):** plug in your DJ USB and pick it.
-7. **Sync Now.** After that it runs by itself every night at 3:10 while the Mac is on.
+7. **Sync Now.** After that it runs by itself every day at the time under **Auto sync** (3:10am to start). Keep the Mac on and plugged in then; if it's asleep, it syncs when it wakes.
 
 **Stuck?** On the page, tap **Copy a message for ChatGPT or Claude** and paste it into either one: it says where
 you are, and they'll walk you through it. Or send them this page's link and say which step.
@@ -55,7 +55,7 @@ Never YouTube rips or recorded streams: low quality.
 
 ## The USB
 
-- New tracks are copied after every sync (nightly at 3:10am, or **Sync Now**) and the moment the USB is plugged in.
+- New tracks are copied after every sync (daily at your **Auto sync** time, or **Sync Now**) and the moment the USB is plugged in.
 - When new tracks land, it ejects the USB and tells you it's safe to unplug. (Turn that off on the page if you'd
   rather keep it plugged in.)
 - It only adds files. Nothing on the USB is ever deleted or overwritten.
