@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="114" fill="#7262f2"/>
+  <rect width="512" height="512" rx="114" fill="#c8102e"/>
   <!-- the record, standing up out of the crate -->
   <circle cx="256" cy="232" r="150" fill="#101018"/>
   <circle cx="256" cy="232" r="118" fill="none" stroke="#2b2b3a" stroke-width="5"/>
@@ -8,6 +8,6 @@
   <circle cx="256" cy="232" r="10" fill="#101018"/>
   <!-- the crate -->
   <path d="M86 286h340a14 14 0 0 1 14 14v106a30 30 0 0 1-30 30H102a30 30 0 0 1-30-30V300a14 14 0 0 1 14-14z" fill="#f3efff"/>
-  <rect x="112" y="322" width="288" height="26" rx="13" fill="#5443d6"/>
-  <rect x="112" y="374" width="288" height="26" rx="13" fill="#5443d6"/>
+  <rect x="112" y="322" width="288" height="26" rx="13" fill="#8e0b20"/>
+  <rect x="112" y="374" width="288" height="26" rx="13" fill="#8e0b20"/>
 </svg>
