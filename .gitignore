@@ -20,3 +20,27 @@ saved.json.tmp
 Crate Helper.app/
 .crate-helper.sha
 signin.log
+Quarantine/
+safety-ok.tsv
+safety-ok.tsv.tmp
+.safety.lock
+.virusdb
+.usb-list
+.originals
+.archive-have
+blocked-originals.txt
+usb-keep.txt
+.free-*
+.inbox-*
+.sockseek-*
+soulseek-missed.tsv
+soulseek-missed.tsv.tmp
+profile.txt
+unread.txt
+.listing
+.playlist
+.unread
+.service
+clamav.log
+sync-time.txt
+.signin-check.json

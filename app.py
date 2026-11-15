@@ -4,23 +4,28 @@
 Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so another website open
 in the browser cannot press the buttons.
 """
-import json, os, re, shutil, subprocess, threading, time, urllib.parse
-import audio
+import json, os, plistlib, re, shutil, subprocess, sys, threading, time, urllib.parse
+import audio, freedl, playlists, safety, soulseek
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.expanduser("~/Music/SoundCloud Sync")
 SLSK = os.path.join(OUT, "From Soulseek")  # soulseek.sh's downloads
-PORT = 4780
+PORT = int(os.environ.get("CRATE_PORT", 4780))  # another port only for trying a copy side by side
 HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 PLAYLIST_RE = re.compile(r"^https://(on\.|m\.|www\.)?soundcloud\.com/\S+$")
+
+
+def is_playlist(url):
+    """A SoundCloud, Spotify or Apple Music playlist link."""
+    return bool(PLAYLIST_RE.match(url) or playlists.service(url))
 PROFILE_RE = re.compile(r"^(?:https?://(?:www\.|m\.)?soundcloud\.com/)?([A-Za-z0-9_-]{1,60})/?$")
 # "none" lists public playlists only; the others borrow the SoundCloud session of that browser.
 BROWSERS = ("chrome", "safari", "brave", "firefox", "edge", "none")
 YTDLP = next((p for p in (shutil.which("yt-dlp"), os.path.expanduser("~/.local/bin/yt-dlp"), "/opt/homebrew/bin/yt-dlp",
                           "/usr/local/bin/yt-dlp") if p and os.access(p, os.X_OK)), "yt-dlp")
-_slsk = {"at": 0.0, "ok": False}
+_slsk = {"at": 0.0, "ok": False, "user": ""}
 _lists = threading.Lock()  # one change to saved.json / playlist.txt at a time (the server is threaded)
 
 
@@ -39,10 +44,39 @@ def volumes():
         return []
 
 
+BROWSER_APPS = {"com.google.chrome": "chrome", "com.apple.safari": "safari", "com.brave.browser": "brave",
+                "com.microsoft.edgemac": "edge", "org.mozilla.firefox": "firefox"}
+
+
+def default_browser():
+    """The Mac's own default web browser (System Settings > Desktop & Dock), when it's one the sync can borrow a
+    sign-in from; Safari when none was ever picked. A copy set up before this (it has a playlist) stays on Chrome."""
+    if read("playlist.txt"):
+        return "chrome"
+    try:
+        with open(os.path.expanduser(
+                "~/Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist"), "rb") as f:
+            handlers = plistlib.load(f).get("LSHandlers", [])
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        handlers = []
+    for h in handlers:
+        if h.get("LSHandlerURLScheme") in ("https", "http"):
+            return BROWSER_APPS.get(str(h.get("LSHandlerRoleAll", "")).lower(), "safari")
+    return "safari"
+
+
 def browser():
-    """The browser whose SoundCloud sign-in the sync borrows: Chrome until he picks another; "none" = no sign-in."""
+    """The browser whose SoundCloud sign-in the sync borrows: the Mac's default until one is picked on the page;
+    "none" = no sign-in. The first guess is saved, since sync.sh reads the same file."""
     b = read("browser.txt", None)
-    return "chrome" if b is None else (b or "none")
+    if b is None:
+        b = default_browser()
+        try:
+            with open(os.path.join(DIR, "browser.txt"), "w") as f:
+                f.write(b + "\n")
+        except OSError:
+            pass
+    return b or "none"
 
 
 # Where each browser keeps its sign-ins. macOS lets the sync read them only after Crate Helper gets Full Disk Access.
@@ -72,15 +106,120 @@ def sign_in_status(b):
         return "missing"
 
 
+SLSK_SERVICE = "soundcloud-sync-soulseek"  # the Keychain item soulseek.sh reads
+SOCKSEEK = os.path.expanduser("~/.local/bin/sockseek")
+
+
+def soulseek_login(user, pw):
+    """Checks a Soulseek name and password with one test search, then saves them in the Keychain.
+    Soulseek makes the account the first time a new name signs in. '' when saved, else the reason in plain words."""
+    if not user or not pw:
+        return "Type a Soulseek name and a password."
+    if len(user) > 30 or len(pw) > 64 or any(c in user + pw for c in '"\\\n\r\t'):
+        return "Use a name up to 30 characters and a password up to 64, without quotes or backslashes."
+    if not os.access(SOCKSEEK, os.X_OK):
+        return "The Soulseek downloader isn't installed yet: run the installer again."
+    try:  # sockseek takes the sign-in only as arguments; this Mac's own user is the only one who could see them
+        r = subprocess.run([SOCKSEEK, "Daft Punk - Around the World", "-s", "--print", "results", "--no-config",
+                            "--no-progress", "--user", user, "--pass", pw], capture_output=True, text=True, timeout=90)
+        out = r.stdout + r.stderr
+    except subprocess.TimeoutExpired:
+        return "Soulseek didn't answer in time. Check the internet and try again."
+    if re.search(r"invalid ?pass|login failed|logged out|unauthor", out, re.I):
+        return "Soulseek said no: that name is taken with a different password. Try another name."
+    if re.search(r"error|exception", out, re.I):
+        return "Couldn't reach Soulseek right now. Try again in a minute."
+    while subprocess.run(["security", "delete-generic-password", "-s", SLSK_SERVICE],
+                         capture_output=True).returncode == 0:
+        pass
+    # `security -i` reads the command from stdin, so the password never shows in a process list.
+    r = subprocess.run(["security", "-i"], input=f'add-generic-password -U -s {SLSK_SERVICE} -a "{user}" '
+                       f'-T /usr/bin/security -w "{pw}"\n', capture_output=True, text=True)
+    if r.returncode or r.stderr.strip():
+        return "The Mac's Keychain wouldn't save it. Try again."
+    _slsk["at"] = 0.0
+    return ""
+
+
+def sync_phase():
+    """'' when no sync runs, else what it's doing: reading SoundCloud first, then Soulseek (its log is newer than
+    the sync's flag)."""
+    if not sync_running():
+        return ""
+    try:
+        started = os.path.getmtime(os.path.join(DIR, ".running"))
+        return "soulseek" if os.path.getmtime(os.path.join(DIR, "soulseek-pass.log")) >= started else "soundcloud"
+    except OSError:
+        return "soundcloud"
+
+
+SYNC_PLIST = os.path.expanduser("~/Library/LaunchAgents/com.thecrate.sync.plist")
+_sched = {"applied": ""}  # the auto-sync time last confirmed in the daily job's schedule
+
+
+def sync_time():
+    """The daily auto-sync time, "HH:MM" (24-hour), picked on the page; 03:10 until then."""
+    t = read("sync-time.txt")
+    return t if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t) else "03:10"
+
+
+def apply_sync_time():
+    """Puts the picked time into the daily sync job (launchd) and reloads it. Reloading would stop a sync that job
+    started, so while one runs this waits: state() calls it again on the next refresh. Only this copy's own job."""
+    t = sync_time()
+    if _sched["applied"] == t:
+        return
+    try:
+        with open(SYNC_PLIST, "rb") as f:
+            pl = plistlib.load(f)
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return
+    if DIR.rstrip("/") + "/" not in json.dumps(pl.get("ProgramArguments", [])):
+        return
+    h, m = (int(x) for x in t.split(":"))
+    job = f"gui/{os.getuid()}"
+    if pl.get("StartCalendarInterval") != {"Hour": h, "Minute": m}:
+        if sync_running():
+            return
+        pl["StartCalendarInterval"] = {"Hour": h, "Minute": m}
+        with open(SYNC_PLIST, "wb") as f:
+            plistlib.dump(pl, f)
+        subprocess.run(["launchctl", "bootout", job + "/com.thecrate.sync"], capture_output=True)
+    # Loading right after unloading often fails at first ("Bootstrap failed: 5"): only done once the job is loaded.
+    for _ in range(3):
+        if subprocess.run(["launchctl", "print", job + "/com.thecrate.sync"], capture_output=True).returncode == 0:
+            break
+        subprocess.run(["launchctl", "bootstrap", job, SYNC_PLIST], capture_output=True)
+        time.sleep(1)
+    else:
+        print("couldn't load the daily sync job; trying again on the next refresh", file=sys.stderr)
+        return
+    _sched["applied"] = t
+
+
+def sync_running():
+    """True while sync.sh runs: .running holds its process number (a flag left by a killed sync doesn't count)."""
+    try:
+        with open(os.path.join(DIR, ".running")) as f:
+            os.kill(int(f.read().strip()), 0)
+        return True
+    except PermissionError:
+        return True  # the process exists
+    except (OSError, ValueError):
+        return False
+
+
 def soulseek_ready():
-    """True once soulseek-login.sh saved a Soulseek sign-in (reads only the item's name, never the password)."""
+    """True once a Soulseek sign-in is saved (reads only the item's name, never the password)."""
     if time.time() - _slsk["at"] > 60:
         try:
             r = subprocess.run(["security", "find-generic-password", "-s", "soundcloud-sync-soulseek"],
                                capture_output=True, text=True, timeout=10)
             _slsk["ok"] = r.returncode == 0
+            m = re.search(r'"acct"<blob>="([^"]*)"', r.stdout)  # the saved name; the password is never read
+            _slsk["user"] = m.group(1) if m and r.returncode == 0 else ""
         except (OSError, subprocess.TimeoutExpired):
-            _slsk["ok"] = False
+            _slsk["ok"], _slsk["user"] = False, ""
         _slsk["at"] = time.time()
     return _slsk["ok"]
 
@@ -91,9 +230,9 @@ def saved():
     raw = read("saved.json")
     if not raw:
         cur = read("playlist.txt")
-        return [{"title": cur.rstrip("/").split("/")[-1].replace("-", " "), "url": cur}] if PLAYLIST_RE.match(cur) else []
+        return [{"title": cur.rstrip("/").split("/")[-1].replace("-", " "), "url": cur}] if is_playlist(cur) else []
     try:
-        return [p for p in json.loads(raw) if PLAYLIST_RE.match(str(p.get("url", "")))]
+        return [p for p in json.loads(raw) if is_playlist(str(p.get("url", "")))]
     except (ValueError, AttributeError):
         return []
 
@@ -118,7 +257,14 @@ def _remember(url, title):
 
 
 def title_of(url):
-    """The playlist's name from SoundCloud (no sign-in needed for a public playlist or a private Share link)."""
+    """The playlist's name from SoundCloud (no sign-in needed for a public playlist or a private Share link),
+    Spotify or Apple Music (public playlists)."""
+    if playlists.service(url):
+        try:
+            p = playlists.read(url)
+        except Exception:  # their page changed or didn't answer: the plain message below says so
+            return None
+        return p["title"][:120] if p["tracks"] else None
     try:
         r = subprocess.run([YTDLP, "--flat-playlist", "--dump-single-json", "--no-warnings", url],
                            capture_output=True, text=True, timeout=120)
@@ -141,7 +287,7 @@ def connect(profile, browser):
     """Lists the profile's playlists, signed in through the chosen browser. Returns an error or None."""
     cmd = [YTDLP, "--flat-playlist", "--dump-single-json", f"https://soundcloud.com/{profile}/sets"]
     if browser != "none":
-        cmd[1:1] = ["--cookies-from-browser", browser]
+        cmd[1:1] = ["--cookies-from-browser", cookie_arg(browser)]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired:
@@ -165,22 +311,163 @@ def connect(profile, browser):
 
 def set_browser(b):
     # sync.sh reads this one line to know which browser's sign-in to borrow (empty: none).
+    if b == browser():
+        return
     with open(os.path.join(DIR, "browser.txt"), "w") as f:
         f.write("" if b == "none" else b + "\n")
+    try:  # a new browser: its signed-in profile is found again
+        os.remove(os.path.join(DIR, "profile.txt"))
+    except OSError:
+        pass
+    _login.update(at=0.0, state="", profile="")
+
+
+def login_seen(text):
+    """What a yt-dlp run says about the SoundCloud sign-in: ok, invalid, none (no SoundCloud sign-in in that
+    browser), or '' (no browser sign-in was used). yt-dlp only says "Verifying login token" when the browser
+    holds a SoundCloud sign-in. One track's original refused (401) while signed in is that track, not the sign-in."""
+    t = text.lower()
+    if "authorization token is invalid" in t:
+        return "invalid"
+    if "verifying login token" in t:
+        return "ok"
+    return "none" if re.search(r"extracted \d+ cookies from", t) else ""
+
+
+_login = {"at": 0.0, "state": "", "profile": "", "busy": False}  # the page's own re-check (sign_in_check)
+LOGIN_FILE = os.path.join(DIR, ".signin-check.json")  # kept on disk, so a restart doesn't forget a fresh sign-in
+try:
+    with open(LOGIN_FILE) as f:
+        _saved = json.load(f)
+    if _saved.get("browser") == browser():
+        _login.update(at=float(_saved["at"]), state=str(_saved["state"]), profile=str(_saved.get("profile", "")))
+except (OSError, ValueError, KeyError, TypeError, NameError):
+    pass
+
+
+def save_login(b):
+    try:
+        with open(LOGIN_FILE, "w") as f:
+            json.dump({"browser": b, "at": _login["at"], "state": _login["state"], "profile": _login["profile"]}, f)
+    except OSError as e:
+        print(f"couldn't save the sign-in check: {e!r}", file=sys.stderr)
+
+
+def has_cookies(folder):
+    """A browser profile folder with a cookie store (newer Chrome keeps it in Network/)."""
+    return os.path.exists(os.path.join(folder, "Cookies")) or os.path.exists(os.path.join(folder, "Network", "Cookies"))
+
+
+def cookie_arg(b):
+    """yt-dlp's --cookies-from-browser value: the browser, plus the profile that holds the SoundCloud sign-in
+    once one was found (profile.txt); without it yt-dlp reads the most recently used profile."""
+    saved, _, p = read("profile.txt").strip().partition(":")  # "browser:folder"
+    ok = b in ("chrome", "brave", "edge") and saved == b and p and has_cookies(
+        os.path.join(os.path.expanduser(COOKIE_DIRS[b]), p))
+    return f"{b}:{p}" if ok else b
+
+
+def ask_soundcloud(arg, url):
+    """(state, profile folder) from one track looked up with that sign-in; state '' when SoundCloud didn't answer."""
+    try:
+        r = subprocess.run([YTDLP, "-v", "--cookies-from-browser", arg, "--simulate", "--no-playlist",
+                            "--ignore-no-formats-error", "--extractor-args", "soundcloud:formats=none", url],
+                           capture_output=True, text=True, errors="replace", timeout=90)
+    except (OSError, subprocess.TimeoutExpired):
+        return "", ""
+    out = r.stdout + r.stderr
+    m = re.search(r'Extracting cookies from: "([^"]+)"', out)
+    state = login_seen(out)
+    answered = state == "ok" or "downloading info json" in out.lower()
+    folder = os.path.dirname(m.group(1)) if m else ""
+    if os.path.basename(folder) == "Network":  # newer Chrome: <profile>/Network/Cookies
+        folder = os.path.dirname(folder)
+    return (state if answered else ""), folder
+
+
+def sign_in_check(b):
+    """Asks SoundCloud about one playlist track with the browser's sign-in, so the page notices a fresh sign-in
+    without waiting for the next sync. When that profile has no SoundCloud sign-in, tries the browser's other
+    profiles and keeps the first one that is signed in (profile.txt), so the sync uses it too."""
+    try:
+        url = read(".playlist").split("\n")[0].split(" ")[1]
+        arg = cookie_arg(b)
+        state, folder = ask_soundcloud(arg, url)
+        if state == "ok" and folder and arg == b and b in ("chrome", "brave", "edge") and browser() == b:
+            # Signed in on the profile used most recently right now: keep that one, since yt-dlp otherwise
+            # reads whichever profile was used last, and by the next sync that can be one with no sign-in.
+            with open(os.path.join(DIR, "profile.txt"), "w") as f:
+                f.write(f"{b}:{os.path.basename(folder)}\n")
+        if state in ("none", "invalid") and b in ("chrome", "brave", "edge"):
+            root = os.path.expanduser(COOKIE_DIRS[b])
+            others = [d for d in sorted(os.listdir(root)) if (d == "Default" or d.startswith("Profile "))
+                      and os.path.join(root, d) != folder and has_cookies(os.path.join(root, d))]
+            for d in others[:8]:
+                if browser() != b:
+                    return  # he switched browsers meanwhile: this answer is for the old one
+                s2, f2 = ask_soundcloud(f"{b}:{d}", url)
+                if s2 == "ok":
+                    with open(os.path.join(DIR, "profile.txt"), "w") as f:
+                        f.write(f"{b}:{d}\n")
+                    state, folder = s2, f2
+                    break
+        if state and browser() == b:
+            _login.update(state=state, profile=profile_name(b, folder) if folder else "")
+    except Exception as e:  # logged, and the next check still runs
+        print(f"sign-in check failed: {e!r}", file=sys.stderr)
+    finally:
+        _login.update(at=time.time(), busy=False)
+        save_login(b)
+
+
+def profile_name(b, folder):
+    """The name the browser shows for that profile folder, when it has more than one profile; else ''."""
+    try:
+        with open(os.path.join(os.path.dirname(folder), "Local State")) as f:
+            cache = json.load(f)["profile"]["info_cache"]
+        return cache[os.path.basename(folder)]["name"] if len(cache) > 1 else ""
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
+
+
+def login_state(log=None):
+    """The SoundCloud sign-in as last seen: the page's own re-check when it is newer than the last sync, else what
+    that sync's log says (login_seen)."""
+    if log is None:
+        log = (read("last-run.log") + read("signin.log")).lower()
+    try:
+        ran = os.path.getmtime(os.path.join(DIR, "last-run.log"))
+    except OSError:
+        ran = 0.0
+    return _login["state"] if _login["at"] > ran and _login["state"] else login_seen(log)
 
 
 def problem():
     """One plain line when the last sync could not sign in or reach SoundCloud; empty when fine."""
+    svc = playlists.service(read("playlist.txt"))
+    if svc:  # a Spotify or Apple Music playlist: no SoundCloud sign-in involved
+        if "couldn't read the playlist page" in read("last-run.log").lower():
+            return (f"The last sync couldn't read this {'Spotify' if svc == 'spotify' else 'Apple Music'} playlist. "
+                    "Check it's public (Share > Copy link to playlist), then press Sync now.")
+        return ""
     log = (read("last-run.log") + read("signin.log")).lower()
     b = browser()
     name = {"chrome": "Chrome", "safari": "Safari", "brave": "Brave", "edge": "Edge", "firefox": "Firefox"}.get(b, "")
     if name and ("operation not permitted" in log or "permission denied" in log or sign_in_status(b) == "blocked"):
         return ("Originals need one switch: System Settings > Privacy & Security > Full Disk Access > turn on "
                 "Crate Helper. Until then, missing tracks come from Soulseek and the shops.")
-    if name and ("cookies" in log and "error" in log or "authorization token is invalid" in log
-                 or "only available for registered users" in log or "401" in log):
-        return (f"SoundCloud's sign-in in {name} has run out (it lasts about a day). Open soundcloud.com in "
-                f"{name} once, then press Sync now to get the originals.")
+    state = login_state(log)
+    if name and state in ("none", "invalid"):
+        # Re-check every 2 minutes while the page is open, so the line goes away soon after he signs in.
+        # Not while the sync itself is asking SoundCloud (the Soulseek part doesn't touch it).
+        if not _login["busy"] and time.time() - _login["at"] > 120 and sync_phase() != "soundcloud":
+            _login["busy"] = True
+            threading.Thread(target=sign_in_check, args=(b,), daemon=True).start()
+        where = f"{name} (profile \"{_login['profile']}\")" if _login["profile"] else name
+        first = ("SoundCloud's sign-in in {w} has run out" if state == "invalid"
+                 else "You're not signed in to SoundCloud in {w}").format(w=where)
+        return (f"{first}, so the artists' original files can't download. Sign in with the link below; "
+                "this message clears within 2 minutes, then press Sync Now.")
     if "unable to download" in log and "getaddrinfo" in log or "network is unreachable" in log:
         return "The last sync couldn't reach SoundCloud (no internet). It will try again tonight."
     return ""
@@ -199,6 +486,7 @@ def lossy_kbps(p):
 
 
 def state():
+    apply_sync_time()  # a time picked while a sync ran goes in once it's done
     acct = account()
     have = []
     free = {l.split("\t")[2] for l in read("free.tsv").splitlines() if l.count("\t") == 2}
@@ -211,27 +499,87 @@ def state():
                     have.append({"name": name, "kind": ext[1:].upper(), "mb": round(os.path.getsize(p) / 1e6, 1),
                                  "src": src or ("Free download" if p in free else ""), "kbps": lossy_kbps(p)})
     have.sort(key=lambda t: t["name"].lower())
-    slsk_links = {l.split("\t")[0] for l in read("soulseek.tsv").splitlines() if l}
+    got = soulseek.got_links(DIR, SLSK)  # on the Mac from Soulseek, even mid-run: not still to get
+    # What a running sync is doing: reading SoundCloud first, then Soulseek (its log is newer than the sync's flag).
+    phase = sync_phase()
+    running = bool(phase)
+    prog = soulseek.progress(DIR, phase == "soulseek")
     buy = []
     for line in read("to-buy.tsv").splitlines():
         name, link, free = (line.split("\t") + ["", ""])[:3]
-        if name:
-            buy.append({"name": name, "link": link, "free": free, "soulseek": link in slsk_links})
+        if name and link not in got:
+            st, why = prog.get(link, ("missing", ""))
+            buy.append({"name": name, "link": link, "free": free, "state": st, "why": why})
+    try:
+        unread = int(read("unread.txt") or 0)
+    except ValueError:
+        unread = 0
     usb = read("usb.txt")
     history = read("history.log").splitlines()
     slsklog = read("soulseek.log").splitlines()
     usblog = read("usb.log").splitlines()
+    safelog = read("safety.log").splitlines()
+    qdir = os.path.join(DIR, "Quarantine")
+    svc = playlists.service(read("playlist.txt"))
+    try:  # Spotify shows only its first 100 tracks to a page without a Spotify sign-in
+        capped = bool(svc) and json.loads(read(".service") or "{}").get("service") == svc and \
+            json.loads(read(".service"))["capped"]
+    except (ValueError, KeyError):
+        capped = False
     return {
-        "playlist": read("playlist.txt"), "usb": usb, "volumes": volumes(),
+        "playlist": read("playlist.txt"), "service": svc, "capped": capped, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
-        "running": os.path.exists(os.path.join(DIR, ".running")),
+        "usbEject": not os.path.exists(os.path.join(DIR, "usb-keep.txt")),
+        "running": running, "phase": phase, "syncTime": sync_time(),
         "signIn": sign_in_status(browser()),
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
         "have": have, "buy": buy,
-        "soulseekReady": soulseek_ready(), "lastSoulseek": slsklog[-1] if slsklog else "",
+        "soulseekReady": soulseek_ready(), "soulseekUser": _slsk["user"],
+        # the last run's sign-in was turned down (soulseek.sh logs "Soulseek PROBLEM" with the reason)
+        "soulseekBad": bool(slsklog) and bool(re.search(r"PROBLEM.*(login|pass)", slsklog[-1], re.I)),
+        "lastSoulseek": slsklog[-1] if slsklog else "",
         "lastRun": history[-1] if history else "", "lastUsb": usblog[-1] if usblog else "",
+        # for the Get started list: the SoundCloud sign-in as last seen, the helper's switch, the virus scanner
+        "scLogin": "" if svc else login_state(), "helper": os.path.exists(HELPER),
+        "virusBusy": bool(_virus["proc"]) and _virus["proc"].poll() is None,
+        "virusFailed": _virus["failed"],
+        "safety": {"virusScan": bool(safety.clam()), "last": safelog[-1] if safelog else "",
+                   "blocked": len(os.listdir(qdir)) if os.path.isdir(qdir) else 0},
     }
+
+
+HELPER = os.path.join(DIR, "Crate Helper.app")
+APPS = {"chrome": "Google Chrome", "safari": "Safari", "brave": "Brave Browser", "edge": "Microsoft Edge",
+        "firefox": "Firefox"}
+_virus = {"proc": None, "failed": ""}  # the virus scanner install the Get started list started (clamav.sh)
+
+
+def open_for_setup(what):
+    """The Get started list's buttons: open the one place on this Mac each step needs. '' when done, else why not."""
+    if what == "fda":  # the Full Disk Access list, and Crate Helper in Finder to drag into it
+        subprocess.run(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"])
+        if os.path.exists(HELPER):
+            subprocess.run(["open", "-R", HELPER])
+    elif what == "soundcloud":  # SoundCloud's sign-in page in the browser the sync reads
+        app = APPS.get(browser())
+        if not app or subprocess.run(["open", "-a", app, "https://soundcloud.com/signin"]).returncode:
+            subprocess.run(["open", "https://soundcloud.com/signin"])
+    elif what == "virus":
+        if not (_virus["proc"] and _virus["proc"].poll() is None):
+            _virus["failed"] = ""
+            with open(os.path.join(DIR, "clamav.log"), "a") as log:
+                _virus["proc"] = p = subprocess.Popen(["/bin/zsh", os.path.join(DIR, "clamav.sh")], stdout=log,
+                                                      stderr=subprocess.STDOUT, start_new_session=True)
+
+            def done():
+                if p.wait():
+                    lines = [l for l in read("clamav.log").splitlines() if l.strip()]
+                    _virus["failed"] = lines[-1] if lines else "The virus scanner didn't install."
+            threading.Thread(target=done, daemon=True).start()
+    else:
+        return "not found"
+    return ""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -271,10 +619,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {"error": "bad request"})
         if self.path == "/api/playlist":
             url = str(body.get("url", "")).strip()
-            if not PLAYLIST_RE.match(url):
-                return self.send(400, {"error": "That doesn't look like a SoundCloud link."})
+            if not is_playlist(url):
+                return self.send(400, {"error": "That doesn't look like a SoundCloud, Apple Music or Spotify playlist link."})
             url = url.split("?")[0].rstrip("/")
             title = title_of(url)
+            svc = {"spotify": "Spotify", "apple": "Apple Music"}.get(playlists.service(url))
+            if not title and svc:
+                return self.send(400, {"error": f"{svc} didn't open that playlist. Make sure it's public "
+                                                "(Share > Copy link to playlist), then paste it again."})
             if not title:
                 return self.send(400, {"error": "SoundCloud didn't open that link. For a private playlist, use its "
                                                 "Share link (it ends in /s-…)."})
@@ -285,6 +637,10 @@ class Handler(BaseHTTPRequestHandler):
             if not m or browser not in BROWSERS:
                 return self.send(400, {"error": "Type your SoundCloud profile name, like soundcloud.com/yourname."})
             err = connect(m.group(1), browser)
+            if err:
+                return self.send(400, {"error": err})
+        elif self.path == "/api/soulseek":
+            err = soulseek_login(str(body.get("user", "")).strip(), str(body.get("pass", "")))
             if err:
                 return self.send(400, {"error": err})
         elif self.path == "/api/browser":
@@ -311,12 +667,31 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(DIR, "usb.txt"), "w") as f:
                 f.write(name + "\n")
             if name:
-                subprocess.Popen([os.path.join(DIR, "usb.sh")])
+                subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True)
+        elif self.path == "/api/eject":
+            keep = os.path.join(DIR, "usb-keep.txt")
+            if body.get("on"):
+                if os.path.exists(keep):
+                    os.remove(keep)
+            else:
+                open(keep, "w").close()
+        elif self.path == "/api/synctime":
+            t = str(body.get("time", ""))
+            if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t):
+                return self.send(400, {"error": "Pick a time."})
+            with open(os.path.join(DIR, "sync-time.txt"), "w") as f:
+                f.write(t + "\n")
+            apply_sync_time()
         elif self.path == "/api/sync":
             if not read("playlist.txt"):
                 return self.send(400, {"error": "Add your playlist link first."})
-            subprocess.Popen([os.path.join(DIR, "sync.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # its own session: restarting the page (an update) never stops a sync or a copy halfway
+            subprocess.Popen([os.path.join(DIR, "sync.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
             time.sleep(0.4)
+        elif self.path == "/api/open":
+            if open_for_setup(str(body.get("what", ""))):
+                return self.send(404, {"error": "not found"})
         elif self.path == "/api/copy":
             subprocess.Popen([os.path.join(DIR, "usb.sh")])
             time.sleep(0.4)
@@ -325,5 +700,25 @@ class Handler(BaseHTTPRequestHandler):
         self.send(200, state())
 
 
+def watch_downloads():
+    """Every minute: still-to-get tracks bought or unlocked by hand land in Downloads; take them (freedl.inbox),
+    then copy anything new to the USB when it's plugged in."""
+    while True:
+        time.sleep(60)
+        if sync_running():
+            continue  # a sync is running; it does the same at its end
+        try:
+            got = freedl.inbox(DIR, OUT)
+        except Exception as e:  # never stop the page; the error goes to free.log
+            got = []
+            with open(os.path.join(DIR, "free.log"), "a") as f:
+                f.write(f"{time.strftime('%F %R')}  Downloads pickup FAILED: {e!r}\n")
+        if got:
+            with open(os.path.join(DIR, "free.log"), "a") as f:
+                f.writelines(f"{time.strftime('%F %R')}  from Downloads: {os.path.basename(g[2])}\n" for g in got)
+            subprocess.Popen([os.path.join(DIR, "usb.sh")])
+
+
 if __name__ == "__main__":
+    threading.Thread(target=watch_downloads, daemon=True).start()
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

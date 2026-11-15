@@ -17,18 +17,25 @@ SPASS="$(security find-generic-password -s "$SERVICE" -w 2>/dev/null)"
 [ -z "$SUSER" ] || [ -z "$SPASS" ] && { say "Soulseek skipped: not set up yet (run soulseek-login.sh)"; exit 0; }
 
 mkdir -p "$SLSK"
-prep() { python3 "$DIR/soulseek.py" prepare "$DIR" "$SLSK" >>"$LOG" 2>&1 || { say "Soulseek FAILED: could not read the to-get list"; exit 1; }; }
+# The safety check first: a file a stopped run left behind is checked before soulseek.py counts it as got.
+prep() { python3 "$DIR/safety.py" check "$DIR" "${SLSK:h}" 2>>"$DIR/safety.log"; python3 "$DIR/soulseek.py" prepare "$DIR" "$SLSK" >>"$LOG" 2>&1 || { say "Soulseek FAILED: could not read the to-get list"; exit 1; }; }
 # Highest quality only. Pass 1: lossless only. Pass 2, for what pass 1 didn't find: MP3 at a confirmed 320 kbps
 # (--strict-conditions drops files whose bitrate the peer doesn't report). Nothing lower is ever taken.
 # Same version only: the file must be within 5 seconds of the SoundCloud track's length (an extended mix is not
 # the radio edit), unless the SoundCloud upload is itself a clip or edit (soulseek.py leaves its length out).
-# --no-config: only these settings count. --no-skip-existing: soulseek.py's list alone decides what to search,
-# so a Soulseek file that was moved or deleted is fetched again (sockseek's own index would skip it forever).
+# Only these settings count: a private one-run config file holds the sign-in (a password on the command line
+# would show in the list of running programs). --no-skip-existing: soulseek.py's list (soulseek.tsv: got once,
+# never again) alone decides what to search.
+CONF="$(mktemp "$DIR/.sockseek-XXXXXX")" || { say "Soulseek FAILED: could not write its settings"; exit 1; }
+trap 'rm -f "$CONF"' EXIT
+printf 'username = %s\npassword = %s\n' "$SUSER" "$SPASS" >"$CONF"
 get() {
-  "$SOCKSEEK" "$DIR/soulseek.csv" --input-type csv --no-config --user "$SUSER" --pass "$SPASS" \
+  "$SOCKSEEK" "$DIR/soulseek.csv" --input-type csv --config "$CONF" \
     -o "$SLSK" --index-path "$SLSK/.index.sldl" --name-format '{sartist( - )stitle|slsk-filename}' \
     --strict-title --length-tol 5 --no-skip-existing --no-progress "$@" >"$DIR/soulseek-pass.log" 2>&1
   cat "$DIR/soulseek-pass.log" >>"$DIR/soulseek-run.log"
+  # Before anything counts as got: a file that isn't real audio (or that the virus scan flags) goes to Quarantine.
+  python3 "$DIR/safety.py" check "$DIR" "${SLSK:h}" 2>>"$DIR/safety.log"
   python3 "$DIR/soulseek.py" record "$DIR" "$SLSK" >>"$LOG" 2>&1
   # sockseek writes one "SongJob: succeeded" line per track it got (a failed try on one peer is only a [warn]).
   local n=$(( $(wc -l < "$DIR/soulseek.csv") - 1 ))
@@ -47,6 +54,9 @@ if [ "$(rows)" -gt 0 ]; then
   if [ "$(rows)" -gt 0 ]; then
     RESULT="$RESULT; 320 MP3 pass: $(get --format mp3 --min-bitrate 320 --strict-conditions)"
   fi
+  # Tracks no pass found at all are searched again after a wait (soulseek.py: 1, 2, 4, then 7 days).
+  # (Only when every pass ran: a pass that crashed searched nothing, so it proves nothing.)
+  case "$RESULT" in *FAILED*) ;; *) python3 "$DIR/soulseek.py" missed "$DIR" "$SLSK" >>"$LOG" 2>&1 ;; esac
   say "Soulseek: ${RESULT}"
   # Only a sign-in or crash is a problem; a peer that doesn't answer is normal (the next one is tried).
   BAD='login.*(fail|reject|denied)|invalid ?pass|wrong password|unhandled exception'
