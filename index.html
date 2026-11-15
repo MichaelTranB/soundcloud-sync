@@ -110,6 +110,7 @@
   #viewNote .key .near::before, #viewNote .key .far::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; background: currentColor; }
   #viewNote .near { color: #6cc4dc; } #viewNote .far { color: #f0a868; }
   #viewNote .got { color: var(--ok); font-weight: 600; }
+  #viewNote .agents { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
   h3 { font-size: 15px; font-weight: 600; color: var(--dim); margin: 28px 0 8px; display: flex; justify-content: space-between; align-items: center; }
   h3 em { font-size: 14px; color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
   .find { display: flex; align-items: center; gap: 10px; margin: 0 0 28px; }
@@ -505,7 +506,14 @@ function draw() {
     : [line('lead', 'Free from the artist, in three steps:'),
       step('1', 'Tap Free Download and do what the page asks (often a follow).'),
       step('2', 'Leave the file in Downloads.'),
-      step('3', 'The Crate checks it, moves it into your music and ticks it off here. Nothing to tidy up.')]));
+      step('3', 'The Crate checks it, moves it into your music and ticks it off here. Nothing to tidy up.'),
+      // Claude or Codex on this Mac: one click hands them the whole list, to do in the friend's own Chrome.
+      ...((s.agents || []).length && freeAll.length ? [el('div', { className: 'agents' }, ...s.agents.map(w => {
+        const b = el('button', { textContent: 'Get them all with ' + (w === 'claude' ? 'Claude' : 'Codex') });
+        b.onclick = () => call('/api/agent', { who: w }).then(j => { agentMsg = j.agentMsg || ''; draw(); })
+          .catch(err => { agentMsg = err.message; draw(); });
+        return b; }))] : []),
+      ...(agentMsg ? [line('', agentMsg)] : [])]));
   const missRow = t => { const [k, txt] = why(t, s); return el('li', { className: 'shop' },
     nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : '') }, ...(k === 'wait' ? [el('span', { className: 'spin' })] : []), txt),
     ...shopLinks(t)); };
@@ -525,6 +533,7 @@ const MISS_NOTE = { all: 'Mostly remixes and flips that only live on SoundCloud.
   near: 'Someone shares it, but they were offline or busy: tried again next sync.',
   far: 'No top-quality copy on Soulseek: buy it or ask the artist.' };
 const missBy = (l, k) => k === 'all' ? l : l.filter(t => (/^On Soulseek/.test(t.why) ? 'near' : 'far') === k);
+let agentMsg = '';  // what the Claude / Codex button just did
 let missView = 'all';
 try { missView = localStorage.getItem('crateMiss') || 'all'; } catch (e) {}
 if (!MISS.some(([k]) => k === missView)) missView = 'all';

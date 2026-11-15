@@ -4,7 +4,7 @@
 Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so another website open
 in the browser cannot press the buttons.
 """
-import json, os, plistlib, re, shutil, subprocess, sys, threading, time, urllib.parse
+import json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, urllib.parse
 import audio, freedl, playlists, safety, soulseek
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -27,6 +27,56 @@ YTDLP = next((p for p in (shutil.which("yt-dlp"), os.path.expanduser("~/.local/b
                           "/usr/local/bin/yt-dlp") if p and os.access(p, os.X_OK)), "yt-dlp")
 _slsk = {"at": 0.0, "ok": False, "user": ""}
 _lists = threading.Lock()  # one change to saved.json / playlist.txt at a time (the server is threaded)
+
+
+def agent_app(who):
+    """Claude Code (its claude command) or the Codex app, when this Mac has one: the Free links button hands it the
+    list. The Crate works the same without them."""
+    if who == "claude":
+        places = (shutil.which("claude"), "~/.local/bin/claude", "~/.claude/local/claude", "/opt/homebrew/bin/claude",
+                  "/usr/local/bin/claude")
+        return next((p for p in map(lambda x: x and os.path.expanduser(x), places) if p and os.access(p, os.X_OK)), "")
+    if who == "codex":
+        return next((p for p in ("/Applications/Codex.app", os.path.expanduser("~/Applications/Codex.app"))
+                     if os.path.isdir(p)), "")
+    return ""
+
+
+# What Claude or Codex is asked to do: the friend's own assistant, in their own signed-in Chrome, with them watching.
+# It asks them once what it may do in their name, never pays or types a password, and only fetches audio.
+AGENT_BRIEF = """Please get the free downloads below for me, in my Chrome (I'm signed in there), one at a time.
+
+These are songs on my DJ playlist whose artists give them away free, usually behind a gate (Hypeddit, ToneDen,
+Laylo...) that asks for a follow, like, repost, comment or email first. My music app, The Crate, picks up any audio
+file that lands in my Downloads folder ({downloads}) and checks it, so the job is just to get each file there.
+
+Before you start, ask me ONCE which gate steps you may do in my name, so you don't have to ask again for each:
+following or liking on SoundCloud (or Spotify, Instagram...), reposting, a comment (and what text), signing up with
+my email (which one), connecting an account. Skip any link that needs something I didn't allow.
+
+For each link:
+1. Open it, do the gate steps I allowed, and download the best quality offered: WAV, FLAC or AIFF over MP3;
+   MP3 only at 320 kbps.
+2. When the file is in Downloads, rename it to exactly the name given below (keep its extension; a / or : in the
+   name becomes -), so The Crate knows which song it is. A .zip can stay as it is.
+3. Wait a few seconds before the next link, so none of my accounts looks like a bot.
+
+Never: pay or enter card details, type a password (if a site needs a sign-in, ask me to do it and wait), download
+or open an app or installer (.dmg, .pkg, .exe, .app), or join a paid membership (skip a Patreon post that's members
+only). If you can't use my Chrome, say so and stop.
+
+At the end, tell me in a short list what you got, and what you skipped and why.
+
+{n} songs ("name" = link):
+{rows}
+"""
+
+
+def agent_task():
+    rows = [p for p in (l.split("\t") for l in read("to-buy.tsv").splitlines()) if len(p) > 2
+            and re.match(r"https?://\S+$", p[2])]
+    lines = "\n".join(f'- "{r[0]}" = {r[2]}' for r in rows)
+    return AGENT_BRIEF.format(downloads=os.path.expanduser("~/Downloads"), n=len(rows), rows=lines), len(rows)
 
 
 def read(name, default=""):
@@ -604,6 +654,7 @@ def state():
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
         "have": have, "buy": buy, "watching": watching(),
+        "agents": [w for w in ("claude", "codex") if agent_app(w)],
         "inboxWhy": {k: v.get("text", "") for k, v in freedl.load_json(DIR, freedl.WHY).items() if isinstance(v, dict)},
         "justGot": [k for k, t in _just_got.items() if time.time() - t < 600],
         "soulseekReady": soulseek_ready(), "soulseekUser": _slsk["user"],
@@ -746,6 +797,33 @@ class Handler(BaseHTTPRequestHandler):
                 open(flag, "w").close()
             elif os.path.exists(flag):
                 os.remove(flag)
+        elif self.path == "/api/agent":  # the Free links list, handed to Claude or Codex on this Mac
+            who = str(body.get("who", ""))
+            app = agent_app(who)
+            if not app:
+                return self.send(400, {"error": "That assistant isn't on this Mac."})
+            task, n = agent_task()
+            if not n:
+                return self.send(400, {"error": "No free links to get right now."})
+            if who == "claude":
+                # A Terminal window the friend watches and answers in: Claude with its Chrome connection, started
+                # in Downloads (where it renames the files), with the list as its first message.
+                brief, run = os.path.join(DIR, "agent-task.md"), os.path.join(DIR, "agent-run.command")
+                with open(brief, "w") as f:
+                    f.write(task)
+                with open(run, "w") as f:
+                    f.write(f"#!/bin/zsh\ncd {shlex.quote(os.path.expanduser('~/Downloads'))} || exit 1\n"
+                            f"exec {shlex.quote(app)} --chrome \"$(cat {shlex.quote(brief)})\"\n")
+                os.chmod(run, 0o700)
+                subprocess.Popen(["open", "-a", "Terminal", run])
+                msg = (f"Claude is opening in Terminal with your {n} free links. It asks you once what it may do "
+                       "(follow, repost...), then works in Chrome. Files come in here by themselves.")
+            else:
+                subprocess.run(["pbcopy"], input=task.encode(), check=False)
+                subprocess.Popen(["open", app])
+                msg = (f"Codex is opening, and the request for your {n} free links is copied: paste it (⌘V) into a "
+                       "new chat with Codex's Chrome extension on. Files come in here by themselves.")
+            return self.send(200, dict(state(), agentMsg=msg))
         elif self.path == "/api/synctime":
             t = str(body.get("time", ""))
             if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t):
