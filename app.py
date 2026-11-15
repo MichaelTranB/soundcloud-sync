@@ -71,10 +71,24 @@ def account():
         return {}
 
 
+def token():
+    try:
+        r = subprocess.run([os.path.expanduser("~/work-os/bin/api-key"), "get", "soundcloud"],
+                           capture_output=True, text=True, timeout=10)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
 def connect(profile, browser):
-    """Lists the profile's playlists, signed in through the chosen browser. Returns an error or None."""
+    """Lists the profile's playlists. Signs in with the SoundCloud key in the Keychain when there is one (macOS
+    blocks other apps from reading Chrome's and Safari's sign-in), else through the chosen browser.
+    Returns an error or None."""
     cmd = [YTDLP, "--flat-playlist", "--dump-single-json", f"https://soundcloud.com/{profile}/sets"]
-    if browser != "none":
+    tok = token()
+    if tok:
+        cmd[1:1] = ["--username", "oauth", "--password", tok]
+    elif browser != "none":
         cmd[1:1] = ["--cookies-from-browser", browser]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
@@ -84,6 +98,9 @@ def connect(profile, browser):
         entries = json.loads(r.stdout).get("entries") or []
     except ValueError:
         err = [l for l in r.stderr.splitlines() if l.startswith("ERROR")]
+        if re.search(r"cookies database|operation not permitted|permission denied", r.stderr, re.I):
+            return ("macOS doesn't let this app read your browser's sign-in. Ask Claude to save your SoundCloud "
+                    "key (it copies it from your signed-in Chrome), or choose No sign-in for public playlists.")
         return (err[-1][7:] if err else "Could not read that profile.")[:300]
     lists = [{"title": e.get("title") or e["url"].rstrip("/").split("/")[-1], "url": e["url"]}
              for e in entries if PLAYLIST_RE.match(str(e.get("url", "")))]
