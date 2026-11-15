@@ -185,16 +185,33 @@ def apply_sync_time():
         with open(SYNC_PLIST, "wb") as f:
             plistlib.dump(pl, f)
         subprocess.run(["launchctl", "bootout", job + "/com.thecrate.sync"], capture_output=True)
-    # Loading right after unloading often fails at first ("Bootstrap failed: 5"): only done once the job is loaded.
+    if load_job("com.thecrate.sync", SYNC_PLIST):
+        _sched["applied"] = t
+
+
+def load_job(label, plist):
+    """Loads a launchd job if it isn't loaded. Loading right after unloading often fails at first ("Bootstrap
+    failed: 5"), so it's tried a few times; True once the job is loaded."""
+    job = f"gui/{os.getuid()}"
     for _ in range(3):
-        if subprocess.run(["launchctl", "print", job + "/com.thecrate.sync"], capture_output=True).returncode == 0:
-            break
-        subprocess.run(["launchctl", "bootstrap", job, SYNC_PLIST], capture_output=True)
+        if subprocess.run(["launchctl", "print", f"{job}/{label}"], capture_output=True).returncode == 0:
+            return True
+        subprocess.run(["launchctl", "bootstrap", job, plist], capture_output=True)
         time.sleep(1)
-    else:
-        print("couldn't load the daily sync job; trying again on the next refresh", file=sys.stderr)
-        return
-    _sched["applied"] = t
+    print(f"couldn't load {label}; trying again soon", file=sys.stderr)
+    return False
+
+
+def reload_jobs():
+    """install.sh (an update) leaves a job that was busy for later, as reloading it would stop the sync or copy it
+    runs (.reload-<job>): reloaded here, with its new settings, once it's finished."""
+    for label, busy in (("com.thecrate.sync", sync_running), ("com.thecrate.usb", usb_copy)):
+        flag = os.path.join(DIR, ".reload-" + label)
+        if not os.path.exists(flag) or busy():
+            continue
+        subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{label}"], capture_output=True)
+        if load_job(label, os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")):
+            os.remove(flag)
 
 
 def usb_copy():
@@ -813,6 +830,7 @@ def watch_downloads():
     while True:
         _watch.wait(3 if freedl.claims(DIR) else 30 if sync_running() else 60)
         _watch.clear()
+        reload_jobs()
         usb_follow()
         if sync_phase() == "soundcloud":
             continue
@@ -829,7 +847,8 @@ def watch_downloads():
             _just_got.update({os.path.splitext(os.path.basename(g[2]))[0]: now for g in got})
             with open(os.path.join(DIR, "free.log"), "a") as f:
                 f.writelines(f"{time.strftime('%F %R')}  from Downloads: {os.path.basename(g[2])}\n" for g in got)
-            subprocess.Popen([os.path.join(DIR, "usb.sh")])
+            subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True,  # a page restart never stops it
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 if __name__ == "__main__":
