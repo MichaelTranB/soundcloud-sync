@@ -442,8 +442,8 @@ def problem():
         where = f"{name} (profile \"{_login['profile']}\")" if _login["profile"] else name
         first = ("SoundCloud's sign-in in {w} has run out" if state == "invalid"
                  else "You're not signed in to SoundCloud in {w}").format(w=where)
-        return (f"{first}, so the artists' original files can't download. Sign in at soundcloud.com in {where}; "
-                "this line goes away within 2 minutes, then press Sync now.")
+        return (f"{first}, so the artists' original files can't download. Sign in with the link below; "
+                "this message clears within 2 minutes, then press Sync Now.")
     if "unable to download" in log and "getaddrinfo" in log or "network is unreachable" in log:
         return "The last sync couldn't reach SoundCloud (no internet). It will try again tonight."
     return ""

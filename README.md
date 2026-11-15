@@ -26,9 +26,10 @@ The page ticks off each step by itself:
 
 1. **Add a playlist:** in SoundCloud, Spotify or Apple Music, open the playlist, **Share > Copy link**, and paste it.
    (Spotify and Apple Music: a public playlist. Spotify shows The Crate its first 100 songs.)
-2. **Let The Crate use your SoundCloud sign-in** (SoundCloud playlists only): the button opens System Settings at
-   *Full Disk Access* and a Finder window. Drag **Crate Helper** into the list and switch it on. macOS asks this of
-   any app that reads a browser's sign-in; nothing is sent anywhere.
+2. **Turn on Full Disk Access** (SoundCloud playlists only). Why: your browser keeps your SoundCloud sign-in in a
+   folder macOS locks, and this switch lets The Crate use it, so you get original files without typing a SoundCloud
+   password into it. The sign-in only ever goes to SoundCloud. The button opens System Settings and a Finder window:
+   drag **Crate Helper** into the list and switch it on.
 3. **Sign in to SoundCloud** in your web browser (Safari, Chrome, Brave, Edge or Firefox), as usual. Artists who allow downloads give their
    original WAV/FLAC only to signed-in people.
 4. **Soulseek (recommended):** finds what SoundCloud, Spotify and Apple Music won't give you. Make up a new name
@@ -37,8 +38,8 @@ The page ticks off each step by itself:
 6. **USB (optional):** plug in your DJ USB and pick it.
 7. **Sync Now.** After that it runs by itself every day at the time under **Auto sync** (3:10am to start). Keep the Mac on and plugged in then; if it's asleep, it syncs when it wakes.
 
-**Stuck?** On the page, tap **Copy a message for ChatGPT or Claude** and paste it into either one: it says where
-you are, and they'll walk you through it. Or send them this page's link and say which step.
+**Questions?** The **? How it works** button on the page explains where tracks come from, the quality, the
+safety check and Full Disk Access.
 
 ## Where tracks come from, best first
 

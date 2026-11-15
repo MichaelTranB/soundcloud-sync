@@ -15,7 +15,7 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, "Helvetica Neue", sans-serif; }
-  main { max-width: 1040px; margin: 0 auto; padding: 44px 28px 80px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 56px 40px 96px; }
   header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
   h1 { font-size: 54px; line-height: .95; letter-spacing: -.03em; margin: 0; font-weight: 800; }
   h1 span { color: var(--hot); }
@@ -29,19 +29,19 @@
   @keyframes r { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 
-  .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin: 34px 0 18px; }
-  .stat { background: var(--panel); padding: 18px 20px; min-width: 0; }
-  .stat b { display: block; font: 700 30px/1 var(--mono); letter-spacing: -.02em; }
-  .stat small { color: var(--dim); text-transform: uppercase; letter-spacing: .09em; font-size: 11px; display: block; margin-top: 8px; }
+  .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin: 40px 0 28px; }
+  .stat { background: var(--panel); padding: 22px 24px; min-width: 0; }
+  .stat b { display: block; font-size: 32px; line-height: 1; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat small { color: var(--dim); font-size: 13px; display: block; margin-top: 10px; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; background: var(--dim); }
   .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
   .stat .word { font: 600 16px/1.3 inherit; letter-spacing: 0; }
 
-  .setup { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; margin-bottom: 34px; }
-  .field { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; }
-  label { display: block; color: var(--dim); text-transform: uppercase; letter-spacing: .09em; font-size: 11px; margin-bottom: 10px; }
+  .setup { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; margin-bottom: 56px; }
+  .field { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; }
+  label { display: block; color: var(--text); font-size: 15px; font-weight: 600; margin-bottom: 12px; }
   .row { display: flex; gap: 10px; }
-  input, select { flex: 1; min-width: 0; background: #09090e; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; font: 13px var(--mono); }
+  input, select { flex: 1; min-width: 0; background: #09090e; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; font: 14px inherit; font-family: inherit; }
   input:focus, select:focus, button:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
   .lists { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .lists button { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 8px 14px; font-weight: 600; font-size: 13px; }
@@ -50,19 +50,19 @@
   .chip button:first-child { border-radius: 999px 0 0 999px; border-right: 0; }
   .chip button.x { border-radius: 0 999px 999px 0; padding: 8px 11px; color: var(--muted, inherit); }
   details { margin-top: 12px; color: var(--dim); font-size: 13px; } summary { cursor: pointer; }
-  .pre { flex: 1; min-width: 0; display: flex; align-items: center; background: #09090e; border: 1px solid var(--line); border-radius: 10px; padding-left: 12px; font: 13px var(--mono); color: var(--dim); }
+  .pre { flex: 1; min-width: 0; display: flex; align-items: center; background: #09090e; border: 1px solid var(--line); border-radius: 10px; padding-left: 12px; font-size: 14px; color: var(--dim); }
   .pre:focus-within { outline: 2px solid var(--hot); outline-offset: 2px; }
   .pre input { border: 0; background: transparent; padding-left: 0; outline: 0; }
-  .alert { margin-top: 26px; padding: 14px 18px; border: 1px solid var(--warn); border-radius: 12px; color: var(--warn); }
+  .alert { margin-top: 32px; padding: 14px 18px; border: 1px solid var(--warn); border-radius: 12px; color: var(--warn); }
   .alert + .strip { margin-top: 14px; }
   .note { color: var(--dim); font-size: 13px; margin-top: 10px; min-height: 18px; }
   .note.bad { color: var(--warn); }
 
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .12em; color: var(--dim); margin: 0 0 4px; display: flex; justify-content: space-between; }
-  h2 em { font: 700 13px var(--mono); color: var(--text); font-style: normal; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; }
+  h2 { font-size: 17px; font-weight: 700; color: var(--text); margin: 0 0 12px; display: flex; justify-content: space-between; align-items: baseline; }
+  h2 em { font-size: 14px; font-weight: 600; color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
   ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-  li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
   /* the name takes the row; the links wrap under it when there isn't room (never a one-letter-wide name) */
   li .n { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
   .tag { font: 700 11px var(--mono); padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
@@ -73,9 +73,9 @@
   li .shops { color: var(--dim); font-size: 12px; margin-left: 8px; }
   li a.free { color: var(--ok); border-bottom-style: solid; border-color: var(--ok); font-weight: 700; }
   li a:hover { color: var(--hot); border-color: var(--hot); }
-  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 22px 0 6px; display: flex; justify-content: space-between; align-items: center; }
-  h3 em { font: 700 12px var(--mono); color: var(--text); font-style: normal; }
-  .find { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; }
+  h3 { font-size: 14px; font-weight: 600; color: var(--dim); margin: 28px 0 8px; display: flex; justify-content: space-between; align-items: center; }
+  h3 em { font-size: 13px; color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
+  .find { display: flex; align-items: center; gap: 10px; margin: 0 0 28px; }
   .find input { flex: 1; max-width: 420px; }
   .find small { color: var(--dim); font-size: 12px; }
   li .why { flex-basis: 100%; color: var(--dim); font-size: 12.5px; margin-top: -2px; }
@@ -90,10 +90,10 @@
   .empty { color: var(--dim); padding: 22px 0; border-bottom: 1px solid var(--line); }
   .brand { display: flex; align-items: center; gap: 16px; }
   .brand img { width: 58px; height: 58px; flex: none; }
-  .start { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 20px 6px; margin-top: 30px; }
-  .start h2 { align-items: center; margin-bottom: 8px; }
+  .start { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px 26px 12px; margin-top: 40px; }
+  .start h2 { align-items: center; margin-bottom: 10px; }
   .start h2 button { padding: 6px 12px; font-size: 12px; }
-  .step { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .step { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 0; border-top: 1px solid var(--line); }
   .step .tick { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); flex: none; display: grid; place-items: center; font: 700 12px var(--mono); color: var(--dim); }
   .step.done .tick { background: var(--ok); border-color: var(--ok); color: var(--bg); }
   .step .t { flex: 1 1 300px; min-width: 0; }
@@ -102,11 +102,11 @@
   .step button, a.btn { padding: 9px 18px; font-size: 13px; }
   a.btn { display: inline-block; border-radius: 999px; background: var(--hot); color: #ffffff; font-weight: 700; text-decoration: none; white-space: nowrap; }
   .step:not(.next) a.btn, .step:not(.next) button { background: transparent; color: var(--text); border: 1px solid var(--line); }
-  .help { color: var(--dim); font-size: 13px; padding: 12px 0; border-top: 1px solid var(--line); }
-  .help button, .linkish { background: none; border: 0; padding: 0; color: var(--text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; font-size: inherit; border-radius: 0; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-  footer { color: var(--dim); font-size: 12px; margin-top: 40px; font-family: var(--mono); }
+  footer { color: var(--dim); font-size: 13px; margin-top: 56px; }
+  .stat a.inl { color: var(--text); font-size: 13px; text-underline-offset: 3px; }
   .alert .fix { display: inline-block; margin: 10px 0 0; padding: 9px 18px; font-size: 14px; }
+  #startNote { margin: 0 0 12px; } #startNote:empty { display: none; }
   .every { color: var(--dim); font-size: 13px; align-self: center; white-space: nowrap; }
   #syncTime { flex: 0 1 140px; color-scheme: dark; }
   .acts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -116,13 +116,15 @@
   .faqTop { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .faqTop h2 { margin: 0; font-size: 24px; letter-spacing: -.02em; text-transform: none; color: var(--text); display: block; }
   .faqTop button { padding: 4px 13px; font-size: 20px; line-height: 1.2; }
-  #faq h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .09em; color: var(--hot); margin: 24px 0 6px; }
+  #faq h3 { font-size: 16px; font-weight: 700; color: var(--text); margin: 26px 0 6px; }
   #faq p, #faq li { color: #cfcdd9; margin: 0 0 8px; }
   #faq ol { padding-left: 20px; margin: 0 0 8px; }
   #faq li { display: list-item; padding: 0; border: 0; }
   #faq li::marker { color: var(--dim); }
   #faq li b, #faq p b { color: var(--text); }
-  @media (max-width: 820px) { .strip { grid-template-columns: 1fr 1fr; } .setup, .cols { grid-template-columns: 1fr; } h1 { font-size: 40px; } .brand img { width: 44px; height: 44px; } }
+  .setup > *, .cols > * { min-width: 0; }  /* a long row wraps instead of pushing the card off the screen */
+  @media (max-width: 820px) { main { padding: 32px 16px 72px; } .strip { grid-template-columns: 1fr 1fr; } .setup, .cols { grid-template-columns: 1fr; } h1 { font-size: 40px; } .brand img { width: 44px; height: 44px; }
+    .row { flex-wrap: wrap; } .row input, .row .pre { min-width: 150px; } }
 </style>
 </head>
 <body>
@@ -133,6 +135,7 @@
       <div class="sub">Download your SoundCloud, Apple Music or Spotify playlist straight to your USB.</div>
     </div>
     <div class="acts">
+      <button class="ghost" id="startShow" hidden>Setup <span id="startLeft"></span></button>
       <button class="ghost ask" id="faqOpen" aria-haspopup="dialog"><b aria-hidden="true">?</b> How it works</button>
       <button class="big" id="sync">Sync Now</button>
     </div>
@@ -161,6 +164,12 @@
     <h3>Is it safe?</h3>
     <p>Every file is checked before it's kept: it has to actually be audio, and it's virus scanned. Anything else goes to a Quarantine folder and never reaches your USB.</p>
 
+    <h3>Why Full Disk Access?</h3>
+    <p>To get original files, The Crate uses the SoundCloud sign-in already in your browser, so you never type a SoundCloud password into it. macOS locks the folder where browsers keep sign-ins, and Full Disk Access is the only switch that opens it. You turn it on for Crate Helper, a small part of The Crate. Your sign-in is only ever sent to SoundCloud. Switch it off any time; you'd just miss the originals.</p>
+
+    <h3>What it uses</h3>
+    <p>Free, open-source tools, all running on your Mac: <b>yt-dlp</b> for SoundCloud, <b>sockseek</b> for Soulseek, and <b>ClamAV</b> (from Cisco) for the virus scan. No account with us, no AI, nothing uploaded.</p>
+
     <h3>Why the first sync is slow</h3>
     <p>Soulseek only allows so many searches a minute, so a big playlist takes a few hours the first time. After that it only looks for new tracks. Tracks nobody has are tried again after 1, 2, 4, then 7 days.</p>
 
@@ -171,7 +180,7 @@
   <section class="start" id="start" aria-labelledby="startHead" hidden>
     <h2 id="startHead"><span>Get started <em id="startCount"></em></span><button class="ghost" id="startHide">Hide</button></h2>
     <div id="steps"></div>
-    <div class="help">Stuck on a step? <button id="helpCopy">Copy a message for ChatGPT or Claude</button>, paste it there, and it walks you through. <span id="startNote" role="status"></span></div>
+    <div class="note" id="startNote" role="status"></div>
   </section>
   <div class="alert" id="alert" role="alert" hidden></div>
   <section class="strip" aria-live="polite">
@@ -185,7 +194,7 @@
     <div class="field">
       <label for="url">Your playlists</label>
       <div class="row"><input id="url" placeholder="Paste a SoundCloud, Apple Music or Spotify playlist link" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="ghost" id="saveUrl">Add</button></div>
-      <div class="note" id="urlNote">Paste a playlist link once and it stays here. Tap one to make it the one that syncs.</div>
+      <div class="note" id="urlNote">Saved playlists stay here. Tap one to sync it.</div>
       <div class="lists" id="saved"></div>
       <details><summary>Or find them on your profile</summary>
       <div class="row" style="margin-top:10px">
@@ -210,18 +219,18 @@
       <label for="slskUser">Soulseek</label>
       <div id="slskOk" hidden><span class="dot ok"></span>Signed in as <b id="slskName"></b>
         <button class="ghost" id="slskChange" style="margin-left:10px;padding:6px 12px;font-size:12px">Change</button>
-        <div class="note">Tracks SoundCloud won't give are looked for on Soulseek at every sync.</div></div>
+        <div class="note">Every sync looks here for what SoundCloud won't give.</div></div>
       <div id="slskForm"><div class="note" id="slskStatus" style="margin:0 0 10px"></div>
       <div class="row"><input id="slskUser" placeholder="Soulseek name" spellcheck="false" autocapitalize="off" autocomplete="off">
         <input id="slskPass" type="password" placeholder="Password" autocomplete="new-password">
         <button class="ghost" id="slskSave">Sign in</button></div>
-      <div class="note" id="slskNote">Finds the tracks SoundCloud won't let you download. No account yet? Pick a name nobody has and a new password you use nowhere else: Soulseek makes the account the first time. Saved in your Mac's Keychain only.</div>
+      <div class="note" id="slskNote">New to Soulseek? Make up a name and a new password; the account is made for you. Kept in your Mac's Keychain.</div>
       </div>
     </div>
     <div class="field">
       <label for="syncTime">Auto sync</label>
       <div class="row"><span class="every">Every day at</span><input id="syncTime" type="time" step="300" required><button class="ghost" id="saveTime">Save</button></div>
-      <div class="note" id="timeNote">Keep your Mac on and plugged in at this time. If it's asleep, it syncs as soon as it wakes up. If it's shut down, it waits for the next day.</div>
+      <div class="note" id="timeNote">Keep your Mac on and plugged in at this time. If it's asleep, it syncs when it wakes.</div>
     </div>
   </section>
 
@@ -236,8 +245,7 @@
     </div>
     <div>
       <h2>Still to get <em id="cBuy"></em></h2>
-      <div class="note">Bought one (Bandcamp, Beatport, any shop) or got it through a free-download gate (Hypeddit, Laylo)?
-        Leave the file in Downloads. The Crate takes it within a minute, checks it, and it goes on the USB.</div>
+      <div class="note">Bought or unlocked one yourself? Leave the file in Downloads; it's added within a minute.</div>
       <div class="note" id="unread" hidden></div>
       <div id="nowBox" hidden>
         <h3>Getting now <em id="cNow"></em></h3>
@@ -247,7 +255,7 @@
       <ul id="buy"></ul>
     </div>
   </section>
-  <footer><span id="foot"></span> <button class="linkish" id="startShow" hidden>Setup list</button></footer>
+  <footer id="foot"></footer>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -275,9 +283,10 @@ function scLink(text, cls) {
 
 function render(s) {
   $('alert').hidden = !s.problem;
-  // A sign-in problem gets its fix right there: one button that opens SoundCloud's sign-in in that browser.
-  if ($('alert').dataset.p !== s.problem) $('alert').dataset.p = s.problem, $('alert').replaceChildren(s.problem, ...(/signed in to SoundCloud|sign-in in .* has run out/.test(s.problem)
-    ? [' ', scLink('Sign in to SoundCloud ↗', 'btn fix')] : []));
+  // A sign-in problem gets its fix right there: the SoundCloud sign-in link, or the Full Disk Access setting.
+  if ($('alert').dataset.p !== s.problem) $('alert').dataset.p = s.problem, $('alert').replaceChildren(s.problem,
+    ...(/signed in to SoundCloud|sign-in in .* has run out/.test(s.problem) ? [el('br'), scLink('Sign in to SoundCloud ↗', 'btn fix')]
+      : /Full Disk Access/.test(s.problem) ? [el('br'), el('button', { className: 'fix', textContent: 'Open the setting', onclick: () => openStep('fda') })] : []));
   $('nHave').textContent = s.have.length; $('cHave').textContent = s.have.length || '';
   $('unread').hidden = !s.unread && !s.capped;
   $('unread').textContent = s.capped ? (s.service === 'spotify'
@@ -289,7 +298,7 @@ function render(s) {
 }
 
 // The Get started list: each step a friend needs once, ticked from what the app can see, with a button that opens
-// the one place it needs. Hidden once everything is done (or when hidden by hand; "Setup list" brings it back).
+// the one place it needs. Hidden once everything is done (or when hidden by hand; "Setup" up top brings it back).
 function steps(s) {
   const sc = !s.playlist || s.saved.some(p => !SERVICE[host(p.url)]);  // SoundCloud playlists need its sign-in
   const signin = sc && s.browser !== 'none';
@@ -297,24 +306,24 @@ function steps(s) {
   const to = (id, block) => () => { const e = $(id); if (e.closest('details')) e.closest('details').open = true; e.scrollIntoView({ block: block || 'center', behavior: 'smooth' }); e.focus({ preventScroll: true }); };
   return [
     { done: !!s.playlist, title: 'Add a playlist',
-      how: 'In SoundCloud, Spotify or Apple Music, open your playlist, tap Share > Copy link, and paste it in the box below.',
+      how: 'Open your playlist in SoundCloud, Spotify or Apple Music, tap Share › Copy link, and paste it below.',
       btn: 'Paste a link', go: to('url') },
-    signin && { done: s.signIn === 'ok', title: 'Let The Crate use your SoundCloud sign-in',
+    signin && { done: s.signIn === 'ok', title: s.signIn === 'missing' ? 'Pick the browser you use for SoundCloud' : 'Turn on Full Disk Access',
       how: s.signIn === 'missing' ? `${bn} isn't on this Mac. Under "Or find them on your profile" below, pick the browser you use for SoundCloud.`
-        : s.helper ? 'Once: the button opens System Settings and a Finder window. Drag "Crate Helper" from Finder into the list, switch it on, and confirm with your password or Touch ID.'
+        : s.helper ? `${bn} keeps your SoundCloud sign-in in a folder macOS locks. This lets The Crate use it, so you get the original files without typing a password here. The button opens System Settings and Finder: drag "Crate Helper" into the list and switch it on.`
         : 'The helper is missing: install the Xcode command line tools, then run the install line again.',
       btn: s.signIn === 'missing' ? 'Pick the browser' : 'Open the setting', go: s.signIn === 'missing' ? to('browser') : () => openStep('fda') },
     signin && { done: s.scLogin === 'ok', title: `Sign in to SoundCloud in ${bn}`,
-      how: 'Artists who allow downloads give their original file (WAV, FLAC) to signed-in people only. Sign in as usual; this ticks after the next sync.',
+      how: 'Artists who allow downloads only give the original file to people who are signed in. This ticks after the next sync.',
       btn: 'Sign in to SoundCloud', link: true },
     { done: s.soulseekReady && !s.soulseekBad, title: 'Sign in to Soulseek (recommended)',
-      how: 'Finds the tracks SoundCloud, Spotify and Apple Music won\'t give you. Free: make up a new name and a password you use nowhere else, in the Soulseek box below.',
+      how: 'Finds what SoundCloud, Spotify and Apple Music won\'t give you. Free: make up a name and a new password below.',
       btn: 'Go to Soulseek', go: to('slskUser') },
     { done: s.safety.virusScan, title: 'Virus scanner',
-      how: s.virusBusy ? 'Installing… (a few minutes; about 400 MB to download)' : s.virusFailed || 'Checks every downloaded file before it stays. Free (ClamAV), installs in your home folder, no password.',
+      how: s.virusBusy ? 'Installing… (a few minutes; about 400 MB to download)' : s.virusFailed || 'Checks every download before it\'s kept. Free, no password.',
       btn: s.virusBusy ? '' : s.virusFailed ? 'Try again' : 'Install it', go: () => openStep('virus') },
     { done: !!s.usb, title: 'Choose your USB (optional)',
-      how: 'Plug in the USB you DJ from and pick it below. New tracks copy over by themselves.', btn: 'Pick the USB', go: to('usb') },
+      how: 'Plug in your DJ USB and pick it. New tracks copy over by themselves.', btn: 'Pick the USB', go: to('usb') },
     { done: !!s.lastRun, title: 'Run your first sync',
       how: s.running ? 'Running. The first one takes a while (Soulseek is searched slowly so nobody gets blocked).'
         : 'After this, it runs by itself every day at ' + clock(s.syncTime || '03:10') + ' (change it under Auto sync). Keep your Mac on then.', btn: s.running ? '' : 'Sync Now', go: () => $('sync').click() },
@@ -327,6 +336,7 @@ function paintStart(s) {
   $('start').hidden = finished || startHidden;
   $('startShow').hidden = finished || !startHidden;
   $('startCount').textContent = done + ' of ' + all.length + ' done';
+  $('startLeft').textContent = done + '/' + all.length;
   const key = JSON.stringify(all.map(x => [x.done, x.title, x.how, x.btn]));
   if (key === startKey) return;  // unchanged: keep focus where it is
   startKey = key;
@@ -336,28 +346,13 @@ function paintStart(s) {
     return el('div', { className: 'step' + (x.done ? ' done' : '') + (i === next ? ' next' : '') },
       el('span', { className: 'tick', ariaHidden: 'true', textContent: x.done ? '✓' : i + 1 }),
       el('div', { className: 't' }, el('b', { textContent: x.title }), el('span', { className: 'sr', textContent: x.done ? ' (done)' : '' }),
-        el('small', { textContent: x.done ? '' : x.how })), ...b);
+        ...(i === next && x.how ? [el('small', { textContent: x.how })] : [])), ...b);
   }));
 }
 function openStep(what) {
   call('/api/open', { what }).then(() => say('startNote', what === 'virus' ? 'Installing the virus scanner…' : 'Opened. Come back here when done.'))
     .catch(e => say('startNote', e.message, true));
 }
-function helpText(s) {
-  const left = steps(s).filter(x => !x.done);
-  return 'I\'m setting up The Crate, a free Mac app (github.com/MichaelTranB/soundcloud-sync) that saves my music playlists as files. ' +
-    'I\'m not technical: walk me through it in short, simple steps, one at a time.\n\n' +
-    (left.length ? 'Where I\'m stuck: "' + left[0].title + '". The app says: ' + left[0].how + '\n' : '') +
-    (s.problem ? 'The app also shows: ' + s.problem + '\n' : '') +
-    'Still to do: ' + (left.map(x => x.title).join('; ') || 'nothing') + '.\n' +
-    'The app runs at http://localhost:4780 on my Mac. ' +
-    'Its setup guide is the README at that GitHub link.';
-}
-$('helpCopy').onclick = async () => {
-  const t = helpText(last || { saved: [], safety: {} });
-  try { await navigator.clipboard.writeText(t); say('startNote', 'Copied. Paste it into ChatGPT or Claude.'); }
-  catch (e) { window.prompt('Copy this, then paste it into ChatGPT or Claude:', t); }
-};
 const setHidden = h => { startHidden = h; try { localStorage.setItem('crate-start-hidden', h ? '1' : '0'); } catch (e) {} if (last) paintStart(last); };
 $('startHide').onclick = () => setHidden(true);
 $('faqOpen').onclick = () => $('faq').showModal();
@@ -453,7 +448,8 @@ function paintSetup(s) {
 
   const bn = { chrome: 'Chrome', safari: 'Safari', brave: 'Brave', firefox: 'Firefox', edge: 'Edge' }[s.browser] || '';
   const sw = { ok: s.scLogin === 'none' || s.scLogin === 'invalid' ? ['warn', 'Not signed in (' + bn + ')'] : ['ok', (s.scLogin === 'ok' ? 'Signed in, ' : 'Via ') + bn], blocked: ['warn', 'Needs Full Disk Access'], missing: ['warn', bn + ' not found'], off: ['', 'Off'] }[s.signIn] || ['', 'Off'];
-  $('signWord').replaceChildren(el('i', { className: 'dot ' + sw[0] }), sw[1]);
+  $('signWord').replaceChildren(el('i', { className: 'dot ' + sw[0] }), sw[1],
+    ...(s.signIn === 'ok' && (s.scLogin === 'none' || s.scLogin === 'invalid') ? [el('br'), scLink('Sign in ↗', 'inl')] : []));
   $('usbWord').replaceChildren(el('i', { className: 'dot ' + (s.usbPlugged ? 'ok' : s.usb ? 'warn' : '') }),
     !s.usb ? 'No USB chosen' : s.usbPlugged ? s.usb : s.usb + ' (unplugged)');
 
@@ -477,11 +473,11 @@ function paintSetup(s) {
     s.soulseekBad ? 'Soulseek turned down the saved sign-in. Sign in again.'
       : slskGood ? 'Signed in as ' + (s.soulseekUser || 'your account') + '. Sign in below to switch accounts.' : 'Not signed in yet.'));
   if (slskGood && slskEdit) $('slskStatus').firstChild.className = 'dot ok';
-  $('foot').textContent = [s.lastRun && 'last sync  ' + s.lastRun, s.lastUsb && 'usb  ' + s.lastUsb,
-    s.soulseekReady ? s.lastSoulseek && 'soulseek  ' + s.lastSoulseek.replace(/^\S+ \S+\s+/, '')
+  $('foot').textContent = [s.lastRun && 'Last sync ' + s.lastRun, s.lastUsb && 'USB ' + s.lastUsb,
+    s.soulseekReady ? s.lastSoulseek && 'Soulseek ' + s.lastSoulseek.replace(/^\S+ \S+\s+/, '')
       : 'Soulseek not set up yet (sign in above)',
-    'safety check on' + (s.safety.virusScan ? ' + virus scan' : '') +
-      (s.safety.blocked ? ' (' + s.safety.blocked + ' blocked, in the Quarantine folder)' : '')].filter(Boolean).join('   ·   ');
+    'Safety check on' + (s.safety.virusScan ? ' + virus scan' : '') +
+      (s.safety.blocked ? ' (' + s.safety.blocked + ' blocked, in the Quarantine folder)' : '')].filter(Boolean).join('  ·  ');
 }
 
 async function call(path, body) {
