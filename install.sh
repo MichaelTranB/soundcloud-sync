@@ -17,6 +17,45 @@ fi
 chmod +x "$DIR"/*.sh
 mkdir -p "$AGENTS" "$HOME/Music/SoundCloud Sync"
 
+# Crate Helper (crate-helper.c): the three jobs start through it, so one Full Disk Access switch for it
+# (System Settings > Privacy & Security > Full Disk Access) lets yt-dlp read the SoundCloud sign-in already in
+# Chrome or Safari, which macOS otherwise blocks. Rebuilt only when its source changes: to macOS a rebuilt
+# helper is a new program, and the switch would have to be turned on again.
+APPDIR="$DIR/Crate Helper.app"
+HELPER="$APPDIR/Contents/MacOS/crate-helper"
+SRC_SHA="$(shasum -a 256 "$DIR/crate-helper.c" | cut -d' ' -f1)"
+if [ ! -x "$HELPER" ] || [ "$(cat "$DIR/.crate-helper.sha" 2>/dev/null)" != "$SRC_SHA" ]; then
+  mkdir -p "$APPDIR/Contents/MacOS"
+  cat > "$APPDIR/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>com.thecrate.helper</string>
+<key>CFBundleName</key><string>Crate Helper</string>
+<key>CFBundleExecutable</key><string>crate-helper</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>1.0</string>
+<key>LSBackgroundOnly</key><true/>
+</dict></plist>
+EOF
+  if clang -O2 -Wall -o "$HELPER" "$DIR/crate-helper.c" &&
+     codesign --force --sign - --identifier com.thecrate.helper "$APPDIR"; then
+    echo "$SRC_SHA" > "$DIR/.crate-helper.sha"
+    echo "Crate Helper built. Turn it on once: System Settings > Privacy & Security > Full Disk Access."
+  else
+    echo "Crate Helper build FAILED (needs the Xcode command line tools); the jobs start without it"
+    rm -f "$HELPER"
+  fi
+fi
+# The program a job runs: through the helper when it's there, else directly.
+run() { if [ -x "$HELPER" ]; then echo "<string>$HELPER</string><string>$1</string>"; else echo "$2"; fi; }
+
+# Jobs from before the rename: stop and remove them so nothing runs twice.
+for old in com.michael.soundcloud-sync.app com.michael.soundcloud-sync com.michael.soundcloud-sync.usb; do
+  launchctl bootout "gui/$(id -u)/$old" 2>/dev/null; rm -f "$AGENTS/$old.plist"
+done
+PY="$(for p in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do [ -x "$p" ] && echo "$p" && break; done)"
+
 job() { # label, body
   local p="$AGENTS/$1.plist"
   cat > "$p" <<EOF
@@ -33,10 +72,10 @@ EOF
   launchctl bootstrap "gui/$(id -u)" "$p"
 }
 
-job com.michael.soundcloud-sync.app "<key>ProgramArguments</key><array><string>/opt/homebrew/bin/python3</string><string>$DIR/app.py</string></array>
+job com.thecrate.app "<key>ProgramArguments</key><array>$(run app "<string>$PY</string><string>$DIR/app.py</string>")</array>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>"
-job com.michael.soundcloud-sync "<key>ProgramArguments</key><array><string>$DIR/sync.sh</string></array>
+job com.thecrate.sync "<key>ProgramArguments</key><array>$(run sync "<string>$DIR/sync.sh</string>")</array>
 <key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>10</integer></dict>"
-job com.michael.soundcloud-sync.usb "<key>ProgramArguments</key><array><string>$DIR/usb.sh</string></array>
+job com.thecrate.usb "<key>ProgramArguments</key><array>$(run usb "<string>$DIR/usb.sh</string>")</array>
 <key>StartOnMount</key><true/>"
 echo "Open http://localhost:4780"

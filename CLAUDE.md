@@ -20,7 +20,7 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
 - **`usb.sh`:** adds new files to the chosen USB after every sync and whenever a drive is mounted. Never deletes.
 - **`install.sh`:** (re)creates the three launchd jobs. Run it after moving the folder.
 - **Music lives in** `~/Music/SoundCloud Sync/`. State (`playlist.txt`, `usb.txt`, `archive.txt`, logs) is git-ignored.
-- **Sign-in:** the SoundCloud token is read from the Keychain (`~/work-os/bin/api-key get soundcloud`), never a file.
+- **Sign-in:** standalone, no Claude needed. yt-dlp borrows the SoundCloud sign-in already in his browser (`browser.txt`, Chrome by default). macOS blocks reading it unless the job runs through Crate Helper (`crate-helper.c`, built by install.sh) with Full Disk Access on; without it the sync runs signed out and the page says so. SoundCloud's sign-in lasts about a day, so originals need soundcloud.com opened in that browser within a day.
 
 ## The one rule
 Anything goes to get the download files, ensure its high quality
