@@ -1016,7 +1016,7 @@ def usb_follow():
 
 def watch_downloads():
     """Still-to-get tracks bought or unlocked by hand land in Downloads; take them (freedl.inbox), then copy
-    anything new to the USB when it's plugged in. Every minute, or every 3 s for 15 min after a Free Download
+    anything new to the USB when it's plugged in. Every minute, or every 3 s for 45 min after a Free Download
     click. Not while a sync reads SoundCloud (it rewrites the list then); its Soulseek step is fine."""
     while True:
         _watch.wait(3 if freedl.claims(DIR) else 30 if sync_running() else 60)
