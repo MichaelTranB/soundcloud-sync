@@ -64,6 +64,41 @@ def soulseek_ready():
     return _slsk["ok"]
 
 
+def saved():
+    """Playlists he added or picked, newest first: [{'title', 'url'}]."""
+    try:
+        return [p for p in json.loads(read("saved.json") or "[]") if PLAYLIST_RE.match(str(p.get("url", "")))]
+    except (ValueError, AttributeError):
+        return []
+
+
+def save_list(lists):
+    tmp = os.path.join(DIR, "saved.json.tmp")
+    with open(tmp, "w") as f:
+        json.dump(lists, f, indent=1)
+    os.replace(tmp, os.path.join(DIR, "saved.json"))
+
+
+def remember(url, title):
+    """Adds (or moves to the front) a playlist in the saved list and makes it the one that syncs."""
+    save_list([{"title": title, "url": url}] + [p for p in saved() if p["url"] != url])
+    with open(os.path.join(DIR, "playlist.txt"), "w") as f:
+        f.write(url + "\n")
+
+
+def title_of(url):
+    """The playlist's name from SoundCloud (no sign-in needed for a public playlist or a private Share link)."""
+    try:
+        r = subprocess.run([YTDLP, "--flat-playlist", "--dump-single-json", "--no-warnings", url],
+                           capture_output=True, text=True, timeout=120)
+        d = json.loads(r.stdout) if r.returncode == 0 else {}
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        d = {}
+    if not d:
+        return None
+    return (d.get("title") or url.rstrip("/").split("/")[-1])[:120]
+
+
 def account():
     try:
         return json.loads(read("account.json") or "{}")
@@ -99,8 +134,8 @@ def connect(profile, browser):
     except ValueError:
         err = [l for l in r.stderr.splitlines() if l.startswith("ERROR")]
         if re.search(r"cookies database|operation not permitted|permission denied", r.stderr, re.I):
-            return ("macOS doesn't let this app read your browser's sign-in. Ask Claude to save your SoundCloud "
-                    "key (it copies it from your signed-in Chrome), or choose No sign-in for public playlists.")
+            return ("macOS doesn't let this app read your browser's sign-in yet. Paste your playlist link above "
+                    "instead (for a private playlist, its Share link).")
         return (err[-1][7:] if err else "Could not read that profile.")[:300]
     lists = [{"title": e.get("title") or e["url"].rstrip("/").split("/")[-1], "url": e["url"]}
              for e in entries if PLAYLIST_RE.match(str(e.get("url", "")))]
@@ -164,7 +199,7 @@ def state():
         "running": os.path.exists(os.path.join(DIR, ".running")),
         "signedIn": bool(read("browser.txt")) or signed_in(),
         "profile": acct.get("profile", ""), "browser": acct.get("browser", "chrome"),
-        "playlists": acct.get("playlists", []), "problem": problem(),
+        "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
         "have": have, "buy": buy,
         "soulseekReady": soulseek_ready(), "lastSoulseek": slsklog[-1] if slsklog else "",
         "lastRun": history[-1] if history else "", "lastUsb": usblog[-1] if usblog else "",
@@ -210,8 +245,12 @@ class Handler(BaseHTTPRequestHandler):
             url = str(body.get("url", "")).strip()
             if not PLAYLIST_RE.match(url):
                 return self.send(400, {"error": "That doesn't look like a SoundCloud link."})
-            with open(os.path.join(DIR, "playlist.txt"), "w") as f:
-                f.write(url + "\n")
+            url = url.split("?")[0].rstrip("/")
+            title = title_of(url)
+            if not title:
+                return self.send(400, {"error": "SoundCloud didn't open that link. For a private playlist, use its "
+                                                "Share link (it ends in /s-…)."})
+            remember(url, title)
         elif self.path == "/api/connect":
             m = PROFILE_RE.match(str(body.get("profile", "")).strip())
             browser = str(body.get("browser", ""))
@@ -222,10 +261,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(400, {"error": err})
         elif self.path == "/api/pick":
             url = str(body.get("url", ""))
-            if url not in [p["url"] for p in account().get("playlists", [])]:
+            known = {p["url"]: p["title"] for p in account().get("playlists", []) + saved()}
+            if url not in known:
                 return self.send(400, {"error": "Pick one of your playlists."})
-            with open(os.path.join(DIR, "playlist.txt"), "w") as f:
-                f.write(url + "\n")
+            remember(url, known[url])
+        elif self.path == "/api/forget":
+            url = str(body.get("url", ""))
+            save_list([p for p in saved() if p["url"] != url])
+            if read("playlist.txt") == url:
+                os.remove(os.path.join(DIR, "playlist.txt"))
         elif self.path == "/api/usb":
             name = str(body.get("name", ""))
             if name and name not in volumes():

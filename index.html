@@ -46,6 +46,9 @@
   .lists { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .lists button { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 8px 14px; font-weight: 600; font-size: 13px; }
   .lists button[aria-pressed="true"] { background: var(--hot); border-color: var(--hot); color: #ffffff; }
+  .chip { display: inline-flex; }
+  .chip button:first-child { border-radius: 999px 0 0 999px; border-right: 0; }
+  .chip button.x { border-radius: 0 999px 999px 0; padding: 8px 11px; color: var(--muted, inherit); }
   details { margin-top: 12px; color: var(--dim); font-size: 13px; } summary { cursor: pointer; }
   .pre { flex: 1; min-width: 0; display: flex; align-items: center; background: #09090e; border: 1px solid var(--line); border-radius: 10px; padding-left: 12px; font: 13px var(--mono); color: var(--dim); }
   .pre:focus-within { outline: 2px solid var(--hot); outline-offset: 2px; }
@@ -92,8 +95,12 @@
 
   <section class="setup">
     <div class="field">
-      <label for="profile">Your SoundCloud</label>
-      <div class="row">
+      <label for="url">Your playlists</label>
+      <div class="row"><input id="url" placeholder="Paste a SoundCloud playlist link" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="ghost" id="saveUrl">Add</button></div>
+      <div class="note" id="urlNote">Paste a playlist link once and it stays here. Tap one to make it the one that syncs.</div>
+      <div class="lists" id="saved"></div>
+      <details><summary>Or find them on your profile</summary>
+      <div class="row" style="margin-top:10px">
         <span class="pre"><span>soundcloud.com/</span><input id="profile" placeholder="yourname" spellcheck="false" autocapitalize="off" autocomplete="off"></span>
         <select id="browser" aria-label="Browser you are signed in to SoundCloud with" style="flex:0 0 118px">
           <option value="chrome">Chrome</option><option value="safari">Safari</option><option value="brave">Brave</option>
@@ -101,10 +108,8 @@
         </select>
         <button class="ghost" id="connect">Connect</button>
       </div>
-      <div class="note" id="urlNote">Uses the SoundCloud sign-in already in that browser. No password typed here.</div>
+      <div class="note" id="profNote">Uses the SoundCloud sign-in already in that browser. No password typed here.</div>
       <div class="lists" id="lists"></div>
-      <details><summary>Or paste a playlist link</summary>
-        <div class="row" style="margin-top:10px"><input id="url" placeholder="https://soundcloud.com/you/sets/your-playlist" spellcheck="false"><button class="ghost" id="saveUrl">Save</button></div>
       </details>
     </div>
     <div class="field">
@@ -129,8 +134,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const LOSSLESS = ['WAV', 'FLAC', 'AIF', 'AIFF'];
-let urlDirty = false, busy = false;
-$('url').addEventListener('input', () => urlDirty = true);
+let busy = false;
 
 function el(tag, props = {}, ...kids) {
   const e = Object.assign(document.createElement(tag), props);
@@ -143,12 +147,20 @@ function render(s) {
   $('alert').hidden = !s.problem; $('alert').textContent = s.problem;
   $('nHave').textContent = s.have.length; $('cHave').textContent = s.have.length || '';
   $('nBuy').textContent = s.buy.length; $('cBuy').textContent = s.buy.length || '';
-  if (!urlDirty) $('url').value = s.playlist;
   if (document.activeElement !== $('profile') && !busy) $('profile').value = s.profile;
   if (document.activeElement !== $('browser') && !busy) $('browser').value = s.browser;
+  const pick = (p, note) => call('/api/pick', { url: p.url }).then(() => say(note, p.title + ' syncs now. Press Sync Now, or leave it for tonight.')).catch(e => say(note, e.message, true));
+  $('saved').replaceChildren(...s.saved.map(p => {
+    const b = el('button', { textContent: p.title, title: p.url }); b.setAttribute('aria-pressed', p.url === s.playlist);
+    b.onclick = () => pick(p, 'urlNote');
+    const x = el('button', { className: 'x', textContent: '×', title: 'Remove ' + p.title + ' from this list' });
+    x.setAttribute('aria-label', 'Remove ' + p.title);
+    x.onclick = () => call('/api/forget', { url: p.url }).then(() => say('urlNote', 'Removed ' + p.title + '. Its files stay on your Mac.')).catch(e => say('urlNote', e.message, true));
+    const c = el('span', { className: 'chip' }); c.append(b, x); return c;
+  }));
   $('lists').replaceChildren(...s.playlists.map(p => {
     const b = el('button', { textContent: p.title }); b.setAttribute('aria-pressed', p.url === s.playlist);
-    b.onclick = () => call('/api/pick', { url: p.url }).then(() => say('urlNote', 'Picked. Press Sync Now, or leave it for tonight.')).catch(e => say('urlNote', e.message, true));
+    b.onclick = () => pick(p, 'profNote');
     return b;
   }));
 
@@ -201,12 +213,18 @@ async function call(path, body) {
 }
 function say(id, text, bad) { const n = $(id); n.textContent = text; n.className = 'note' + (bad ? ' bad' : ''); }
 
-$('saveUrl').onclick = () => call('/api/playlist', { url: $('url').value }).then(() => { urlDirty = false; say('urlNote', 'Saved.'); }).catch(e => say('urlNote', e.message, true));
+$('saveUrl').onclick = () => {
+  $('saveUrl').disabled = true; say('urlNote', 'Reading the playlist name from SoundCloud…');
+  call('/api/playlist', { url: $('url').value.trim() })
+    .then(s => { $('url').value = ''; say('urlNote', (s.saved[0] || {}).title + ' saved and set to sync.'); })
+    .catch(e => say('urlNote', e.message, true)).finally(() => { $('saveUrl').disabled = false; });
+};
+$('url').onkeydown = e => { if (e.key === 'Enter') $('saveUrl').click(); };
 $('connect').onclick = () => {
-  busy = true; $('connect').disabled = true; say('urlNote', 'Reading your playlists. Your Mac may ask once to let it use the browser sign-in: choose Always Allow.');
+  busy = true; $('connect').disabled = true; say('profNote', 'Reading your playlists. Your Mac may ask once to let it use the browser sign-in: choose Always Allow.');
   call('/api/connect', { profile: $('profile').value.trim().replace(/^.*soundcloud\.com\//i, '').replace(/^@/, '').replace(/[\/?].*$/, ''), browser: $('browser').value })
-    .then(s => say('urlNote', s.playlists.length + ' found. Pick the one to sync.'))
-    .catch(e => say('urlNote', e.message, true))
+    .then(s => say('profNote', s.playlists.length + ' found. Pick the one to sync.'))
+    .catch(e => say('profNote', e.message, true))
     .finally(() => { busy = false; $('connect').disabled = false; });
 };
 $('profile').onkeydown = e => { if (e.key === 'Enter') $('connect').click(); };
