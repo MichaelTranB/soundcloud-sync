@@ -13,7 +13,7 @@ checked list.
 
   python3 safety.py check <app folder> <music folder>
 """
-import fcntl, os, shutil, stat, subprocess, sys, time
+import fcntl, os, shutil, stat, subprocess, sys, time, tempfile
 
 import audio
 
@@ -80,8 +80,11 @@ def virus_scan(paths):
     """{path: virus name} for files ClamAV flags; None when the scanner couldn't run."""
     if not CLAM or not paths:
         return {}
-    r = subprocess.run([CLAM[0], "--no-summary", "--infected", "--stdout", "--"] + paths,
-                       capture_output=True, text=True)
+    with tempfile.NamedTemporaryFile("w", suffix=".txt") as lst:  # a list file: no limit on how many
+        lst.writelines(p + "\n" for p in paths)
+        lst.flush()
+        r = subprocess.run([CLAM[0], "--no-summary", "--infected", "--stdout", "--file-list=" + lst.name],
+                           capture_output=True, text=True)
     if r.returncode not in (0, 1):
         return None
     found = {}
@@ -95,14 +98,15 @@ def virus_scan(paths):
 def quarantine(d, path, reason, log):
     q = os.path.join(d, "Quarantine")
     os.makedirs(q, exist_ok=True)
-    dest = os.path.join(q, f"{time.strftime('%Y%m%d-%H%M%S')} {os.path.basename(path)}")
+    name = "".join(c if ord(c) >= 32 else "?" for c in os.path.basename(path))
+    dest = os.path.join(q, f"{time.strftime('%Y%m%d-%H%M%S')} {name}")
     try:
         shutil.move(path, dest)
         if not os.path.islink(dest):
             os.chmod(dest, 0o600 if os.path.isfile(dest) else 0o700)
     except OSError:
         return  # already gone (another run moved it)
-    log(f"BLOCKED {os.path.basename(path)}: {reason}. Moved to Quarantine.")
+    log(f"BLOCKED {name}: {reason}. Moved to Quarantine.")
 
 
 def check(d, music):
@@ -143,7 +147,8 @@ def check(d, music):
                 if ok.get(rel) == sig:
                     keep[rel] = sig
                     continue
-                reason = "a hidden file" if fn.startswith(".") else why_not(p)
+                reason = ("a hidden file" if fn.startswith(".") else
+                          "control characters in its name" if any(ord(c) < 32 for c in fn) else why_not(p))
                 if reason:
                     quarantine(d, p, reason, log)
                     blocked += 1
