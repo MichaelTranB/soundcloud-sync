@@ -5,7 +5,7 @@ Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so an
 in the browser cannot press the buttons.
 """
 import json, os, re, shutil, subprocess, threading, time, urllib.parse
-import audio
+import audio, safety
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -221,6 +221,8 @@ def state():
     history = read("history.log").splitlines()
     slsklog = read("soulseek.log").splitlines()
     usblog = read("usb.log").splitlines()
+    safelog = read("safety.log").splitlines()
+    qdir = os.path.join(DIR, "Quarantine")
     return {
         "playlist": read("playlist.txt"), "usb": usb, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
@@ -231,6 +233,8 @@ def state():
         "have": have, "buy": buy,
         "soulseekReady": soulseek_ready(), "lastSoulseek": slsklog[-1] if slsklog else "",
         "lastRun": history[-1] if history else "", "lastUsb": usblog[-1] if usblog else "",
+        "safety": {"virusScan": bool(safety.CLAM), "last": safelog[-1] if safelog else "",
+                   "blocked": len(os.listdir(qdir)) if os.path.isdir(qdir) else 0},
     }
 
 

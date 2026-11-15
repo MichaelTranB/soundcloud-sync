@@ -20,3 +20,9 @@ saved.json.tmp
 Crate Helper.app/
 .crate-helper.sha
 signin.log
+Quarantine/
+safety-ok.tsv
+safety-ok.tsv.tmp
+.safety.lock
+.virusdb
+.usb-list

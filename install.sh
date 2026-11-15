@@ -14,6 +14,16 @@ if [ "$("$HOME/.local/bin/sockseek" --version 2>/dev/null)" != "$SOCKSEEK_VER" ]
     ln -sf "$HOME/.local/share/sockseek/sockseek" "$HOME/.local/bin/sockseek" || echo "sockseek install FAILED (download or checksum)"
   rm -rf "$T"
 fi
+# ClamAV, the free virus scanner the safety check (safety.py) uses, through Homebrew when this Mac has it.
+# Without it the check still blocks anything that isn't real audio.
+if command -v brew >/dev/null; then
+  command -v clamscan >/dev/null || brew install clamav
+  CONF="$(brew --prefix)/etc/clamav"
+  if [ -f "$CONF/freshclam.conf.sample" ] && [ ! -f "$CONF/freshclam.conf" ]; then
+    sed 's/^Example/#Example/' "$CONF/freshclam.conf.sample" > "$CONF/freshclam.conf"
+    freshclam --quiet && touch "$DIR/.virusdb"
+  fi
+fi
 chmod +x "$DIR"/*.sh
 mkdir -p "$AGENTS" "$HOME/Music/SoundCloud Sync"
 

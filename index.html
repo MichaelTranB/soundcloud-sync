@@ -204,7 +204,9 @@ function render(s) {
 
   $('foot').textContent = [s.lastRun && 'last sync  ' + s.lastRun, s.lastUsb && 'usb  ' + s.lastUsb,
     s.soulseekReady ? s.lastSoulseek && 'soulseek  ' + s.lastSoulseek.replace(/^\S+ \S+\s+/, '')
-      : 'Soulseek not set up: run soulseek-login.sh once'].filter(Boolean).join('   ·   ');
+      : 'Soulseek not set up: run soulseek-login.sh once',
+    'safety check on' + (s.safety.virusScan ? ' + virus scan' : '') +
+      (s.safety.blocked ? ' (' + s.safety.blocked + ' blocked, in the Quarantine folder)' : '')].filter(Boolean).join('   ·   ');
 }
 
 async function call(path, body) {

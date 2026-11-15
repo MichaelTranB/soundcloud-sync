@@ -15,6 +15,10 @@ mkdir -p "$OUT"
 if [ -z "$(find "$DIR/.updated" -mtime -7 2>/dev/null)" ]; then
   brew upgrade yt-dlp >>"$DIR/update.log" 2>&1; touch "$DIR/.updated"
 fi
+# The virus scanner's list of known viruses: fresh every day (ClamAV's servers limit how often).
+if command -v freshclam >/dev/null && [ -z "$(find "$DIR/.virusdb" -mmin -1200 2>/dev/null)" ]; then
+  freshclam --quiet >>"$DIR/update.log" 2>&1; touch "$DIR/.virusdb"
+fi
 
 # Original files only download for a signed-in account: the SoundCloud sign-in already in his browser
 # (Chrome unless he picked another in the app; an empty browser.txt means none). macOS lets yt-dlp read it
@@ -54,4 +58,6 @@ awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" >
 echo "$(date '+%F %R')  have: $(wc -l < "$DIR/archive.txt" | tr -d ' ')  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d ' ')" | tee -a "$DIR/history.log"
 # Last fallback for whatever is still to get: Soulseek, through sockseek (download-only).
 "$DIR/soulseek.sh"
+# Every new file must be real audio (and pass the virus scan) before it stays or reaches the USB.
+python3 "$DIR/safety.py" check "$DIR" "$OUT" 2>>"$DIR/safety.log"
 "$DIR/usb.sh"

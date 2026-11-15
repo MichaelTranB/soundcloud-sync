@@ -29,6 +29,8 @@ get() {
     -o "$SLSK" --index-path "$SLSK/.index.sldl" --name-format '{sartist( - )stitle|slsk-filename}' \
     --strict-title --length-tol 5 --no-skip-existing --no-progress "$@" >"$DIR/soulseek-pass.log" 2>&1
   cat "$DIR/soulseek-pass.log" >>"$DIR/soulseek-run.log"
+  # Before anything counts as got: a file that isn't real audio (or that the virus scan flags) goes to Quarantine.
+  python3 "$DIR/safety.py" check "$DIR" "${SLSK:h}" 2>>"$DIR/safety.log"
   python3 "$DIR/soulseek.py" record "$DIR" "$SLSK" >>"$LOG" 2>&1
   # sockseek writes one "SongJob: succeeded" line per track it got (a failed try on one peer is only a [warn]).
   local n=$(( $(wc -l < "$DIR/soulseek.csv") - 1 ))
