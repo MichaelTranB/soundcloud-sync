@@ -144,7 +144,7 @@ def record(d, got):
         os.replace(path + ".tmp", path)
 
 
-CLAIM_MINS = 15  # how long after a Free Download click a new file in Downloads may count as that track
+CLAIM_MINS = 45  # how long after a Free Download click a new file in Downloads may count as that track
 CLAIMS, WHY = ".inbox-claims.json", ".inbox-why.json"
 
 
