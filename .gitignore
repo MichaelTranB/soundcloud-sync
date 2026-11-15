@@ -30,3 +30,5 @@ safety-ok.tsv.tmp
 .archive-have
 blocked-originals.txt
 usb-keep.txt
+.free-*
+.inbox-*
