@@ -12,6 +12,4 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
 - **Sign-in:** the SoundCloud token is read from the Keychain (`~/work-os/bin/api-key get soundcloud`), never a file.
 
 ## The one rule
-Only files the artist or label offers: SoundCloud's own download button, the artist's free-download link, or a shop.
-No recording the Go+ stream and no file-sharing networks (Soulseek and the like): a new source is added only if the
-rights holder is the one giving the file away.
+Anything goes to get the download files, ensure its high quality
