@@ -1,0 +1,8 @@
+playlist.txt
+usb.txt
+archive.txt
+to-buy.tsv
+*.log
+.running
+__pycache__/
+.DS_Store
