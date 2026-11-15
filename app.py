@@ -42,6 +42,16 @@ def agent_app(who):
     return ""
 
 
+def agent_uses():
+    """Which assistant this person already uses, from what's on the Mac (an app or command is there; nothing in it is
+    read): picks the one the Claude/Codex guide opens on when neither is set up yet."""
+    there = lambda *ps: any(os.path.exists(os.path.expanduser(p)) for p in ps)
+    return {"claude": bool(agent_app("claude")) or there("/Applications/Claude.app", "~/Applications/Claude.app"),
+            "codex": bool(agent_app("codex")) or bool(shutil.which("codex")) or there(
+                "/Applications/ChatGPT.app", "~/Applications/ChatGPT.app", "/opt/homebrew/bin/codex",
+                "/usr/local/bin/codex", "~/.local/bin/codex")}
+
+
 def claude_in_chrome():
     """The Claude extension is in one of this Mac's Chrome profiles (its folder is there; nothing in it is read)."""
     import glob
@@ -692,7 +702,7 @@ def state():
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
         "have": have, "buy": buy, "watching": watching(),
-        "agents": [w for w in ("claude", "codex") if agent_app(w)], "claudeInChrome": claude_in_chrome(),
+        "agents": [w for w in ("claude", "codex") if agent_app(w)], "claudeInChrome": claude_in_chrome(), "agentUses": agent_uses(),
         "inboxWhy": {k: v.get("text", "") for k, v in freedl.load_json(DIR, freedl.WHY).items() if isinstance(v, dict)},
         "justGot": [k for k, t in _just_got.items() if time.time() - t < 600],
         "soulseekReady": soulseek_ready(), "soulseekUser": _slsk["user"],
