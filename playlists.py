@@ -103,7 +103,10 @@ def tobuy(url, d):
     if not p["tracks"]:
         raise SystemExit("No tracks on that playlist page (is it public?)")
     have, clean = got(d), lambda s: re.sub(r"[\t\n]+", " ", str(s)).strip()
-    rows = ["\t".join([clean(f"{t['artist']} - {t['title']}"), t["link"], "", str(t["secs"] or ""),
+    # The name reads "Artist - Song (Remastered 2011)": the other readers (Downloads pickup, To Buy.txt) take the
+    # part after the last " - " as the song, so Spotify's "Song - Remastered 2011" / "- Radio Edit" go in brackets.
+    name = lambda t: clean(f"{t['artist']} - " + re.sub(r"^(.+?)\s+-\s+(.+)$", r"\1 (\2)", t["title"]))
+    rows = ["\t".join([name(t), t["link"], "", str(t["secs"] or ""),
                        clean(t["artist"]), clean(t["title"])]) for t in p["tracks"] if t["link"] not in have]
     with open(os.path.join(d, "to-buy.tsv"), "w") as f:
         f.write("\n".join(rows) + ("\n" if rows else ""))

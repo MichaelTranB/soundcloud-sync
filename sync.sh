@@ -30,10 +30,14 @@ fi
 # then work the same as for SoundCloud tracks that aren't free.
 case "$URL" in https://open.spotify.com/*|https://music.apple.com/*|https://embed.music.apple.com/*) STREAM=1 ;; esac
 if [ -n "$STREAM" ]; then
-  python3 "$DIR/playlists.py" tobuy "$URL" "$DIR" >"$DIR/last-run.log" 2>&1 || echo "Couldn't read the playlist page" >>"$DIR/last-run.log"
+  if ! python3 "$DIR/playlists.py" tobuy "$URL" "$DIR" >"$DIR/last-run.log" 2>&1; then
+    # Nothing from an earlier playlist is searched or shown; the page says the playlist page couldn't be read.
+    echo "Couldn't read the playlist page" >>"$DIR/last-run.log"
+    : >"$DIR/to-buy.tsv"; rm -f "$DIR/.service"
+  fi
   echo 0 >"$DIR/unread.txt"
   HAVE=$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(s["count"])' "$DIR/.service" 2>/dev/null || echo 0)
-  HAVE=$(( HAVE - $(wc -l < "$DIR/to-buy.tsv") ))
+  HAVE=$(( HAVE - $(cat "$DIR/to-buy.tsv" 2>/dev/null | wc -l) ))
 else
 # Original files only download for a signed-in account: the SoundCloud sign-in already in his browser
 # (Chrome unless he picked another in the app; an empty browser.txt means none). macOS lets yt-dlp read it
@@ -53,7 +57,10 @@ esac
 # the rest still works) and the page says how to turn it on.
 : >"$DIR/signin.log"
 # profile.txt: the browser profile signed in to SoundCloud, when the app found it isn't the most recently used one.
-PROFILE="$(cat "$DIR/profile.txt" 2>/dev/null)"; case "$BROWSER" in chrome|brave|edge) ;; *) PROFILE="" ;; esac
+# It reads "browser:folder"; one saved for another browser, or a folder since removed, is ignored.
+PROFILE="$(cat "$DIR/profile.txt" 2>/dev/null)"
+case "$BROWSER:$PROFILE" in chrome:chrome:*|brave:brave:*|edge:edge:*) PROFILE="${PROFILE#*:}" ;; *) PROFILE="" ;; esac
+[ -n "$PROFILE" ] && [ -e "$STORE/$PROFILE/Cookies" ] || PROFILE=""
 if [ -n "$STORE" ] && ls "$STORE" >/dev/null 2>&1; then AUTH=(--cookies-from-browser "$BROWSER${PROFILE:+:$PROFILE}")
 elif [ -n "$STORE" ] && [ -d "$STORE" ]; then echo "sign-in blocked: operation not permitted ($BROWSER)" >"$DIR/signin.log"; fi
 

@@ -4,7 +4,7 @@
 Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so another website open
 in the browser cannot press the buttons.
 """
-import json, os, re, shutil, subprocess, threading, time, urllib.parse
+import json, os, re, shutil, subprocess, sys, threading, time, urllib.parse
 import audio, freedl, playlists, safety, soulseek
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -255,8 +255,10 @@ _login = {"at": 0.0, "state": "", "profile": "", "busy": False}  # the page's ow
 def cookie_arg(b):
     """yt-dlp's --cookies-from-browser value: the browser, plus the profile that holds the SoundCloud sign-in
     once one was found (profile.txt); without it yt-dlp reads the most recently used profile."""
-    p = read("profile.txt").strip()
-    return f"{b}:{p}" if p and b in ("chrome", "brave", "edge") else b
+    saved, _, p = read("profile.txt").strip().partition(":")  # "browser:folder"
+    ok = b in ("chrome", "brave", "edge") and saved == b and p and os.path.exists(
+        os.path.join(os.path.expanduser(COOKIE_DIRS[b]), p, "Cookies"))
+    return f"{b}:{p}" if ok else b
 
 
 def ask_soundcloud(arg, url):
@@ -264,7 +266,7 @@ def ask_soundcloud(arg, url):
     try:
         r = subprocess.run([YTDLP, "-v", "--cookies-from-browser", arg, "--simulate", "--no-playlist",
                             "--ignore-no-formats-error", "--extractor-args", "soundcloud:formats=none", url],
-                           capture_output=True, text=True, timeout=90)
+                           capture_output=True, text=True, errors="replace", timeout=90)
     except (OSError, subprocess.TimeoutExpired):
         return "", ""
     out = r.stdout + r.stderr
@@ -286,17 +288,20 @@ def sign_in_check(b):
             others = [d for d in sorted(os.listdir(root)) if (d == "Default" or d.startswith("Profile "))
                       and os.path.join(root, d) != folder and os.path.exists(os.path.join(root, d, "Cookies"))]
             for d in others[:8]:
+                if browser() != b:
+                    return  # he switched browsers meanwhile: this answer is for the old one
                 s2, f2 = ask_soundcloud(f"{b}:{d}", url)
                 if s2 == "ok":
                     with open(os.path.join(DIR, "profile.txt"), "w") as f:
-                        f.write(d + "\n")
+                        f.write(f"{b}:{d}\n")
                     state, folder = s2, f2
                     break
-        if state:
+        if state and browser() == b:
             _login.update(state=state, profile=profile_name(b, folder) if folder else "")
-    except (IndexError, OSError):
-        pass
-    _login.update(at=time.time(), busy=False)
+    except Exception as e:  # logged, and the next check still runs
+        print(f"sign-in check failed: {e!r}", file=sys.stderr)
+    finally:
+        _login.update(at=time.time(), busy=False)
 
 
 def profile_name(b, folder):
@@ -311,8 +316,12 @@ def profile_name(b, folder):
 
 def problem():
     """One plain line when the last sync could not sign in or reach SoundCloud; empty when fine."""
-    if playlists.service(read("playlist.txt")):
-        return ""  # a Spotify or Apple Music playlist: no SoundCloud sign-in involved
+    svc = playlists.service(read("playlist.txt"))
+    if svc:  # a Spotify or Apple Music playlist: no SoundCloud sign-in involved
+        if "couldn't read the playlist page" in read("last-run.log").lower():
+            return (f"The last sync couldn't read this {'Spotify' if svc == 'spotify' else 'Apple Music'} playlist. "
+                    "Check it's public (Share > Copy link to playlist), then press Sync now.")
+        return ""
     log = (read("last-run.log") + read("signin.log")).lower()
     b = browser()
     name = {"chrome": "Chrome", "safari": "Safari", "brave": "Brave", "edge": "Edge", "firefox": "Firefox"}.get(b, "")
