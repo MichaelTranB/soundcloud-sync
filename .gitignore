@@ -32,3 +32,4 @@ blocked-originals.txt
 usb-keep.txt
 .free-*
 .inbox-*
+.sockseek-*

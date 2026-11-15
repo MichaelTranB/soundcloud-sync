@@ -62,12 +62,14 @@
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .12em; color: var(--dim); margin: 0 0 4px; display: flex; justify-content: space-between; }
   h2 em { font: 700 13px var(--mono); color: var(--text); font-style: normal; }
   ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-  li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
-  li .n { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  /* the name takes the row; the links wrap under it when there isn't room (never a one-letter-wide name) */
+  li .n { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
   .tag { font: 700 11px var(--mono); padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
   .tag.lossless { color: var(--ok); border-color: #35502a; }
   .tag.low { color: #e0a040; border-color: #6b4a1a; }
   li a { color: var(--dim); font-size: 12px; text-decoration: none; border-bottom: 1px dotted var(--dim); white-space: nowrap; }
+  li .shops { color: var(--dim); font-size: 12px; margin-left: 8px; }
   li a.free { color: var(--ok); border-bottom-style: solid; border-color: var(--ok); font-weight: 700; }
   li a:hover { color: var(--hot); border-color: var(--hot); }
   .empty { color: var(--dim); padding: 22px 0; border-bottom: 1px solid var(--line); }
@@ -204,8 +206,9 @@ function render(s) {
   $('buy').replaceChildren(...(s.buy.length ? s.buy.map(t => el('li', {},
     el('span', { className: 'n', textContent: t.name }),
     ...(t.soulseek ? [el('span', { className: 'tag lossless', title: 'A copy from Soulseek is on your Mac', textContent: 'Got from Soulseek' })] : []),
-    ...(/^https?:\/\//.test(t.free) ? [el('a', { className: 'free', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download' })] : []),
-    el('a', { href: t.link, target: '_blank', rel: 'noopener', textContent: 'SoundCloud' }),
+    ...(/^https?:\/\//.test(t.free) ? [el('a', { className: 'free', title: 'The artist\'s own free download (often asks you to follow or repost first)', href: t.free, target: '_blank', rel: 'noopener', textContent: 'Free Download' })] : []),
+    el('a', { href: t.link, target: '_blank', rel: 'noopener', title: 'The track on SoundCloud: look for a Download or Buy link under it', textContent: 'SoundCloud' }),
+    el('span', { className: 'shops', title: 'Searches in each shop. Not every track is sold everywhere: try Bandcamp and Beatport first', textContent: 'Buy:' }),
     el('a', { href: search('https://bandcamp.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Bandcamp' }),
     el('a', { href: search('https://www.beatport.com/search?q=', t.name), target: '_blank', rel: 'noopener', textContent: 'Beatport' }),
     el('a', { href: search('https://www.traxsource.com/search?term=', t.name), target: '_blank', rel: 'noopener', textContent: 'Traxsource' }),

@@ -3,7 +3,7 @@
 
 For each track not already downloaded it writes: name, SoundCloud link, the artist's own free-download link
 when their description carries one (Hypeddit and the other download gates), and the length in seconds
-(soulseek.sh uses it to take only the same version). Tracks freedl.py already fetched (free.tsv) are left out.
+(soulseek.sh uses it to take only the same version). Tracks freedl.py already got (free.tsv) are left out.
 Usage: yt-dlp --dump-json ... | tobuy.py archive.txt to-buy.tsv
 """
 import json, os, re, sys
@@ -26,9 +26,10 @@ try:
         have = {line.split()[-1] for line in f if line.strip()}
 except OSError:
     have = set()
-try:  # fetched from the artist's free-download link by freedl.py, file still there
+try:  # fetched from the artist's free-download link or taken from Downloads (freedl.py); got once, never again,
+    # even when the file was later moved or deleted by hand
     with open(os.path.join(os.path.dirname(os.path.abspath(out_path)), "free.tsv")) as f:
-        have |= {g[0] for g in (l.rstrip("\n").split("\t") for l in f) if len(g) == 3 and os.path.exists(g[2])}
+        have |= {g[0] for g in (l.rstrip("\n").split("\t") for l in f) if len(g) == 3}
 except OSError:
     pass
 

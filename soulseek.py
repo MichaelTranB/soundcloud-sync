@@ -65,15 +65,15 @@ def save_got(d, got):
 
 
 def prepare(d, slsk):
+    record(d, slsk)  # a track sockseek got in a run that stopped early counts before anything is searched again
     rows = to_get(d)
     wanted = {link for link, *_ in rows}
     music = os.path.dirname(slsk)
     originals = {norm(os.path.splitext(f)[0]) for f in os.listdir(music) if f.lower().endswith(AUDIO)}
     kept = []
     for link, name, path in load_got(d):
-        if not os.path.exists(path):
-            continue  # moved or deleted by hand: forget it
-        if link not in wanted and norm(name) in originals:
+        # Got once, never fetched again: a copy moved or deleted by hand (it's on the USB) stays remembered.
+        if os.path.exists(path) and link not in wanted and norm(name) in originals:
             os.remove(path)  # the artist's own file is here now; it replaces the Soulseek copy
             print(f"replaced by the original: {os.path.basename(path)}")
             continue
