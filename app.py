@@ -110,8 +110,10 @@ Then for each song on that page, top to bottom:
    needed. (Don't type the link's address yourself.)
 2. Do the gate steps I allowed and download the best quality offered: WAV, FLAC or AIFF over MP3; MP3 only at
    320 kbps.
-3. Go back to the list page and wait a few seconds before the next song, so none of my accounts looks like a bot.
-Reload the list page whenever you like: songs that have arrived drop off it.
+3. Once the file has started downloading, close every tab that song opened (the gate page, SoundCloud, the
+   download page): keep only the list page open, so a long list doesn't fill Chrome and slow the Mac. Then go back
+   to the list page and wait a few seconds before the next song, so none of my accounts looks like a bot.
+Reload the list page whenever you like: songs that have arrived drop off it. At the end, close every tab you opened.
 
 Never: pay or enter card details, type a password (if a site needs a sign-in, ask me to do it and wait), download
 or open an app or installer (.dmg, .pkg, .exe, .app), or join a paid membership (skip a Patreon post that's members
