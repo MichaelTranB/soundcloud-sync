@@ -60,7 +60,7 @@ esac
 # It reads "browser:folder"; one saved for another browser, or a folder since removed, is ignored.
 PROFILE="$(cat "$DIR/profile.txt" 2>/dev/null)"
 case "$BROWSER:$PROFILE" in chrome:chrome:*|brave:brave:*|edge:edge:*) PROFILE="${PROFILE#*:}" ;; *) PROFILE="" ;; esac
-[ -n "$PROFILE" ] && [ -e "$STORE/$PROFILE/Cookies" ] || PROFILE=""
+[ -n "$PROFILE" ] && { [ -e "$STORE/$PROFILE/Cookies" ] || [ -e "$STORE/$PROFILE/Network/Cookies" ]; } || PROFILE=""
 if [ -n "$STORE" ] && ls "$STORE" >/dev/null 2>&1; then AUTH=(--cookies-from-browser "$BROWSER${PROFILE:+:$PROFILE}")
 elif [ -n "$STORE" ] && [ -d "$STORE" ]; then echo "sign-in blocked: operation not permitted ($BROWSER)" >"$DIR/signin.log"; fi
 

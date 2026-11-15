@@ -112,6 +112,18 @@ def soulseek_login(user, pw):
     return ""
 
 
+def sync_phase():
+    """'' when no sync runs, else what it's doing: reading SoundCloud first, then Soulseek (its log is newer than
+    the sync's flag)."""
+    if not sync_running():
+        return ""
+    try:
+        started = os.path.getmtime(os.path.join(DIR, ".running"))
+        return "soulseek" if os.path.getmtime(os.path.join(DIR, "soulseek-pass.log")) >= started else "soundcloud"
+    except OSError:
+        return "soundcloud"
+
+
 def sync_running():
     """True while sync.sh runs: .running holds its process number (a flag left by a killed sync doesn't count)."""
     try:
@@ -252,12 +264,17 @@ def login_seen(text):
 _login = {"at": 0.0, "state": "", "profile": "", "busy": False}  # the page's own re-check (sign_in_check)
 
 
+def has_cookies(folder):
+    """A browser profile folder with a cookie store (newer Chrome keeps it in Network/)."""
+    return os.path.exists(os.path.join(folder, "Cookies")) or os.path.exists(os.path.join(folder, "Network", "Cookies"))
+
+
 def cookie_arg(b):
     """yt-dlp's --cookies-from-browser value: the browser, plus the profile that holds the SoundCloud sign-in
     once one was found (profile.txt); without it yt-dlp reads the most recently used profile."""
     saved, _, p = read("profile.txt").strip().partition(":")  # "browser:folder"
-    ok = b in ("chrome", "brave", "edge") and saved == b and p and os.path.exists(
-        os.path.join(os.path.expanduser(COOKIE_DIRS[b]), p, "Cookies"))
+    ok = b in ("chrome", "brave", "edge") and saved == b and p and has_cookies(
+        os.path.join(os.path.expanduser(COOKIE_DIRS[b]), p))
     return f"{b}:{p}" if ok else b
 
 
@@ -273,7 +290,10 @@ def ask_soundcloud(arg, url):
     m = re.search(r'Extracting cookies from: "([^"]+)"', out)
     state = login_seen(out)
     answered = state == "ok" or "downloading info json" in out.lower()
-    return (state if answered else ""), (os.path.dirname(m.group(1)) if m else "")
+    folder = os.path.dirname(m.group(1)) if m else ""
+    if os.path.basename(folder) == "Network":  # newer Chrome: <profile>/Network/Cookies
+        folder = os.path.dirname(folder)
+    return (state if answered else ""), folder
 
 
 def sign_in_check(b):
@@ -282,11 +302,17 @@ def sign_in_check(b):
     profiles and keeps the first one that is signed in (profile.txt), so the sync uses it too."""
     try:
         url = read(".playlist").split("\n")[0].split(" ")[1]
-        state, folder = ask_soundcloud(cookie_arg(b), url)
+        arg = cookie_arg(b)
+        state, folder = ask_soundcloud(arg, url)
+        if state == "ok" and folder and arg == b and b in ("chrome", "brave", "edge") and browser() == b:
+            # Signed in on the profile used most recently right now: keep that one, since yt-dlp otherwise
+            # reads whichever profile was used last, and by the next sync that can be one with no sign-in.
+            with open(os.path.join(DIR, "profile.txt"), "w") as f:
+                f.write(f"{b}:{os.path.basename(folder)}\n")
         if state in ("none", "invalid") and b in ("chrome", "brave", "edge"):
             root = os.path.expanduser(COOKIE_DIRS[b])
             others = [d for d in sorted(os.listdir(root)) if (d == "Default" or d.startswith("Profile "))
-                      and os.path.join(root, d) != folder and os.path.exists(os.path.join(root, d, "Cookies"))]
+                      and os.path.join(root, d) != folder and has_cookies(os.path.join(root, d))]
             for d in others[:8]:
                 if browser() != b:
                     return  # he switched browsers meanwhile: this answer is for the old one
@@ -335,7 +361,8 @@ def problem():
     state = _login["state"] if _login["at"] > ran and _login["state"] else login_seen(log)
     if name and state in ("none", "invalid"):
         # Re-check every 2 minutes while the page is open, so the line goes away soon after he signs in.
-        if not _login["busy"] and time.time() - _login["at"] > 120 and not sync_running():
+        # Not while the sync itself is asking SoundCloud (the Soulseek part doesn't touch it).
+        if not _login["busy"] and time.time() - _login["at"] > 120 and sync_phase() != "soundcloud":
             _login["busy"] = True
             threading.Thread(target=sign_in_check, args=(b,), daemon=True).start()
         where = f"{name} (profile \"{_login['profile']}\")" if _login["profile"] else name
@@ -375,14 +402,8 @@ def state():
     have.sort(key=lambda t: t["name"].lower())
     got = soulseek.got_links(DIR, SLSK)  # on the Mac from Soulseek, even mid-run: not still to get
     # What a running sync is doing: reading SoundCloud first, then Soulseek (its log is newer than the sync's flag).
-    running = sync_running()
-    phase = ""
-    if running:
-        try:
-            started = os.path.getmtime(os.path.join(DIR, ".running"))
-            phase = "soulseek" if os.path.getmtime(os.path.join(DIR, "soulseek-pass.log")) >= started else "soundcloud"
-        except OSError:
-            phase = "soundcloud"
+    phase = sync_phase()
+    running = bool(phase)
     prog = soulseek.progress(DIR, phase == "soulseek")
     buy = []
     for line in read("to-buy.tsv").splitlines():
