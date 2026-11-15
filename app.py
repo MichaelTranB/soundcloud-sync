@@ -177,16 +177,23 @@ def apply_sync_time():
     if DIR.rstrip("/") + "/" not in json.dumps(pl.get("ProgramArguments", [])):
         return
     h, m = (int(x) for x in t.split(":"))
+    job = f"gui/{os.getuid()}"
     if pl.get("StartCalendarInterval") != {"Hour": h, "Minute": m}:
         if sync_running():
             return
         pl["StartCalendarInterval"] = {"Hour": h, "Minute": m}
         with open(SYNC_PLIST, "wb") as f:
             plistlib.dump(pl, f)
-        job = f"gui/{os.getuid()}"
         subprocess.run(["launchctl", "bootout", job + "/com.thecrate.sync"], capture_output=True)
-        if subprocess.run(["launchctl", "bootstrap", job, SYNC_PLIST], capture_output=True).returncode:
-            return
+    # Loading right after unloading often fails at first ("Bootstrap failed: 5"): only done once the job is loaded.
+    for _ in range(3):
+        if subprocess.run(["launchctl", "print", job + "/com.thecrate.sync"], capture_output=True).returncode == 0:
+            break
+        subprocess.run(["launchctl", "bootstrap", job, SYNC_PLIST], capture_output=True)
+        time.sleep(1)
+    else:
+        print("couldn't load the daily sync job; trying again on the next refresh", file=sys.stderr)
+        return
     _sched["applied"] = t
 
 

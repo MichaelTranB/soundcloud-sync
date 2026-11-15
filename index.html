@@ -65,22 +65,29 @@
   li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
   /* the name takes the row; the links wrap under it when there isn't room (never a one-letter-wide name) */
   li .n { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
-  .tag { font: 700 12px var(--mono); padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
+  .tag { font: 700 13px var(--mono); padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
   .tag.lossless { color: var(--ok); border-color: #35502a; }
   .tag.low { color: #e0a040; border-color: #6b4a1a; }
-  li a { color: var(--dim); font-size: 13.5px; text-decoration: none; border-bottom: 1px dotted var(--dim); white-space: nowrap; }
-  #buy li .n, #wait li.shop .n { flex-basis: 100%; }  /* still to get: the name on its line, the links together under it */
-  li .shops { color: var(--dim); font-size: 13.5px; margin-left: 8px; }
+  li a { color: var(--dim); font-size: 14.5px; text-decoration: none; border-bottom: 1px dotted var(--dim); white-space: nowrap; }
+  #buy li.shop .n { flex-basis: 100%; }  /* still to get: the name on its line, the links together under it */
+  li .shops { color: var(--dim); font-size: 14.5px; margin-left: 8px; }
   li a.free { color: var(--ok); border-bottom-style: solid; border-color: var(--ok); font-weight: 700; }
   li a:hover { color: var(--hot); border-color: var(--hot); }
+  .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  #nowBox + .tabs { margin-top: 36px; }
+  .tabs button { background: var(--panel); color: var(--dim); border-radius: 0; padding: 14px 12px; text-align: left; font-weight: 600; font-size: 15px; min-width: 0; }
+  .tabs button b { display: block; font-size: 26px; line-height: 1.1; margin-top: 6px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .tabs button[aria-selected="true"] { background: #1d1d27; color: var(--text); box-shadow: inset 0 -3px 0 var(--hot); }
+  .tabs button:active { transform: none; }
+  #viewNote { margin: 14px 0 12px; }
   h3 { font-size: 15px; font-weight: 600; color: var(--dim); margin: 28px 0 8px; display: flex; justify-content: space-between; align-items: center; }
   h3 em { font-size: 14px; color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
   .find { display: flex; align-items: center; gap: 10px; margin: 0 0 28px; }
   .find input { flex: 1; max-width: 420px; }
   .find small { color: var(--dim); font-size: 14px; }
-  li .why { flex-basis: 100%; color: var(--dim); font-size: 14px; margin-top: -2px; }
+  li .why { flex-basis: 100%; color: var(--dim); font-size: 14.5px; margin-top: -2px; }
   li .why.act { color: var(--ok); }
-  .state { font: 700 12px var(--mono); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; display: inline-flex; align-items: center; }
+  .state { font: 700 13px var(--mono); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; display: inline-flex; align-items: center; }
   .state .dot { width: 7px; height: 7px; margin-right: 6px; }
   .state.on { color: var(--text); border-color: var(--hot); }
   .dot.live { background: var(--hot); animation: pulse 1.4s ease-in-out infinite; }
@@ -184,7 +191,7 @@
   <div class="alert" id="alert" role="alert" hidden></div>
   <section class="strip" aria-live="polite">
     <div class="stat"><b id="nHave">0</b><small>On your Mac</small></div>
-    <div class="stat"><b id="nBuy">0</b><small>Still to get</small></div>
+    <div class="stat"><b id="nBuy">0</b><small>Left to find</small></div>
     <div class="stat"><span class="word" id="usbWord"><i class="dot"></i>No USB chosen</span><small>USB</small></div>
     <div class="stat"><span class="word" id="signWord"><i class="dot"></i>Checking</span><small>SoundCloud sign-in</small></div>
   </section>
@@ -243,23 +250,18 @@
       <ul id="have"></ul>
     </div>
     <div>
-      <h2>Still to get <em id="cBuy"></em></h2>
-      <div class="note">Bought or unlocked one yourself? Leave the file in Downloads; it's added within a minute.</div>
-      <div class="note" id="unread" hidden></div>
       <div id="nowBox" hidden>
-        <h3>Getting now <em id="cNow"></em></h3>
+        <h2>Getting now <em id="cNow"></em></h2>
         <ul id="now"></ul>
       </div>
-      <div id="waitBox" hidden>
-        <h3>Waiting to search <em id="cWait"></em></h3>
-        <div class="note" id="waitNote"></div>
-        <ul id="wait"></ul>
+      <div class="tabs" role="tablist" aria-label="Left to find">
+        <button role="tab" data-v="all"><span>Left to find</span><b id="cBuy"></b></button>
+        <button role="tab" data-v="wait"><span>Waiting to search</span><b id="cWait"></b></button>
+        <button role="tab" data-v="miss"><span>Not found</span><b id="cMiss"></b></button>
       </div>
-      <div id="missBox">
-        <h3 id="missHead">Not found <em id="cMiss"></em></h3>
-        <div class="note" id="missNote">Searched, but no top-quality copy turned up. Buy it from a shop below, or it's tried again later.</div>
-        <ul id="buy"></ul>
-      </div>
+      <div class="note" id="viewNote"></div>
+      <div class="note" id="unread" hidden></div>
+      <ul id="buy"></ul>
     </div>
   </section>
   <footer id="foot"></footer>
@@ -300,7 +302,7 @@ function render(s) {
       ? 'Spotify shows only the first 100 songs of a playlist without a Spotify sign-in, so songs after the 100th aren\'t listed. Split it into playlists of 100 or fewer, or use the same playlist on Apple Music or SoundCloud.'
       : 'Apple Music showed only part of this playlist. The next sync reads it again.')
     : s.unread ? `Plus ${s.unread} song${s.unread > 1 ? 's' : ''} SoundCloud wouldn't show us yet (it slows down anyone who asks too fast). The next sync asks again.` : '';
-  $('nBuy').textContent = s.buy.length; $('cBuy').textContent = s.buy.length || '';
+  $('nBuy').textContent = s.buy.length;
   paintSetup(s); last = s; draw(); paintStart(s);
 }
 
@@ -408,27 +410,18 @@ function draw() {
   const n = have.length + now.length + wait.length + miss.length;
   $('qNote').textContent = q ? `${n} match${n === 1 ? '' : 'es'}` : '';
   $('cHave').textContent = q ? have.length + ' of ' + s.have.length : s.have.length || '';
-  const count = (part, all) => all.length ? (q ? part.length + ' of ' + all.length : all.length) : '';
-  $('cNow').textContent = count(now, nowAll);
+  const count = (part, all) => q ? part.length + ' of ' + all.length : all.length;
+  $('cNow').textContent = nowAll.length ? count(now, nowAll) : '';
+  $('cBuy').textContent = count([...now, ...miss, ...wait], s.buy);  // the same number as up top
   $('cWait').textContent = count(wait, waitAll);
   $('cMiss').textContent = count(miss, missAll);
   $('nowBox').hidden = !s.running && !nowAll.length;
-  $('waitBox').hidden = !waitAll.length;
-  $('missBox').hidden = !missAll.length;
-  $('waitNote').textContent = !s.soulseekReady ? 'Sign in to Soulseek above and the next sync looks for these. Or buy them now.'
-    : s.running ? 'The sync looks for these one at a time, slowly, so Soulseek never blocks you.'
-    : 'The next sync looks for these, one at a time.';
   const phase = s.phase === 'soundcloud' ? (s.service ? 'Reading the playlist…' : 'Checking SoundCloud for new tracks and the artists\' own files…')
     : s.phase === 'soulseek' && !nowAll.length ? 'Looking on Soulseek…' : '';
   $('now').replaceChildren(
     ...(phase ? [el('div', { className: 'phase' }, el('i', { className: 'dot live' }), phase)] : []),
     ...now.map(t => el('li', {}, nameEl(t),
       el('span', { className: 'state on' }, el('i', { className: 'dot live' }), STATE[t.state]))));
-  $('wait').replaceChildren(...(wait.length ? wait.sort((a, b) => (b.state === 'queued') - (a.state === 'queued')).map(t => el('li', { className: s.soulseekReady ? '' : 'shop' }, nameEl(t),
-    ...(t.state === 'queued' ? [el('span', { className: 'state' }, el('i', { className: 'dot' }), 'Next up')] : []),
-    ...(s.soulseekReady ? [] : shopLinks(t))))
-    : q ? [el('div', { className: 'empty', textContent: 'No match.' })] : []));
-
   $('have').replaceChildren(...(have.length ? have.map(t => el('li', {},
     el('span', { className: 'n', textContent: t.name }),
     el('span', { className: 'tag' + (LOSSLESS.includes(t.kind) ? ' lossless' : ''), textContent: t.kind }),
@@ -437,13 +430,30 @@ function draw() {
     ...(t.src ? [el('span', { className: 'tag', title: t.src === 'Soulseek' ? 'Found on Soulseek; replaced by the artist\'s own file when it comes' : 'Fetched from the artist\'s own free-download link', textContent: t.src })] : [])))
     : [el('div', { className: 'empty', textContent: q ? 'No match.' : 'Nothing yet. Tracks whose artists allow downloads land here in their original quality.' })]));
 
-  $('buy').replaceChildren(...(miss.length ? miss.map(t => { const [k, txt] = why(t, s); return el('li', {},
-    nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : ''), textContent: txt }), ...shopLinks(t)); })
-    : q ? [el('div', { className: 'empty', textContent: 'No match.' })] : []));
-  if (!s.buy.length) { $('missBox').hidden = false; $('missHead').hidden = $('missNote').hidden = true;
-    $('buy').replaceChildren(el('div', { className: 'empty', textContent: 'Nothing left to get. Every track is on your Mac.' })); }
-  else $('missHead').hidden = $('missNote').hidden = false;
+  for (const x of document.querySelectorAll('.tabs button')) x.setAttribute('aria-selected', x.dataset.v === view);
+  const downloads = 'Bought or unlocked one yourself? Leave the file in Downloads; it\'s added within a minute.';
+  $('viewNote').textContent = view === 'wait'
+    ? (!s.soulseekReady ? 'Sign in to Soulseek above and the next sync looks for these. Or buy them now.'
+      : s.running ? 'The sync looks for these one at a time, slowly, so Soulseek never blocks you.'
+      : 'The next sync looks for these, one at a time.')
+    : view === 'miss' ? 'Searched, but no top-quality copy turned up. Buy it, or it\'s tried again later. ' + downloads : downloads;
+  const missRow = t => { const [k, txt] = why(t, s); return el('li', { className: 'shop' },
+    nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : ''), textContent: txt }), ...shopLinks(t)); };
+  const waitRow = t => el('li', { className: s.soulseekReady ? '' : 'shop' }, nameEl(t),
+    ...(t.state === 'queued' ? [el('span', { className: 'state' }, el('i', { className: 'dot' }), 'Next up')] : []),
+    ...(s.soulseekReady ? [] : shopLinks(t)));
+  const byTurn = l => l.sort((a, b) => (b.state === 'queued') - (a.state === 'queued'));
+  const rows = view === 'wait' ? byTurn(wait).map(waitRow) : view === 'miss' ? miss.map(missRow)
+    : [...now.map(t => el('li', {}, nameEl(t), el('span', { className: 'state on' }, el('i', { className: 'dot live' }), STATE[t.state]))),
+      ...miss.map(missRow), ...byTurn(wait).map(waitRow)];
+  const none = !s.buy.length ? 'Nothing left to get. Every track is on your Mac.' : q ? 'No match.'
+    : view === 'wait' ? 'Nothing waiting: every track still to get has been searched.' : 'Nothing here.';
+  $('buy').replaceChildren(...(rows.length ? rows : [el('div', { className: 'empty', textContent: none })]));
 }
+let view = 'all';
+try { view = localStorage.getItem('crateView') || 'all'; } catch (e) {}
+for (const x of document.querySelectorAll('.tabs button')) x.onclick = () => {
+  view = x.dataset.v; try { localStorage.setItem('crateView', view); } catch (e) {} draw(); };
 
 function paintSetup(s) {
   if (document.activeElement !== $('profile') && !busy) $('profile').value = s.profile;
