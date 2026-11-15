@@ -26,3 +26,6 @@ safety-ok.tsv.tmp
 .safety.lock
 .virusdb
 .usb-list
+.originals
+.archive-have
+blocked-originals.txt
