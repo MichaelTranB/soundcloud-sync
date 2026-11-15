@@ -13,10 +13,12 @@ FREE = re.compile(
     r"https?://(?:www\.)?(?:hypeddit\.com|hypeddit\.co|hype\.to|hyperfollow\.com|toneden\.io|fanlink\.to|fanlink\.tv|"
     r"pumpyoursound\.com|edmdisc\.com|theartistunion\.com|click\.dj|gate\.fm|[\w-]+\.bandcamp\.com|"
     r"dropbox\.com|dl\.dropboxusercontent\.com|drive\.google\.com|mega\.nz|wetransfer\.com|we\.tl|mediafire\.com|"
-    r"krakenfiles\.com|pixeldrain\.com|audiomack\.com|ffm\.to|lnk\.to|linktr\.ee)/[^\s\"'<>)]*",
+    r"krakenfiles\.com|pixeldrain\.com|audiomack\.com|ffm\.to|lnk\.to|linktr\.ee)/[^\s\"'<>)]*"
+    r"|https://[^\s\"'<>)]+\.(?:wav|flac|aiff?|mp3|m4a|zip)(?:\?[^\s\"'<>)]*)?(?=[\s\"'<>).,]|$)",
     re.I)
 
-DIRECT = re.compile(r"//(?:www\.)?(?:dropbox\.com|dl\.dropboxusercontent\.com|drive\.google\.com|pixeldrain\.com)/", re.I)
+DIRECT = re.compile(r"//(?:www\.)?(?:dropbox\.com|dl\.dropboxusercontent\.com|drive\.google\.com|pixeldrain\.com)/"
+                    r"|\.(?:wav|flac|aiff?|mp3|m4a|zip)(?:\?|$)", re.I)
 
 archive_path, out_path = sys.argv[1], sys.argv[2]
 try:

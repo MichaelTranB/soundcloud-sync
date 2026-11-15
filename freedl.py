@@ -56,7 +56,7 @@ def best_audio(tmp, title):
     if not zipfile.is_zipfile(tmp):
         i = info(tmp)
         return (tmp, i) if top_quality(i) else (None, i)
-    picks = []
+    picks, key = [], norm(re.sub(r"[(\[][^)\]]*[)\]]", "", title)) or norm(title)
     with zipfile.ZipFile(tmp) as z:
         for m in z.infolist():
             base = os.path.basename(m.filename)
@@ -68,7 +68,10 @@ def best_audio(tmp, title):
                     dst.write(chunk)
             i = info(out)
             if top_quality(i):
-                picks.append((norm(title) in norm(base), i["lossless"], out, i))
+                picks.append((key in norm(base), i["lossless"], out, i))
+    # One track: it's the download. Several: only one whose file name carries the title, never a guess.
+    if len(picks) > 1:
+        picks = [p for p in picks if p[0]]
     if not picks:
         return None, None
     _, _, path, i = max(picks, key=lambda p: p[:2])
