@@ -46,6 +46,9 @@
   @keyframes slide { from { background-position: 100% 0; } to { background-position: 0 0; } }
   @media (prefers-reduced-motion: reduce) { progress#usbBar:indeterminate { animation: none; } }
   @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+  .skel { display: inline-block; width: 100%; height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--line) 0 35%, #3a3a48 50%, var(--line) 65% 100%) 0 0 / 300% 100%; animation: slide 1.3s ease-in-out infinite; vertical-align: middle; }
+  .stat b .skel { width: 2ch; height: .8em; }
+  @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
 
   .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin: 40px 0 28px; }
   .stat { background: var(--panel); padding: 22px 24px; min-width: 0; }
@@ -134,6 +137,8 @@
   @keyframes pulse { 50% { opacity: .3; } }
   @media (prefers-reduced-motion: reduce) { .dot.live { animation: none; } }
   .phase { color: var(--dim); font-size: 14.5px; padding: 12px 0; border-bottom: 1px solid var(--line); display: flex; align-items: center; }
+  .phase .bar { flex: 0 1 140px; height: 4px; margin-left: auto; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .phase .bar i { display: block; height: 100%; background: var(--hot); transition: width .6s ease; }
   .empty { color: var(--dim); padding: 22px 0; border-bottom: 1px solid var(--line); }
   .brand { display: flex; align-items: center; gap: 16px; }
   .brand img { width: 58px; height: 58px; flex: none; }
@@ -218,11 +223,14 @@
     <h3>What it does</h3>
     <p>Gets every track in your playlist onto your Mac, then your USB. Daily at your Auto sync time, or on Sync Now. It never deletes anything.</p>
 
+    <h3>SoundCloud, Spotify or Apple Music</h3>
+    <p>Paste any public playlist link. <b>SoundCloud</b> uses your browser's SoundCloud sign-in: only a signed-in account can download the artist's own file. <b>Spotify</b> and <b>Apple Music</b> need no sign-in: they only stream, so The Crate just reads the song list and finds each song elsewhere. Spotify shows the first 100 songs (copy the rest from the Spotify app and paste them in the same box), Apple Music the first 300.</p>
+
     <h3>Where it looks</h3>
     <ol>
       <li><b>SoundCloud</b>: the artist's original file</li>
       <li><b>Free download links</b> in the description or behind the track's Free Download button</li>
-      <li><b>Your Downloads</b>: anything you bought</li>
+      <li><b>The Downloads folder on your Mac</b>: anything you bought</li>
       <li><b>Soulseek</b>: download only, never shares your files</li>
     </ol>
     <p>Not found? You get shop links. Spotify and Apple Music only stream, so those use steps 3 and 4.</p>
@@ -234,7 +242,7 @@
     <p>Every file is checked to be real audio and virus scanned. Anything else is quarantined.</p>
 
     <h3>Why Full Disk Access?</h3>
-    <p>It uses the SoundCloud sign-in already in your browser, and macOS keeps that locked. Full Disk Access unlocks it. Your sign-in only ever goes to SoundCloud.</p>
+    <p>For SoundCloud only. It uses the sign-in already in your browser, and macOS keeps that locked. Full Disk Access unlocks it. Your sign-in only ever goes to SoundCloud.</p>
 
     <h3>What it uses</h3>
     <p>Free, open-source tools on your Mac: <b>yt-dlp</b> (SoundCloud), <b>sockseek</b> (Soulseek), <b>ClamAV</b> (virus scan). No account, no AI, nothing uploaded.</p>
@@ -257,8 +265,8 @@
   </section>
   <div class="alert" id="alert" role="alert" hidden></div>
   <section class="strip" aria-live="polite">
-    <div class="stat"><b id="nHave">0</b><small>On your Mac</small></div>
-    <div class="stat"><b id="nBuy">0</b><small>Left to find</small></div>
+    <div class="stat"><b id="nHave"><i class="skel"></i></b><small>On your Mac</small></div>
+    <div class="stat"><b id="nBuy"><i class="skel"></i></b><small>Left to find</small></div>
     <div class="stat"><span class="word" id="usbWord"><i class="dot"></i>No USB chosen</span><small>USB</small></div>
     <div class="stat"><span class="word" id="signWord"><i class="dot"></i>Checking</span><small>SoundCloud sign-in</small></div>
   </section>
@@ -266,8 +274,8 @@
   <section class="setup">
     <div class="field">
       <label for="url"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15V6"/><circle cx="18.5" cy="15.5" r="2.5"/><path d="M12 12H3M16 6H3M12 18H3"/></svg>Your playlists</label>
-      <div class="row"><input id="url" placeholder="Paste a SoundCloud, Apple Music or Spotify playlist link" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="act" id="saveUrl">Add</button></div>
-      <div class="note" id="urlNote">Saved playlists stay here. Tap one to sync it.</div>
+      <div class="row"><input id="url" placeholder="Paste a playlist link" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="act" id="saveUrl">Add</button></div>
+      <div class="note" id="urlNote">Works with SoundCloud, Spotify and Apple Music. Tap a saved one to sync it.</div>
       <div class="lists" id="saved"></div>
       <details><summary>Or find them on your profile</summary>
       <div class="row" style="margin-top:10px">
@@ -303,7 +311,7 @@
     </div>
     <div class="field">
       <label for="syncTime"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Auto sync</label>
-      <div class="row"><span class="every">Every day at</span><input id="syncTime" type="time" step="300" required><button class="act" id="saveTime">Save</button></div>
+      <div class="row"><span class="every">Every day at</span><input id="syncTime" type="time" step="300" required></div>
       <div class="note" id="timeNote">Keep your Mac on and plugged in at this time. If it's asleep, it syncs when it wakes.</div>
     </div>
   </section>
@@ -315,7 +323,7 @@
   <section class="cols">
     <div>
       <h2>On your Mac <em id="cHave"></em></h2>
-      <ul id="have"></ul>
+      <ul id="have"><li aria-hidden="true"><i class="skel"></i></li><li aria-hidden="true"><i class="skel"></i></li><li aria-hidden="true"><i class="skel"></i></li></ul>
     </div>
     <div>
       <div id="nowBox" hidden>
@@ -329,7 +337,7 @@
       </div>
       <div class="note" id="viewNote"></div>
       <div class="note" id="unread" hidden></div>
-      <ul id="buy"></ul>
+      <ul id="buy"><li aria-hidden="true"><i class="skel"></i></li><li aria-hidden="true"><i class="skel"></i></li><li aria-hidden="true"><i class="skel"></i></li></ul>
     </div>
   </section>
   <footer id="foot"></footer>
@@ -373,12 +381,19 @@ function render(s) {
     ...(/signed in to SoundCloud|sign-in in .* has run out/.test(s.problem) ? [el('br'), scLink('Sign in to SoundCloud ↗', 'btn fix')]
       : /Full Disk Access/.test(s.problem) ? [el('br'), el('button', { className: 'fix', textContent: 'Open the setting', onclick: () => openStep('fda') })] : []));
   $('nHave').textContent = s.have.length; $('cHave').textContent = s.have.length || '';
-  $('unread').hidden = !s.unread && !s.capped;
-  $('unread').textContent = s.capped ? (s.service === 'spotify'
-      ? 'Spotify shows only the first 100 songs of a playlist without a Spotify sign-in, so songs after the 100th aren\'t listed. Split it into playlists of 100 or fewer, or use the same playlist on Apple Music or SoundCloud.'
-      : 'Apple Music showed only part of this playlist. The next sync reads it again.')
+  const capNote = s.capped && s.service === 'apple' ? 'Apple Music shows only the first 300 songs. To get the rest, see Your playlists.'
+    : s.capped && s.service === 'spotify' ? 'Spotify shows only the first 100 songs. To get the rest, see Your playlists.'
+    : s.missing ? `${s.missing} song${s.missing > 1 ? 's' : ''} didn't load from Spotify. The next sync tries again.` : '';
+  $('unread').hidden = !s.unread && !capNote;
+  $('unread').textContent = capNote ? capNote
     : s.unread ? `Plus ${s.unread} song${s.unread > 1 ? 's' : ''} SoundCloud wouldn't show us yet (it slows down anyone who asks too fast). The next sync asks again.` : '';
   $('nBuy').textContent = s.buy.length;
+  if (Date.now() - urlSaid > 12000) say('urlNote', s.service === 'spotify' && s.capped
+      ? 'Spotify shows the first 100 songs. For all of them: in the Spotify app, click a song, press ⌘A, then ⌘C, and paste here. (Web player: click the first song, Shift-click the last, ⌘C.)'
+      : s.service === 'spotify' && s.pasted ? `All ${s.pasted} songs are in. Added more in Spotify? Copy and paste them here again.`
+      : s.service === 'apple' ? (s.capped ? 'Apple Music shows only the first 300 songs. Split bigger playlists into parts of 300 or fewer.'
+        : 'Apple Music playlists: up to 300 songs each.')
+      : 'Works with SoundCloud, Spotify and Apple Music. Tap a saved one to sync it.', false, true);
   paintSetup(s); last = s; draw(); paintStart(s); paintHelper();
 }
 
@@ -552,7 +567,7 @@ function shopLinks(t) {
 // Why a track isn't here yet, in plain words: what to do comes first when there's something to do.
 function why(t, s) {
   if (/^https?:\/\//.test(t.free)) {
-    if ((s.watching || []).includes(t.link)) return ['wait', 'Watching Downloads for this track… finish the download and leave the file there; it\'s added by itself.'];
+    if ((s.watching || []).includes(t.link)) return ['wait', 'Watching the Downloads folder on your Mac for this track… finish the download and leave the file there; it\'s added by itself.'];
     const no = (s.inboxWhy || {})[t.link];
     if (no) return ['bad', no];
     return ['act', 'Free from the artist: tap Free Download (it may ask for a follow or repost). The download is added by itself.'];
@@ -584,10 +599,13 @@ function draw() {
   $('cWait').textContent = count(wait, waitAll);
   $('cMiss').textContent = count(miss, missAll);
   $('nowBox').hidden = !s.running && !nowAll.length;
-  const phase = s.phase === 'soundcloud' ? (s.service ? 'Reading the playlist…' : 'Checking SoundCloud for new tracks and the artists\' own files…')
+  const rd = s.reading && s.reading.total ? s.reading : null;
+  const phase = rd ? `Reading songs from Spotify… ${rd.done} of ${rd.total}`
+    : s.phase === 'soundcloud' ? (s.service ? `Reading the playlist from ${SERVICE[host(s.playlist)]}…` : 'Checking SoundCloud for new tracks and the artists\' own files…')
     : s.phase === 'soulseek' && !nowAll.length ? 'Looking on Soulseek…' : '';
   $('now').replaceChildren(
-    ...(phase ? [el('div', { className: 'phase' }, el('i', { className: 'dot live' }), phase)] : []),
+    ...(phase ? [el('div', { className: 'phase' }, el('i', { className: 'dot live' }), phase,
+      ...(rd ? [el('span', { className: 'bar' }, el('i', { style: `width:${Math.round(100 * rd.done / rd.total)}%` }))] : []))] : []),
     ...now.map(t => el('li', {}, nameEl(t),
       el('span', { className: 'state on' }, el('i', { className: 'dot live' }), STATE[t.state]))));
   $('have').replaceChildren(...(have.length ? have.map(t => el('li', {},
@@ -602,7 +620,7 @@ function draw() {
   for (const x of document.querySelectorAll('.tabs button')) x.setAttribute('aria-selected', x.dataset.v === view);
   const line = (cls, txt) => el('div', { className: cls, textContent: txt });
   const step = (n, txt) => el('div', { className: 'step' }, el('b', { textContent: n }), el('span', { textContent: txt }));
-  const auto = 'Bought or unlocked one yourself? Leave the file in Downloads: it moves into your music and off this list by itself.';
+  const auto = 'Bought or unlocked one yourself? Leave the file in the Downloads folder on your Mac: it moves into your music and off this list by itself.';
   const got = (s.justGot || []).length ? [line('got', '✓ Got it: ' + s.justGot.join(', ') + ' ' + (s.justGot.length > 1 ? 'are' : 'is') + ' now in On your Mac.')] : [];
   $('viewNote').replaceChildren(...got, ...(view === 'wait'
     ? [line('', !s.soulseekReady ? 'Sign in to Soulseek above and the next sync looks for these. Or buy them now.'
@@ -618,7 +636,7 @@ function draw() {
       line('', MISS_NOTE[missView]), line('', auto)]
     : [line('lead', 'Free from the artist, in three steps:'),
       step('1', 'Tap Free Download and do what the page asks (often a follow).'),
-      step('2', 'Leave the file in Downloads.'),
+      step('2', 'Leave the file in the Downloads folder on your Mac.'),
       step('3', 'The Crate checks it, moves it into your music and ticks it off here. Nothing to tidy up.'),
       // Claude or Codex can do the clicking: the button opens a short guide, set up for what this Mac has.
       ...(freeAll.length ? [el('div', { className: 'agents' }, el('button', { className: 'ghost',
@@ -641,7 +659,7 @@ function draw() {
 // Not found, split two ways: shared on Soulseek but the sharers were away (it'll likely come), or not there at all.
 const MISS = [['all', 'All'], ['near', 'Sharers away'], ['far', 'Not on Soulseek']];
 const MISS_NOTE = { all: 'Mostly remixes and flips that only live on SoundCloud.',
-  near: 'Someone shares it, but they were offline or busy: tried again next sync.',
+  near: 'Someone shares it, but they were offline or busy: the app will try again next sync.',
   far: 'No top-quality copy on Soulseek: buy it or ask the artist.' };
 const missBy = (l, k) => k === 'all' ? l : l.filter(t => (/^On Soulseek/.test(t.why) ? 'near' : 'far') === k);
 let missView = 'all';
@@ -676,6 +694,7 @@ function paintSetup(s) {
 
   const bn = { chrome: 'Chrome', safari: 'Safari', brave: 'Brave', firefox: 'Firefox', edge: 'Edge' }[s.browser] || '';
   const sw = { ok: s.scLogin === 'none' || s.scLogin === 'invalid' ? ['warn', 'Not signed in (' + bn + ')'] : ['ok', (s.scLogin === 'ok' ? 'Signed in, ' : s.scChecking ? 'Checking sign-in, ' : 'Via ') + bn], blocked: ['warn', 'Needs Full Disk Access'], missing: ['warn', bn + ' not found'], off: ['', 'Off'] }[s.signIn] || ['', 'Off'];
+  if (s.playlist && !s.saved.some(p => !SERVICE[host(p.url)])) sw.splice(0, 2, '', 'Not needed');  // Spotify and Apple Music only
   $('signWord').replaceChildren(el('i', { className: 'dot ' + sw[0] }), sw[1],
     ...(s.signIn === 'ok' && (s.scLogin === 'none' || s.scLogin === 'invalid') ? [el('br'), scLink('Sign in ↗', 'inl')] : []));
   $('usbWord').replaceChildren(el('i', { className: 'dot ' + (s.usbPlugged ? 'ok' : s.usb ? 'warn' : '') }),
@@ -734,13 +753,36 @@ async function call(path, body) {
   if (!r.ok) throw new Error(j.error || 'Something went wrong.');
   render(j); return j;
 }
-function say(id, text, bad) { const n = $(id); n.textContent = text; n.className = 'note' + (bad ? ' bad' : ''); }
+let urlSaid = 0;  // when the playlist box last reported something (its usual hint waits a bit after)
+function say(id, text, bad, hint) {
+  const n = $(id); if (id === 'urlNote' && !hint) urlSaid = Date.now();
+  if (n.textContent !== text) n.textContent = text; n.className = 'note' + (bad ? ' bad' : '');
+}
 
+function busyBtn(b, on, label) {
+  b.disabled = on; b.setAttribute('aria-busy', on);
+  b.replaceChildren(...(on ? [el('span', { className: 'spin' }), label] : [label]));
+}
+// One box for everything: a playlist link from any of the three, or the songs copied from the Spotify app.
+const SONGS = /open\.spotify\.com\/(intl-[a-z-]+\/)?track\/|spotify:track:/;
+function addSongs(text) {
+  busyBtn($('saveUrl'), true, 'Adding'); say('urlNote', 'Saving the songs…');
+  call('/api/spotify-songs', { text })
+    .then(s => { $('url').value = ''; say('urlNote', `Got all ${s.pasted} songs. Reading them now (see Getting now).`); })
+    .catch(e => say('urlNote', e.message, true)).finally(() => busyBtn($('saveUrl'), false, 'Add'));
+}
+$('url').onpaste = e => {  // a pasted song list keeps its line breaks this way (the box itself is one line)
+  const text = e.clipboardData.getData('text');
+  if (SONGS.test(text)) { e.preventDefault(); addSongs(text); }
+};
 $('saveUrl').onclick = () => {
-  $('saveUrl').disabled = true; say('urlNote', 'Reading the playlist…');
+  if (SONGS.test($('url').value)) return addSongs($('url').value);
+  busyBtn($('saveUrl'), true, 'Adding'); say('urlNote', 'Reading the playlist…');
+  const slow = setTimeout(() => say('urlNote', 'Still reading. Big playlists can take a minute.'), 6000);
   call('/api/playlist', { url: $('url').value.trim() })
-    .then(s => { $('url').value = ''; say('urlNote', (s.saved[0] || {}).title + ' saved and set to sync.'); })
-    .catch(e => say('urlNote', e.message, true)).finally(() => { $('saveUrl').disabled = false; });
+    .then(s => { $('url').value = ''; say('urlNote', (s.saved[0] || {}).title + ' saved and set to sync.' +
+      (s.service === 'apple' ? ' Apple Music reads up to 300 songs a playlist.' : '')); })
+    .catch(e => say('urlNote', e.message, true)).finally(() => { clearTimeout(slow); busyBtn($('saveUrl'), false, 'Add'); });
 };
 let slskEdit = false;
 $('slskChange').onclick = () => { slskEdit = true; tick(); };
@@ -764,13 +806,20 @@ $('profile').onkeydown = e => { if (e.key === 'Enter') $('connect').click(); };
 $('url').onkeydown = e => { if (e.key === 'Enter') $('saveUrl').click(); };
 $('usb').onchange = e => { e.target.blur(); call('/api/usb', { name: e.target.value }).catch(err => say('usbNote', err.message, true)); };
 function clock(t) { const [h, m] = t.split(':').map(Number); return (h % 12 || 12) + ':' + String(m).padStart(2, '0') + (h < 12 ? 'am' : 'pm'); }
-$('syncTime').oninput = () => { $('syncTime').dataset.dirty = '1'; };
-$('saveTime').onclick = () => {
-  const t = $('syncTime').value;
-  if (!t) return say('timeNote', 'Pick a time first.', true);
-  call('/api/synctime', { time: t }).then(() => { delete $('syncTime').dataset.dirty; say('timeNote', 'Saved. It syncs every day at ' + clock(t) + '. Keep your Mac on and plugged in then.'); })
-    .catch(e => say('timeNote', e.message, true));
-};
+// The time saves itself: a moment after it's changed, and when you leave the box (no Save button to forget).
+let timeWait;
+function saveTime() {
+  clearTimeout(timeWait);
+  const box = $('syncTime'), t = box.value;
+  if (!box.dataset.dirty || !t) return;  // unchanged, or only half typed
+  call('/api/synctime', { time: t }).then(() => {
+    if (box.value === t) delete box.dataset.dirty;
+    say('timeNote', 'Saved. It syncs every day at ' + clock(t) + '. Keep your Mac on and plugged in then.');
+  }).catch(e => say('timeNote', e.message, true));
+}
+$('syncTime').oninput = () => { $('syncTime').dataset.dirty = '1'; clearTimeout(timeWait); timeWait = setTimeout(saveTime, 1000); };
+$('syncTime').onblur = saveTime;
+window.addEventListener('pagehide', saveTime);
 $('eject').onchange = e => call('/api/eject', { on: e.target.checked }).catch(err => say('usbNote', err.message, true));
 $('copy').onclick = () => {
   copyAsked = Date.now(); $('copy').disabled = true; $('copy').setAttribute('aria-busy', true);

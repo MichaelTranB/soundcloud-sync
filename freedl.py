@@ -341,7 +341,7 @@ def take(d, out, link, folder=os.path.expanduser("~/Downloads")):
                                 for l in open(os.path.join(d, "to-buy.tsv")) if l.strip()) if r[1] == link), None)
         real = os.path.realpath(p) if p else ""
         if not row or not real.startswith(os.path.realpath(folder) + os.sep) or not os.path.isfile(real):
-            return "That file isn't in Downloads any more, or the song is no longer on the list."
+            return "That file isn't in the Downloads folder on your Mac any more, or the song is no longer on the list."
         name = row[0]
         with tempfile.TemporaryDirectory(dir=d, prefix=".inbox-") as tmpdir:
             tmp = os.path.join(tmpdir, "download" + (".zip" if real.lower().endswith(".zip") else ""))

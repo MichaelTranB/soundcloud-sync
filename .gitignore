@@ -60,3 +60,9 @@ sync-time.txt
 .usb-mid
 .to-buy.lock
 .reload-*
+spotify-songs.json
+spotify-songs.json.tmp
+.spotify-cache.json
+.spotify-cache.json.tmp
+.reading.json
+.reading.json.tmp
