@@ -60,39 +60,61 @@ def in_terminal(name, script):
 
 # What Claude or Codex is asked to do: the friend's own assistant, in their own signed-in Chrome, with them watching.
 # It asks them once what it may do in their name, never pays or types a password, and only fetches audio.
-AGENT_BRIEF = """Please get the free downloads below for me, in my Chrome (I'm signed in there), one at a time.
+AGENT_BRIEF = """Please get the free downloads waiting in my music app, The Crate, using my Chrome (I'm signed in there).
 
-These are songs on my DJ playlist whose artists give them away free, usually behind a gate (Hypeddit, ToneDen,
-Laylo...) that asks for a follow, like, repost, comment or email first. My music app, The Crate, picks up any audio
-file that lands in my Downloads folder ({downloads}) and checks it, so the job is just to get each file there.
+Open this page in Chrome: {page}
+It lists {n} songs whose artists give them away free, usually behind a gate (Hypeddit, ToneDen, Laylo...) that asks
+for a follow, like, repost, comment or email first. The Crate picks up each file that lands in my Downloads folder.
 
 Before you start, ask me ONCE which gate steps you may do in my name, so you don't have to ask again for each:
 following or liking on SoundCloud (or Spotify, Instagram...), reposting, a comment (and what text), signing up with
-my email (which one), connecting an account. Skip any link that needs something I didn't allow.
+my email (which one), connecting an account. Skip any song that needs something I didn't allow.
 
-For each link:
-1. Open it, do the gate steps I allowed, and download the best quality offered: WAV, FLAC or AIFF over MP3;
-   MP3 only at 320 kbps.
-2. When the file is in Downloads, rename it to exactly the name given below (keep its extension; a / or : in the
-   name becomes -), so The Crate knows which song it is. A .zip can stay as it is.
-3. Wait a few seconds before the next link, so none of my accounts looks like a bot.
+Then for each song on that page, top to bottom:
+1. Click its Free Download link ON THAT PAGE: the click tells The Crate which song is coming, so no renaming is
+   needed. (Don't type the link's address yourself.)
+2. Do the gate steps I allowed and download the best quality offered: WAV, FLAC or AIFF over MP3; MP3 only at
+   320 kbps.
+3. Go back to the list page and wait a few seconds before the next song, so none of my accounts looks like a bot.
+Reload the list page whenever you like: songs that have arrived drop off it.
 
 Never: pay or enter card details, type a password (if a site needs a sign-in, ask me to do it and wait), download
 or open an app or installer (.dmg, .pkg, .exe, .app), or join a paid membership (skip a Patreon post that's members
-only). If you can't use my Chrome, say so and stop.
+only). Don't touch anything else in The Crate. If you can't use my Chrome, say so and stop.
 
 At the end, tell me in a short list what you got, and what you skipped and why.
-
-{n} songs ("name" = link):
-{rows}
 """
 
 
+def free_rows():
+    """The songs still to get that have the artist's own free link: (name, track link, free link)."""
+    return [p[:3] for p in (l.split("\t") for l in read("to-buy.tsv").splitlines())
+            if len(p) > 2 and re.match(r"https?://\S+$", p[2])]
+
+
 def agent_task():
-    rows = [p for p in (l.split("\t") for l in read("to-buy.tsv").splitlines()) if len(p) > 2
-            and re.match(r"https?://\S+$", p[2])]
-    lines = "\n".join(f'- "{r[0]}" = {r[2]}' for r in rows)
-    return AGENT_BRIEF.format(downloads=os.path.expanduser("~/Downloads"), n=len(rows), rows=lines), len(rows)
+    n = len(free_rows())
+    return AGENT_BRIEF.format(page=f"http://localhost:{PORT}/free", n=n), n
+
+
+def free_page():
+    """The list Claude or Codex works from: each song's Free Download link and nothing else of The Crate. A click
+    here tells The Crate which song is coming (as in the app), so the downloaded file needs no renaming."""
+    from html import escape
+    rows = free_rows()
+    items = "".join(f'<li><span>{escape(n)}</span> <a href="{escape(f)}" target="_blank" rel="noopener" '
+                    f'data-link="{escape(t)}">Free Download</a></li>' for n, t, f in rows)
+    return f"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Crate: free downloads</title>
+<style>body{{font:16px/1.5 -apple-system,system-ui,sans-serif;background:#0c0c12;color:#f0eef8;max-width:760px;margin:32px auto;padding:0 16px}}
+p{{color:#a4a2b6}} li{{margin:10px 0}} a{{color:#ff6b7d;font-weight:600;margin-left:8px}}</style>
+<h1>Free downloads: {len(rows)} left</h1>
+<p>Click each song's Free Download link here, one at a time: the click tells The Crate which song is coming.
+Songs that have arrived drop off this list when the page is reloaded.</p>
+<ol>{items}</ol>
+<script>for (const a of document.querySelectorAll('a[data-link]')) a.addEventListener('click', () =>
+  fetch('/api/watch', {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ link: a.dataset.link }}) }}));</script>
+"""
 
 
 def read(name, default=""):
@@ -746,6 +768,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, f.read(), "image/svg+xml" if svg else "image/png")
         if self.path == "/api/state":
             return self.send(200, state())
+        if self.path.split("?")[0] == "/free":  # the list Claude or Codex works from
+            return self.send(200, free_page().encode(), "text/html; charset=utf-8")
         self.send(404, {"error": "not found"})
 
     def do_POST(self):

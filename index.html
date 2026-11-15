@@ -101,7 +101,7 @@
   .tabs button:active { transform: none; }
   #viewNote { margin: 14px 0 12px; display: grid; gap: 6px; }
   #viewNote .lead { color: var(--text); font-weight: 600; }
-  #viewNote .step { display: flex; gap: 8px; align-items: baseline; }
+  #viewNote .step { display: flex; flex-wrap: nowrap; gap: 8px; align-items: baseline; padding: 0; border-top: 0; }
   #viewNote .step b { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--line); color: var(--text); font-size: 12px; display: inline-grid; place-items: center; }
   #viewNote .key { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   /* One line of filter pills, each in its own colour: All in the app's red, lightened to read on dark, then blue and amber as in the rows. */
@@ -439,8 +439,9 @@ $('startHide').onclick = () => setHidden(true);
 $('faqOpen').onclick = () => $('faq').showModal();
 $('faqClose').onclick = () => $('faq').close();
 $('faq').onclick = e => { if (e.target === $('faq')) $('faq').close(); };  // a click on the dark backdrop closes it
-// Claude or Codex, step by step: it opens each free link in the friend's own Chrome and downloads the song, and The
-// Crate picks the files up from Downloads as usual. Steps tick from what the app can see; each says what to press.
+// Claude or Codex, step by step: it opens The Crate's list of free links in the friend's own Chrome, clicks each and
+// downloads the song, and The Crate picks the files up from Downloads as usual. Both are always offered; steps tick
+// from what the app can see (installed, Claude in Chrome added) and each says exactly what to press.
 const AGENT = { claude: 'Claude', codex: 'Codex' };
 const CLAUDE_EXT = 'https://chromewebstore.google.com/detail/fcoeoabgfenejglbffodgkkbkcdhcgfn';
 const CODEX_APP = 'https://developers.openai.com/codex/app';
@@ -460,64 +461,56 @@ function helperAct(btn, who, then) {
 function paintHelper(force) {
   const s = last; if (!s || !(force || $('helper').open)) return;
   const agents = s.agents || [], n = s.buy.filter(t => !live(t) && !waiting(t) && t.free).length;
-  const who = agents.includes(helperWho) ? helperWho : agents[0] || '';
+  const who = helperWho || agents[0] || 'claude', has = agents.includes(who);
   const key = JSON.stringify([agents, s.claudeInChrome, n, who, helperDone, helperMsg]);
   if (key === helperKey && !force) return;
   helperKey = key;
-  const songs = n + ' song' + (n === 1 ? '' : 's'), b = t => el('b', { textContent: t });
-  const err = helperMsg ? [el('p', { className: 'note bad', textContent: helperMsg })] : [];
-  if (!who) {  // neither on this Mac yet: the two ways to get one
-    $('helperHead').textContent = 'Let an assistant get them';
-    $('helperBody').replaceChildren(
-      el('p', { className: 'lead', textContent: 'Claude or Codex can open each free link in your Chrome and download the song for you. You need just one of them:' }),
-      el('div', { className: 'opt' }, el('div', { className: 't' }, b('Claude'), el('small', { textContent: helperDone.installing
-          ? 'Installing in the Terminal window that just opened (about a minute). This box moves on by itself when it\'s done.'
-          : 'Needs a paid Claude plan (Pro or Max). One click installs it in a Terminal window.' })),
-        ...(helperDone.installing ? [] : [el('button', { textContent: 'Install Claude',
-          onclick: e => helperAct(e.target, 'install-claude', () => { helperDone.installing = true; }) })])),
-      el('div', { className: 'opt' }, el('div', { className: 't' }, b('Codex'), el('small', { textContent:
-          'From OpenAI, with your ChatGPT account. Download the app, open it and sign in, then come back here.' })),
-        ext('Get Codex ↗', CODEX_APP)), ...err);
-    return;
-  }
-  const claude = who === 'claude';
+  const b = t => el('b', { textContent: t });
   const answer = { title: 'Answer its one question', how: ['It asks what it may do on the download pages. Type an answer, like ',
     el('i', { textContent: 'Follow and like are fine, no reposts' }), ', and press ', kbd('Return'), '.'] };
-  const list = claude ? [
+  const list = who === 'claude' ? [
+    { title: 'Install Claude', done: has, acts: helperDone.installing ? [] : [el('button', { textContent: 'Install Claude',
+        onclick: e => helperAct(e.target, 'install-claude', () => { helperDone.installing = true; }) })],
+      how: [helperDone.installing ? 'Installing in the Terminal window that just opened (about a minute). This ticks by itself when it\'s done.'
+        : 'Needs a paid Claude plan (Pro or Max). One click installs it in a Terminal window.'] },
     { title: 'Add Claude to Chrome', done: s.claudeInChrome, acts: [ext('Open the Chrome store ↗', CLAUDE_EXT)],
       how: ['In Chrome, press ', b('Add to Chrome'), ', then sign in to Claude in the panel it opens. Come back here after.'] },
     { title: 'Start Claude', done: helperDone.claude,
       acts: [el('button', { textContent: 'Open Claude', onclick: e => helperAct(e.target, 'claude', () => { helperDone.claude = true; }) })],
-      how: [`A Terminal window opens with your ${songs} already filled in. Nothing to copy or paste.`] },
+      how: ['A Terminal window opens with Claude, already told what to do. Nothing to copy or paste.'] },
     { title: 'First time only: sign in', how: ['In that Terminal window, press ', kbd('Return'), ' to accept each suggestion. When it asks how to sign in, pick ',
       b('Claude account'), ' and finish in the browser. When it asks whether to trust the folder, press ', kbd('Return'), '.'] },
     answer
   ] : [
+    { title: 'Get the Codex app', done: has, acts: [ext('Get Codex ↗', CODEX_APP)],
+      how: ['From OpenAI, with your ChatGPT account. Install it, open it and sign in. (It has to be the app: the codex command in Terminal can\'t use Chrome.) This ticks by itself.'] },
     { title: 'Turn on Codex in Chrome', done: helperDone.codexChrome,
       acts: [ext('Show me how ↗', CODEX_CHROME), el('button', { className: 'ghost', textContent: 'Done',
         onclick: () => { helperDone.codexChrome = true; paintHelper(); } })],
       how: ['One time only: add Codex\'s Chrome extension from the Codex app. The page shows where. Press ', b('Done'), ' when it\'s on.'] },
-    { title: 'Copy your list', done: helperDone.codex,
+    { title: 'Copy the request', done: helperDone.codex,
       acts: [el('button', { textContent: 'Copy and open Codex', onclick: e => helperAct(e.target, 'codex', () => { helperDone.codex = true; }) })],
-      how: [`Copies the request for your ${songs} and opens Codex.`] },
-    { title: 'Paste it into Codex', how: [...(helperDone.codex ? [b('Your list is copied. ')] : []), 'Start a new chat in Codex, press ',
+      how: ['Copies a short request and opens Codex.'] },
+    { title: 'Paste it into Codex', how: [...(helperDone.codex ? [b('It\'s copied. ')] : []), 'Start a new chat in Codex, press ',
       kbd('⌘'), ' ', kbd('V'), ' to paste, then ', kbd('Return'), '.'] },
     answer
   ];
+  // Later steps wait for the one before (nothing to open before it's installed), so only the current step has buttons.
   const next = list.findIndex(x => !x.done);
-  const pick = agents.length > 1 ? [el('div', { className: 'pick' }, ...agents.map(w => {
-    const p = el('button', { className: 'ghost', textContent: AGENT[w], onclick: () => { helperWho = w; paintHelper(); } });
-    p.setAttribute('aria-pressed', w === who); return p; }))] : [];
-  $('helperHead').textContent = 'Get them with ' + AGENT[who];
-  $('helperBody').replaceChildren(...pick,
-    el('p', { className: 'lead', textContent: `${AGENT[who]} opens each free link in your Chrome, does what the page asks and downloads the song. ${list.length} steps:` }),
+  $('helperHead').textContent = 'Get them with Claude or Codex';
+  $('helperBody').replaceChildren(
+    el('div', { className: 'pick' }, ...['claude', 'codex'].map(w => {
+      const p = el('button', { className: 'ghost', textContent: AGENT[w] + (agents.includes(w) ? '' : ' (not installed)'),
+        onclick: () => { helperWho = w; helperMsg = ''; paintHelper(); } });
+      p.setAttribute('aria-pressed', w === who); return p; })),
+    el('p', { className: 'lead', textContent: `Pick either one. ${AGENT[who]} opens The Crate's list of ${n} free link${n === 1 ? '' : 's'} in your Chrome, clicks each, does what the page asks and downloads the song.` }),
     ...list.map((x, i) => el('div', { className: 'step' + (x.done ? ' done' : '') + (i === next ? ' next' : '') },
       el('span', { className: 'tick', ariaHidden: 'true', textContent: x.done ? '✓' : i + 1 }),
       el('div', { className: 't' }, el('b', { textContent: x.title }), el('span', { className: 'sr', textContent: x.done ? ' (done)' : '' }),
         ...(x.done ? [] : [el('small', {}, ...x.how)])),
-      ...(x.done || !x.acts ? [] : [el('div', { className: 'acts' }, ...x.acts)]))),
-    ...err,
-    el('p', { className: 'foot', textContent: `Keep Chrome open while it works: each song lands in your music here by itself. To stop it, close the ${claude ? 'Terminal window' : 'Codex chat'}. It never pays, types a password or installs anything.` }));
+      ...(x.done || i !== next || !x.acts.length ? [] : [el('div', { className: 'acts' }, ...x.acts)]))),
+    ...(helperMsg ? [el('p', { className: 'note bad', textContent: helperMsg })] : []),
+    el('p', { className: 'foot', textContent: `Keep Chrome open while it works: each song lands in your music here by itself. To stop it, close the ${who === 'claude' ? 'Terminal window' : 'Codex chat'}. It never pays, types a password or installs anything.` }));
 }
 $('startShow').onclick = () => { setHidden(false); $('start').scrollIntoView({ behavior: 'smooth' }); };
 
@@ -615,7 +608,7 @@ function draw() {
       step('3', 'The Crate checks it, moves it into your music and ticks it off here. Nothing to tidy up.'),
       // Claude or Codex can do the clicking: the button opens a short guide, set up for what this Mac has.
       ...(freeAll.length ? [el('div', { className: 'agents' }, el('button', { className: 'ghost',
-        textContent: '✨ Get them all with ' + ((s.agents || []).length === 1 ? AGENT[s.agents[0]] : 'Claude or Codex'),
+        textContent: '✨ Get them all with Claude or Codex',
         onclick: openHelper }))] : [])]));
   const missRow = t => { const [k, txt] = why(t, s); return el('li', { className: 'shop' },
     nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : '') }, ...(k === 'wait' ? [el('span', { className: 'spin' })] : []), txt),
