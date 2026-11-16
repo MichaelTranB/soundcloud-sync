@@ -3,7 +3,7 @@
 Michael's personal tool: keeps a SoundCloud playlist on his Mac as real files and copies them to his DJ USB.
 Not Almari work; nothing here touches Almari's repo, board or accounts.
 
-- **Page:** http://localhost:4780 (`app.py`, standard library only, bound to 127.0.0.1). `index.html` is the main page, `dj.html` the DJ library page (`/dj`).
+- **Page:** http://localhost:4780 (`app.py`, standard library only, bound to 127.0.0.1). `index.html` is the main page, `dj.html` the DJ library (on the page: "Library Manager") page (`/dj`).
 - **`sync.sh`:** downloads the artist's ORIGINAL file for every playlist track with downloads switched on; the rest
   go to `to-buy.tsv` (and `To Buy.txt` in the music folder). Nightly at 3:10am, or Sync Now on the page.
 - **Where files come from, best first:** (1) the artist's original upload on SoundCloud (`sync.sh`); (2) the artist's
