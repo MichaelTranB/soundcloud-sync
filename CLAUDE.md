@@ -62,6 +62,10 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   page, mode 600, never sent back to the page) or `KEY`, the one the app ships with; without a key nothing runs.
   Only the fingerprint and the length leave the Mac, never file names; one question at a time, inside both
   services' limits. Standard library only at import (Essentia only when it runs, in the analyser's Python).
+- **Club check (`club.py`, shown on the Library Manager page):** would the music play on a club's Pioneer decks: the
+  USB's format (from `mount`; FAT32 or Mac OS Extended is read by all, exFAT only by the newest), FLAC (older decks
+  skip it), and whether each song's file name is in the USB's rekordbox export (`PIONEER/rekordbox/export.pdb`,
+  which only rekordbox writes). It only looks: it never changes the USB or rekordbox, and never formats anything.
 - **`dj-setup.sh`:** the analyser's own Python (python-build-standalone, pinned by version and sha256) with the
   packages in `dj-requirements.txt` (every file pinned by hash), in `~/.local/share/crate-dj`; from `install.sh`
   and each sync, a no-op once done. `app.py`, `dj.py`, `genres.py` and `engine.py` stay standard library only and
