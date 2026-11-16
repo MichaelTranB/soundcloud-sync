@@ -82,6 +82,11 @@ dj-analysis.json.tmp
 genres.json
 genres.json.tmp
 dj.log
+acoustid-key.txt
+acoustid-key.txt.tmp
+recognised.json
+recognised.json.tmp
+.recognise.lock
 .dj.lock
 dj-backups/
 .dj-again

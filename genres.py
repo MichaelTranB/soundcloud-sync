@@ -88,7 +88,7 @@ def match(raw, table):
 
 
 def decide(song, g, table=None):
-    """(genres, where they came from). song: {key, tag_genre, sc_genre, sc_tags, title}."""
+    """(genres, where they came from). song: {key, tag_genre, sc_genre, mb_genres, sc_tags, title}."""
     table = table or lookup(g["list"])
     mine = g["songs"].get(song.get("key", ""))
     if mine is not None:
@@ -97,6 +97,9 @@ def decide(song, g, table=None):
         found = [m for m in (match(part, table) for part in re.split(r"[;/,|]", raw or "")) if m]
         if found:
             return list(dict.fromkeys(found))[:3], where
+    found = [m for m in (match(t, table) for t in song.get("mb_genres") or []) if m]
+    if found:  # recognise.py: what MusicBrainz files the recording (then its artist) under
+        return list(dict.fromkeys(found))[:2], "its sound (MusicBrainz)"
     found = [m for m in (match(t, table) for t in song.get("sc_tags") or []) if m]
     if found:
         return list(dict.fromkeys(found))[:2], "SoundCloud tags"
@@ -110,5 +113,5 @@ def decide(song, g, table=None):
 
 def heard(song):
     """What the labels said that we could not place: shown on the page so the pick is one glance."""
-    out = [song.get("tag_genre"), song.get("sc_genre"), *(song.get("sc_tags") or [])]
+    out = [song.get("tag_genre"), song.get("sc_genre"), *(song.get("mb_genres") or []), *(song.get("sc_tags") or [])]
     return list(dict.fromkeys(str(x).strip() for x in out if x and str(x).strip()))[:8]

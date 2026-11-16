@@ -85,6 +85,9 @@
   .edit .how { color: var(--dim); font-size: 14.5px; }
   .edit .how button { background: none; border: 0; border-bottom: 1px dotted var(--dim); border-radius: 0; padding: 0; color: var(--dim); font-weight: 600; font-size: 14.5px; }
   .edit .how button:hover { color: var(--text); }
+  .decks button { background: none; border: 0; border-bottom: 1px dotted var(--dim); border-radius: 0; padding: 0; color: var(--text); font-weight: 600; font-size: 14.5px; }
+  .decks a { color: var(--text); }
+  #recRow { margin: -24px 0 36px; }
   .empty { color: var(--dim); padding: 28px 0; border-bottom: 1px solid var(--line); }
   #more { margin-top: 18px; }
   @media (max-width: 820px) { main { padding: 32px 16px 72px; } .strip { grid-template-columns: 1fr 1fr; } h1 { font-size: 40px; } .brand img { width: 44px; height: 44px; } .bar { flex-wrap: wrap; } }
@@ -111,6 +114,10 @@
     <div class="stat"><b class="word" id="sDecks">&nbsp;</b><small id="sDecksNote">&nbsp;</small></div>
   </div>
   <div class="decks" id="decks"></div>
+  <div class="addrow" id="recRow" hidden>
+    <input id="recKey" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Paste your AcoustID API key" aria-label="AcoustID API key">
+    <button id="recGo">Save</button>
+  </div>
 
   <div class="pills" id="pills"></div>
   <div class="addrow" id="addRow" hidden>
@@ -214,6 +221,7 @@ function picker(song) {
     how.append('Your pick. ', back);
   } else how.append(song.from ? 'Sorted by ' + song.from + '. Tap a genre to change it.' : 'Nothing on this song says what it is. Tap its genre.');
   if (song.heard.length) how.append(' Labels on it: ' + song.heard.join(', ') + '.');
+  if (song.sounds) how.append(' Sounds like: ' + song.sounds + '.');
   box.append(how);
   return box;
 }
@@ -271,6 +279,21 @@ function draw() {
   lines.push(S.rekordbox ? (S.lastRekordbox ? what(S.lastRekordbox) + '  ·  ' + when(S.lastRekordbox) : 'rekordbox: ready to be written')
     : 'rekordbox is not on this Mac (nothing to do; install it and its library fills in by itself).');
   const dk = $('decks'); dk.textContent = ''; lines.forEach(l => dk.append(el('div', { textContent: l })));
+  // recognising songs by their sound (AcoustID and MusicBrainz, as MusicBrainz Picard does)
+  const rec = el('div');
+  if (S.recognise) {
+    const off = el('button', { textContent: 'Switch off' });
+    off.onclick = () => { if (confirm('Stop recognising songs by their sound? What it already learned stays.')) post('/api/dj/recognise', { key: '' }); };
+    rec.append(S.lastRecognise ? what(S.lastRecognise) + '  ·  ' + when(S.lastRecognise) + '  ' : 'Songs are recognised by their sound: the first pass takes a few minutes.  ', off);
+    $('recRow').hidden = true;
+  } else if (!S.analyser) rec.append('Recognising songs by their sound comes with tempo and key (see above).');
+  else {
+    const on = el('button', { textContent: 'Set it up' });
+    on.onclick = () => { $('recRow').hidden = !$('recRow').hidden; if (!$('recRow').hidden) $('recKey').focus(); };
+    const get = el('a', { href: 'https://acoustid.org/new-application', target: '_blank', rel: 'noopener', textContent: 'a free AcoustID key' });
+    rec.append('Recognise songs by their sound (fills in genres, and flags a Soulseek file that is another song). Needs ', get, ', once.  ', on);
+  }
+  dk.append(rec);
 
   // the pills
   const p = $('pills'); p.textContent = '';
@@ -317,6 +340,13 @@ function addGenre() {
   post('/api/dj/list', { add: name });
 }
 $('addGo').onclick = addGenre;
+function saveKey() {
+  const key = $('recKey').value.trim(); if (!key) return;
+  $('recKey').value = '';
+  post('/api/dj/recognise', { key });
+}
+$('recGo').onclick = saveKey;
+$('recKey').onkeydown = e => { if (e.key === 'Enter') saveKey(); };
 $('addName').onkeydown = e => { if (e.key === 'Enter') addGenre(); };
 document.addEventListener('visibilitychange', load);
 load(); setInterval(load, 4000);
