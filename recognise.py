@@ -9,7 +9,7 @@ What the answer is used for:
     still come first);
   - a second opinion on Soulseek files: one that sounds like another song is flagged on the page (soulseek.py).
     Only flagged, never thrown back by itself: a flip or bootleg is often not in the database at all.
-Needs an AcoustID application key (free: acoustid.org/new-application), saved from the DJ library page into
+Needs an AcoustID application key (free: acoustid.org/new-application), saved from the Library Manager page into
 acoustid-key.txt in the app folder; KEY below is the one the app ships with. Without a key this does nothing.
 What leaves the Mac: the fingerprint and the track's length to AcoustID, a recording number to MusicBrainz. No file
 names, no account. One at a time; answers are kept in recognised.json, and a track nobody knows yet is asked about
@@ -158,7 +158,7 @@ def run(dir, src, log=lambda text: None):
             if new % 10 == 0:
                 save(dir, got)
     except BadKey as e:
-        log(f"RECOGNISE PROBLEM: AcoustID didn't take the key ({e}). Save it again on the DJ library page.")
+        log(f"RECOGNISE PROBLEM: AcoustID didn't take the key ({e}). Save it again on the Library Manager page.")
     except RuntimeError as e:  # AcoustID answered, with a problem of its own: the rest waits for the next run
         log(f"song recognition stopped for now (AcoustID said: {str(e)[:120]}); it carries on at the next run")
     except OSError:  # no internet, or one of the two is down

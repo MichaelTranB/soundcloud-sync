@@ -71,7 +71,7 @@ Never YouTube rips or recorded streams: low quality.
 
 ## Your DJ decks (Engine DJ and rekordbox)
 
-Open **DJ library** on the page. Every song is listed with its tempo, key and genres, and The Crate puts them
+Open **Library Manager** on the page. Every song is listed with its tempo, key and genres, and The Crate puts them
 straight into your decks' libraries, with no dragging and no clicks:
 
 - **Denon Prime and other Engine DJ decks:** the songs are added to the Engine library on your USB (plug the USB

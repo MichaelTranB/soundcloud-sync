@@ -10,7 +10,7 @@
 <style>
   :root {
     --bg: #0c0c12; --panel: #15151d; --line: #282834; --text: #f0eef8; --dim: #a4a2b6;
-    --hot: #c8102e; --ok: #9be36b; --warn: #ffc24a;
+    --hot: #c8102e; --lib: #6d5cf5; --ok: #9be36b; --warn: #ffc24a;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
@@ -28,6 +28,9 @@
   button.act { padding: 10px 20px; flex: none; }
   button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 10px 18px; font-weight: 600; }
   .big { font-size: 17px; padding: 18px 34px; }
+  /* The way to the Library Manager (tempo, key, genres, the decks): filled in its own colour, so it is found at a glance. */
+  button.lib { background: var(--lib); font-size: 16px; padding: 14px 24px; display: inline-flex; align-items: center; gap: 9px; }
+  button.lib svg { width: 19px; height: 19px; flex: none; }
   .spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: r 1s linear infinite; vertical-align: -1px; margin-right: 8px; }
   @keyframes r { to { transform: rotate(360deg); } }
   .usbprog { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 13.5px; color: var(--dim); }
@@ -226,7 +229,7 @@
     <div class="acts">
       <button class="ghost" id="startShow" hidden>Setup <span id="startLeft"></span></button>
       <button class="ghost ask" id="faqOpen" aria-haspopup="dialog"><b aria-hidden="true">?</b> How it works</button>
-      <button class="ghost" id="djOpen">DJ library</button>
+      <button class="lib" id="djOpen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 4v16M8 8v12M12 6v14M16 6l4 14"/></svg>Library Manager</button>
       <button class="big" id="sync">Sync Now</button>
     </div>
   </header>
