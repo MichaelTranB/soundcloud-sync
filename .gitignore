@@ -43,6 +43,13 @@ inbox-seen.txt
 .sockseek-*
 soulseek-missed.tsv
 soulseek-missed.tsv.tmp
+soulseek-wrong.tsv
+.soulseek-again
+soulseek-from.tsv
+soulseek-from.tsv.tmp
+soulseek-checked.json
+soulseek-checked.json.tmp
+Thrown back/
 profile.txt
 unread.txt
 .listing
