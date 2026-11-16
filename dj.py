@@ -8,6 +8,7 @@ decks read, with no clicks.
 Libraries, each only when it exists on this Mac or the plugged-in USB:
   - Engine DJ on the USB (Denon Prime, SC, Mixstream...): engine.py
   - rekordbox on this Mac (Pioneer DDJ controllers, and its own USB export for CDJs): rekordbox.py
+A genre you change in one of those libraries comes back as your pick on the page (adopt, below).
 Standard library only. Tempo and key need the private Python dj-setup.sh sets up (dj_analyze.py); without it tracks
 still reach the decks, which then analyse them on load."""
 import fcntl, json, os, re, subprocess, sys, time, unicodedata
@@ -20,6 +21,7 @@ PY = next((p for p in map(os.path.expanduser, ("~/.local/share/crate-dj/python/b
                                                "~/.local/share/crate-dj/venv/bin/python")) if os.path.exists(p)),
           os.path.expanduser("~/.local/share/crate-dj/python/bin/python3"))
 CACHE = "dj-analysis.json"
+WRITTEN = "dj-written.json"  # the genre each deck library showed for each track after The Crate last wrote it
 
 
 def log(dir, text):
@@ -218,17 +220,25 @@ def busy(dir):
 def once(dir, src, volumes):
     analyse(dir, src)
     songs = library(dir, src)
-    lists = playlists(songs, genres.load(dir))
-    import engine
     usb = read(dir, "usb.txt").strip()
-    if usb and os.path.isdir(os.path.join(volumes, usb)):
+    stick = os.path.join(volumes, usb) if usb and os.path.isdir(os.path.join(volumes, usb)) else ""
+    there = seen(dir, src, songs, stick)
+    if adopt(dir, songs, there):  # a genre you changed on the decks' side is now your pick
+        songs = library(dir, src)
+    lists = playlists(songs, genres.load(dir))
+    wrote = False
+    if stick:
+        import engine
         try:
-            said = engine.write(os.path.join(volumes, usb), songs, lists, os.path.join(dir, "dj-backups"))
+            said = engine.write(stick, songs, lists, os.path.join(dir, "dj-backups"))
             if said:
+                wrote = True
                 log(dir, f'Engine DJ on "{usb}": {said}')
         except Exception as e:  # never silent: the page shows the last lines of dj.log
+            wrote = True
             log(dir, f'ENGINE PROBLEM on "{usb}": {e}')
-    rekordbox(dir, src, songs, lists)
+    wrote = rekordbox(dir, src, songs, lists) or wrote
+    remember(dir, seen(dir, src, songs, stick) if wrote else there)
     if recognise.key(dir) and os.path.exists(PY):  # on its own: it asks the internet, and comes back here when it learns something
         subprocess.Popen([PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "recognise.py"), dir, src],
                          start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -237,9 +247,9 @@ def once(dir, src, volumes):
 
 def rekordbox(dir, src, songs, lists):
     """rekordbox on this Mac, through the private Python (rekordbox.py needs pyrekordbox). Quietly nothing when
-    either isn't there."""
+    either isn't there. True when it did, or tried, anything."""
     if not os.path.exists(PY):
-        return
+        return False
     here = os.path.dirname(os.path.abspath(__file__))
     job = {"src": src, "backups": os.path.join(dir, "dj-backups"), "songs": songs,
            "lists": [[n, [s["rel"] for s in items]] for n, items in lists]}
@@ -247,11 +257,94 @@ def rekordbox(dir, src, songs, lists):
         r = subprocess.run([PY, os.path.join(here, "rekordbox.py")], input=json.dumps(job), capture_output=True,
                            text=True, timeout=900)
     except subprocess.TimeoutExpired:
-        return log(dir, "REKORDBOX PROBLEM: took over 15 minutes and was stopped; its library is as it was")
+        log(dir, "REKORDBOX PROBLEM: took over 15 minutes and was stopped; its library is as it was")
+        return True
     if r.returncode:
         log(dir, "REKORDBOX PROBLEM: " + (r.stderr.strip().splitlines() or ["stopped"])[-1][:300])
     elif r.stdout.strip():
         log(dir, "rekordbox: " + r.stdout.strip().splitlines()[-1])
+    return bool(r.returncode or r.stdout.strip())
+
+
+def seen(dir, src, songs, stick):
+    """The genre each deck library shows for each track right now: {"rekordbox": {rel: genre}, "engine": {...}}.
+    A library that isn't there is left out. Reads only. A library that can't be read is left out too: the write
+    that follows says what's wrong with it."""
+    out = {}
+    if os.path.exists(PY):
+        here = os.path.dirname(os.path.abspath(__file__))
+        try:
+            r = subprocess.run([PY, os.path.join(here, "rekordbox.py"), "--genres"], capture_output=True, text=True,
+                               input=json.dumps({"src": src, "rels": [s["rel"] for s in songs]}), timeout=300)
+            got = json.loads(r.stdout) if not r.returncode else None
+        except (subprocess.TimeoutExpired, ValueError):
+            got = None
+        if isinstance(got, dict):
+            out["rekordbox"] = got
+    if stick:
+        import engine
+        try:
+            got = engine.genres_there(stick, songs)
+        except Exception:
+            got = None
+        if got is not None:
+            out["engine"] = got
+    return out
+
+
+def remember(dir, there):
+    """Keeps what each library shows now, so the next run can tell a genre you changed there from one The Crate
+    wrote. A library that isn't there this time keeps what was remembered."""
+    try:
+        was = json.load(open(os.path.join(dir, WRITTEN)))
+    except (OSError, ValueError):
+        was = {}
+    now = {**(was if isinstance(was, dict) else {}), **there}
+    if now != was:
+        with open(os.path.join(dir, WRITTEN + ".tmp"), "w") as f:
+            json.dump(now, f, ensure_ascii=False, indent=0, sort_keys=True)
+        os.replace(os.path.join(dir, WRITTEN + ".tmp"), os.path.join(dir, WRITTEN))
+
+
+def adopt(dir, songs, there):
+    """A genre you changed in rekordbox (or in Engine DJ, on the USB) becomes your pick on the page, so the page,
+    the other library and the genre playlists follow it instead of The Crate writing its own genre back over
+    yours. Only a track whose genre is different from what The Crate last saw there counts; a genre you emptied
+    doesn't, and neither does the file's own label showing up (the deck software read the file again, you didn't
+    type it). Returns how many picks changed."""
+    try:
+        was = json.load(open(os.path.join(dir, WRITTEN)))
+    except (OSError, ValueError):
+        return 0
+    table = genres.lookup(genres.load(dir)["list"])
+    picks, said = {}, []
+    for where, name in (("rekordbox", "rekordbox"), ("engine", "Engine DJ")):
+        old, now = (was.get(where) or {}) if isinstance(was, dict) else {}, there.get(where) or {}
+        for s in songs:
+            new = str(now.get(s["rel"]) or "").strip()[:60]
+            if s["rel"] not in old or not new or s["key"] in picks or genres.norm(new) == genres.norm(old[s["rel"]]):
+                continue
+            if genres.norm(new) == genres.norm(s.get("tag_genre")):
+                continue
+            parts = [genres.match(p, table) for p in re.split(r"[;/,|]", new)]
+            mine = [genres.match(new, table)] if genres.match(new, table) else [p for p in parts if p][:3] or [new]
+            if s["genres"][:1] == mine[:1]:
+                continue  # it already says what the page says, written another way
+            picks[s["key"]] = list(dict.fromkeys(mine))
+            said.append(f'{" - ".join(x for x in (s["artist"], s["title"]) if x)} is now {mine[0]} (changed in {name})')
+    if not picks:
+        return 0
+    g = genres.load(dir)  # read again right before saving: the page may have saved a pick meanwhile
+    for key, names in picks.items():
+        for n in names:  # a new one joins your list
+            if genres.norm(n) not in {genres.norm(x) for x in g["list"]}:
+                g["list"].append(n)
+        by = {genres.norm(x): x for x in g["list"]}
+        g["songs"][key] = [by[genres.norm(n)] for n in names]
+    genres.save(dir, g)
+    log(dir, "your genre: " + "; ".join(said[:3]) + (f" and {len(said) - 3} more" if len(said) > 3 else ""))
+    return len(picks)
+
 
 if __name__ == "__main__":
     d, s = sys.argv[1], sys.argv[2]

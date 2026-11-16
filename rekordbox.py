@@ -6,16 +6,22 @@ Run by dj.py with the private Python (it has pyrekordbox, which knows rekordbox 
 
     rekordbox.py            reads {"src": music folder, "backups": folder, "songs": [...], "lists": [[name, [rel]]]}
                             on stdin, prints one line for the log (nothing when there was nothing to do)
+    rekordbox.py --genres   reads {"src": music folder, "rels": [...]} on stdin, prints the genre rekordbox shows for
+                            each of those tracks now as JSON ({rel: genre}; null when there's no rekordbox here).
+                            Reads only, so it's fine while rekordbox is open
 
 What it does to the library:
   - adds every Crate track rekordbox doesn't know yet, by its place in the music folder, marked "not analysed", so
     rekordbox draws its own beat grid and waveform the first time the track is loaded;
-  - keeps the genre of Crate tracks in step with the page (your pick there is the one that counts);
+  - keeps the genre of Crate tracks in step with the page (a genre you change in rekordbox comes back to the page
+    as your pick: dj.py, with --genres here);
+  - gives Crate tracks their cover, when the file carries one, where rekordbox keeps covers (share/PIONEER/Artwork,
+    three sizes, as it makes them itself);
   - keeps one playlist folder, "The Crate", in step. Nothing outside that folder is read or changed: your own
     playlists, smart lists, cues and My Tags stay exactly as they are.
 Never deletes a track. Only when rekordbox is closed (it would write over the change otherwise); when it's open the
 change waits for the next run. Before any change the library file is copied to dj-backups/ (the last 20 kept)."""
-import json, os, shutil, sys, time, unicodedata
+import json, os, shutil, subprocess, sys, time, unicodedata
 
 FOLDER = "The Crate"
 KINDS = (".mp3", ".m4a", ".mp4", ".flac", ".wav", ".aiff")  # what rekordbox plays and pyrekordbox can add
@@ -46,23 +52,98 @@ def backup(db_file, folder):
     return out
 
 
-def write(job, db_file=None):
+def opened(db_file):
+    """rekordbox's library, or None when there's no rekordbox on this Mac."""
     try:
         from pyrekordbox import MasterDatabase
-        from pyrekordbox.masterdb import models
-        from pyrekordbox.masterdb.database import get_rekordbox_pid
     except ImportError:
-        return ""
+        return None
     import logging
     logging.disable(logging.WARNING)
     try:
-        db = MasterDatabase(path=db_file) if db_file else MasterDatabase()
+        return MasterDatabase(path=db_file) if db_file else MasterDatabase()
     except FileNotFoundError:
-        return ""  # no rekordbox on this Mac
+        return None
+
+
+def write(job, db_file=None):
+    db = opened(db_file)
+    if db is None:
+        return ""
+    from pyrekordbox.masterdb import models
+    from pyrekordbox.masterdb.database import get_rekordbox_pid
     try:
         return sync(db, job, models, get_rekordbox_pid, db_file)
     finally:
         db.close()
+
+
+def genres_there(job, db_file=None):
+    """The genre rekordbox shows for each Crate track now: {rel: genre}. None without rekordbox."""
+    db = opened(db_file)
+    if db is None:
+        return None
+    try:
+        have = {nfc(c.FolderPath): c for c in db.get_content().all() if c.FolderPath}
+        out = {}
+        for rel in job["rels"]:
+            c = have.get(nfc(os.path.join(job["src"], rel)))
+            if c is not None:
+                out[rel] = c.Genre.Name if c.Genre is not None else ""
+        return out
+    finally:
+        db.close()
+
+
+def art(path):
+    """The cover picture a music file carries (its bytes), or None."""
+    try:
+        import mutagen
+        f = mutagen.File(path)
+        pics = getattr(f, "pictures", None)  # FLAC
+        if pics:
+            return bytes(pics[0].data)
+        tags = f.tags if f is not None else None
+        if tags is None:
+            return None
+        for k in tags.keys():
+            if k.startswith("APIC"):  # MP3, WAV and AIFF
+                return bytes(tags[k].data)
+            if k == "covr" and tags[k]:  # M4A
+                return bytes(tags[k][0])
+    except Exception:  # a file mutagen can't read simply has no cover here
+        return None
+    return None
+
+
+def cover(share, uuid, data):
+    """Puts a track's cover where rekordbox keeps them, in the three sizes it makes itself: the picture as it is
+    (800 at most), 240 x 240 and 80 x 80. The ImagePath for the track's row, or "" when the picture can't be read."""
+    rel = f"/PIONEER/Artwork/{uuid[:3]}/{uuid[3:]}/artwork.jpg"
+    folder = os.path.dirname(share + rel)
+    os.makedirs(folder, exist_ok=True)
+    raw = os.path.join(folder, "cover-in" + (".png" if data[:4] == b"\x89PNG" else ".jpg"))
+    with open(raw, "wb") as f:
+        f.write(data)
+    made = []
+    try:
+        r = subprocess.run(["/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", raw], capture_output=True, text=True)
+        size = [int(l.split(":")[1]) for l in r.stdout.splitlines() if "pixel" in l and l.split(":")[1].strip().isdigit()]
+        if r.returncode or len(size) != 2 or min(size) < 1:
+            return ""
+        for name, fit in (("artwork.jpg", ["-Z", "800"] if max(size) > 800 else []),
+                          ("artwork_m.jpg", ["-z", "240", "240"]), ("artwork_s.jpg", ["-z", "80", "80"])):
+            out = os.path.join(folder, name)
+            r = subprocess.run(["/usr/bin/sips", "-s", "format", "jpeg", *fit, raw, "--out", out], capture_output=True)
+            made.append(out)
+            if r.returncode or not os.path.isfile(out) or not os.path.getsize(out):
+                for f in made:  # nothing half-made is left behind
+                    if os.path.isfile(f):
+                        os.remove(f)
+                return ""
+    finally:
+        os.remove(raw)
+    return rel
 
 
 def sync(db, job, models, running, db_file):
@@ -92,11 +173,24 @@ def sync(db, job, models, running, db_file):
         for p, (n, rels) in zip(kids, wanted):
             if members(p) != [have[nfc(path[r])].ID for r in rels]:
                 stale.append(n)
-    if not new and not regenre and same_lists and not stale:
+    # covers: tracks whose file carries one and whose row has none yet
+    arts = {s["rel"]: a for s in songs if not getattr(have.get(nfc(path[s["rel"]])), "ImagePath", "")
+            for a in [art(path[s["rel"]])] if a}
+    if not new and not regenre and same_lists and not stale and not arts:
         return ""
     if running():
-        return "rekordbox is open, so its library was left alone; it catches up on the next run after you close it"
+        return "rekordbox is open, so its library was left alone; it catches up when you close it"
     file = db_file or str(db.engine.url.database)
+    # Covers for tracks already in the library are made first: a picture that can't be read drops out here, so it
+    # never counts as something to do (no backup and no write, run after run, for nothing).
+    share, covers = os.path.join(os.path.dirname(file), "share"), {}
+    for rel in [r for r in arts if nfc(path[r]) in have]:
+        c = have[nfc(path[rel])]
+        where = cover(share, str(c.UUID), arts.pop(rel)) if c.UUID else ""
+        if where:
+            covers[rel] = where
+    if not new and not regenre and same_lists and not stale and not covers:
+        return ""
     saved = backup(file, job["backups"])
 
     def named(get, add, name):
@@ -134,6 +228,14 @@ def sync(db, job, models, running, db_file):
             have[nfc(path[s["rel"]])] = c
         for s in regenre:
             have[nfc(path[s["rel"]])].GenreID = named(db.get_genre, db.add_genre, s["genres"][0])
+        db.flush()
+        for rel, data in arts.items():  # the tracks just added
+            c = have[nfc(path[rel])]
+            where = cover(share, str(c.UUID), data) if c.UUID else ""
+            if where:
+                covers[rel] = where
+        for rel, where in covers.items():
+            have[nfc(path[rel])].ImagePath = where
         if top is None:
             top = db.create_playlist_folder(FOLDER)
         if not same_lists:  # the lists or their order changed: The Crate's folder is laid out again
@@ -161,6 +263,8 @@ def sync(db, job, models, running, db_file):
     if ok != "ok":
         raise RuntimeError(f"the library didn't pass its check after the change; the copy from before is {saved}")
     said = f"{len(have_crate(have, path))} tracks in the library ({len(new)} new), {len(wanted)} playlists in \"{FOLDER}\""
+    if covers:
+        said += f"; {len(covers)} cover{'s' if len(covers) != 1 else ''} added"
     if skipped:
         said += f"; {skipped} left out (a file type rekordbox doesn't play)"
     return said
@@ -172,4 +276,7 @@ def have_crate(have, path):
 
 if __name__ == "__main__":
     job = json.load(sys.stdin)
-    print(write(job, os.environ.get("REKORDBOX_DB") or None))
+    if "--genres" in sys.argv:
+        print(json.dumps(genres_there(job, os.environ.get("REKORDBOX_DB") or None)))
+    else:
+        print(write(job, os.environ.get("REKORDBOX_DB") or None))

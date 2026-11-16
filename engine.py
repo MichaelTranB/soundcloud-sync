@@ -63,6 +63,25 @@ def row(song, usb_file):
     }
 
 
+def genres_there(usb, songs):
+    """The genre the USB's Engine library shows for each Crate track now: {rel: genre}. None when the USB has no
+    Engine library. Reads only."""
+    db = db_path(usb)
+    if not os.path.isfile(db):
+        return None
+    con = sqlite3.connect(db, timeout=20)
+    try:
+        have = {nfc(p): g or "" for p, g in con.execute("SELECT path, genre FROM Track") if p}
+    finally:
+        con.close()
+    out = {}
+    for s in songs:
+        p = nfc(f"../{MUSIC}/{s['rel']}")
+        if p in have:
+            out[s["rel"]] = have[p]
+    return out
+
+
 FILL = ("length", "bpm", "bpmAnalyzed", "year", "bitrate", "title", "artist", "album", "comment", "label", "remixer",
         "key")  # kept up to date only until the deck has analysed the track
 

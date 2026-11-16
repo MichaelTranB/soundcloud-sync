@@ -90,3 +90,5 @@ recognised.json.tmp
 .dj.lock
 dj-backups/
 .dj-again
+dj-written.json
+dj-written.json.tmp

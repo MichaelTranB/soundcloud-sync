@@ -44,8 +44,11 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   one folder, "The Crate" (All songs, Newest 50, the SoundCloud playlist, one list per genre); nothing outside that
   folder is read or changed, no track is ever deleted, music files are never edited, the decks' own analysis, cues
   and grids are never touched, and the library file is copied to `dj-backups/` before every change (last 20 kept).
-  New rows are "not analysed", so the deck draws its own grid and waveform on first load. Problems land in `dj.log`
-  with the word PROBLEM and show on the page.
+  New rows are "not analysed", so the deck draws its own grid and waveform on first load. rekordbox rows get the
+  file's cover (`share/PIONEER/Artwork`, its own three sizes). A genre changed in rekordbox or Engine DJ becomes
+  his pick: `dj-written.json` remembers what each library showed after the last write, and a difference is his
+  edit (not when emptied, not when it's just the file's own tag). `app.py` runs `dj.py` when rekordbox closes.
+  Problems land in `dj.log` with the word PROBLEM and show on the page.
 - **Recognising songs by their sound (`recognise.py`):** as MusicBrainz Picard does: a Chromaprint fingerprint (from
   Essentia) is looked up on AcoustID, and MusicBrainz names the recording and its genres (`recognised.json`). Used
   for genres, and to flag (never throw back by itself) a Soulseek file that sounds like another song: flips and
