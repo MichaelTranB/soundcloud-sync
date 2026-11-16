@@ -467,6 +467,47 @@ def sync_running():
         return False
 
 
+AGAIN = os.path.join(DIR, soulseek.AGAIN)
+_again = {"on": False, "lock": threading.Lock()}
+
+
+def search_again(new=True):
+    """A file was just thrown back: Soulseek is asked for another copy right away (soulseek-now.sh), not at the next
+    sync. The note (.soulseek-again) is the queue: while a sync or an earlier search is still going, it waits, and
+    the search starts the moment that one is done, so files can be thrown back one after another."""
+    if new:
+        if not soulseek_ready():
+            return  # no Soulseek sign-in yet: the first sync after it looks
+        open(AGAIN, "w").close()
+    with _again["lock"]:
+        if _again["on"]:
+            return
+        _again["on"] = True
+
+    def go():
+        tries = 0
+        try:
+            while os.path.exists(AGAIN):
+                if not sync_running():
+                    if tries == 3:  # never a loop that starts it for ever: the next sync looks instead
+                        os.remove(AGAIN)
+                        with open(os.path.join(DIR, "soulseek.log"), "a") as f:
+                            f.write(time.strftime("%F %R") + "  Soulseek PROBLEM: the search for another copy "
+                                    "couldn't start; the next sync looks for it\n")
+                        break
+                    tries += 1
+                    subprocess.Popen([os.path.join(DIR, "soulseek-now.sh")], start_new_session=True,
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    tries = 0  # it started (or a sync is on): the note left now is a newer one
+                time.sleep(4)
+        except OSError:
+            pass
+        finally:
+            _again["on"] = False
+    threading.Thread(target=go, daemon=True).start()
+
+
 def soulseek_ready():
     """True once a Soulseek sign-in is saved (reads only the item's name, never the password)."""
     if time.time() - _slsk["at"] > 60:
@@ -759,6 +800,7 @@ def state():
     acct = account()
     have = []
     free = {l.split("\t")[2] for l in read("free.tsv").splitlines() if l.count("\t") == 2}
+    wrong = soulseek.suspects(DIR)  # Soulseek files that don't look like their playlist song, and why
     for folder, src in ((OUT, ""), (SLSK, "Soulseek")):
         if os.path.isdir(folder):
             for f in os.listdir(folder):
@@ -766,7 +808,8 @@ def state():
                     p = os.path.join(folder, f)
                     name, ext = os.path.splitext(f)
                     have.append({"name": name, "kind": ext[1:].upper(), "mb": round(os.path.getsize(p) / 1e6, 1),
-                                 "src": src or ("Free download" if p in free else ""), "kbps": lossy_kbps(p)})
+                                 "src": src or ("Free download" if p in free else ""), "kbps": lossy_kbps(p),
+                                 **({"file": f, "wrong": wrong.get(p, "")} if src else {})})
     have.sort(key=lambda t: t["name"].lower())
     got = soulseek.got_links(DIR, SLSK)  # on the Mac from Soulseek, even mid-run: not still to get
     # What a running sync is doing: reading SoundCloud first, then Soulseek (its log is newer than the sync's flag).
@@ -1137,6 +1180,14 @@ class Handler(BaseHTTPRequestHandler):
             if isinstance(got, str):
                 return self.send(400, {"error": got})
             picked_up(got)
+        elif self.path == "/api/soulseek-bad":  # "Wrong or bad file": to the Trash, never taken again, looked for anew
+            file = str(body.get("file", ""))
+            if not file and not body.get("all"):
+                return self.send(400, {"error": "Which file?"})
+            if not soulseek.bad(DIR, SLSK, file):
+                return self.send(400, {"error": "That file couldn't be moved to the Trash."})
+            dj_run(0)  # the decks' playlists follow
+            search_again()  # and Soulseek is asked for another copy now, not at the next sync
         elif self.path == "/api/watch":
             link = str(body.get("link", ""))
             if link:
@@ -1242,4 +1293,8 @@ def picked_up(got):
 
 if __name__ == "__main__":
     threading.Thread(target=watch_downloads, daemon=True).start()
+    # Soulseek files kept before the right-song check existed are looked at once (the page marks the odd ones).
+    threading.Thread(target=soulseek.check_all, args=(DIR, SLSK), daemon=True).start()
+    if os.path.exists(AGAIN):  # a file thrown back just before the page restarted still gets its search
+        search_again(new=False)
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

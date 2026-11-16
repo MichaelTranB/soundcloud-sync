@@ -135,6 +135,9 @@
   li .why.paid { color: #f0a868; }
   li .why.gone, li .why.skip { color: var(--dim); }
   li .why .by { color: var(--dim); }
+  li button.bad, .wrongs button.undo { background: none; border: 0; padding: 0; color: var(--dim); font-size: 13px; text-decoration: underline dotted; white-space: nowrap; cursor: pointer; }
+  li button.bad:hover, .wrongs button.undo:hover { color: #e0a040; }
+  .wrongs { padding: 9px 2px 11px; color: #e0a040; font-size: 14px; }
   li .why button.undo { background: none; border: 0; padding: 0; margin-left: 8px; color: var(--dim); font-size: 13.5px; text-decoration: underline dotted; }
   #viewNote .run { display: flex; flex-wrap: wrap; align-items: center; color: var(--text); font-weight: 600; }
   #viewNote .run .bar { flex: 1 1 100%; height: 4px; margin-top: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
@@ -628,13 +631,30 @@ function draw() {
       ...(rd ? [el('span', { className: 'bar' }, el('i', { style: `width:${Math.round(100 * rd.done / rd.total)}%` }))] : []))] : []),
     ...now.map(t => el('li', {}, nameEl(t),
       el('span', { className: 'state on' }, el('i', { className: 'dot live' }), STATE[t.state]))));
-  $('have').replaceChildren(...(have.length ? have.map(t => el('li', {},
+  // Soulseek files can be the wrong song or a bad copy: each can be thrown back (to the Trash; that copy is never
+  // taken again and another one is looked for). The ones The Crate's own check doubts are marked.
+  const throwBack = (body, ask) => async () => {
+    if (!confirm(ask)) return;
+    try { await call('/api/soulseek-bad', body); } catch (e) { alert(e.message); }
+  };
+  const doubted = s.have.filter(t => t.wrong);
+  $('have').replaceChildren(
+    ...(doubted.length && !q ? [el('div', { className: 'wrongs' },
+      `${doubted.length} Soulseek file${doubted.length === 1 ? " doesn't" : "s don't"} look like the playlist's song. `,
+      el('button', { className: 'undo', textContent: doubted.length === 1 ? 'Throw it back' : 'Throw them all back',
+        onclick: throwBack({ all: true }, `Throw back ${doubted.length === 1 ? 'this file' : `these ${doubted.length} files`}?\n\n` +
+          doubted.map(t => `${t.name}: ${t.wrong}`).slice(0, 12).join('\n') + (doubted.length > 12 ? '\n…' : '') +
+          '\n\nThey go to the Trash, are never taken again, and The Crate starts looking for the right ones right away.') }))] : []),
+    ...(have.length ? have.map(t => el('li', {},
     el('span', { className: 'n', textContent: t.name }),
+    ...(t.wrong ? [el('span', { className: 'tag low', title: 'Probably not the playlist\'s song: ' + t.wrong, textContent: 'Looks wrong' })] : []),
     el('span', { className: 'tag' + (LOSSLESS.includes(t.kind) ? ' lossless' : ''), textContent: t.kind }),
     ...(t.kbps && t.kbps < 318 ? [el('span', { className: 'tag low', title: 'Below 320 kbps: the file the artist uploaded is low quality. Buy the lossless one from a shop.', textContent: t.kbps + ' kbps' })] : []),
     el('span', { className: 'tag', textContent: t.mb + ' MB' }),
     ...((s.justGot || []).includes(t.name) ? [el('span', { className: 'tag new', title: 'Just picked up from your Downloads folder', textContent: 'New' })] : []),
-    ...(t.src ? [el('span', { className: 'tag', title: t.src === 'Soulseek' ? 'Found on Soulseek; replaced by the artist\'s own file when it comes' : 'Fetched from the artist\'s own free-download link', textContent: t.src })] : [])))
+    ...(t.src ? [el('span', { className: 'tag', title: t.src === 'Soulseek' ? 'Found on Soulseek; replaced by the artist\'s own file when it comes' : 'Fetched from the artist\'s own free-download link', textContent: t.src })] : []),
+    ...(t.file ? [el('button', { className: 'undo bad', title: 'Wrong song or a bad copy? It goes to the Trash, is never taken again, and another copy is looked for right away.',
+      textContent: 'Wrong or bad file', onclick: throwBack({ file: t.file }, `Throw back "${t.name}"?\n\n${t.wrong ? 'It looks wrong: ' + t.wrong + '.\n\n' : ''}It goes to the Trash, this copy is never taken again, and The Crate starts looking for another one right away.`) })] : [])))
     : [el('div', { className: 'empty', textContent: q ? 'No match.' : 'Nothing yet. Tracks whose artists allow downloads land here in their original quality.' })]));
 
   for (const x of document.querySelectorAll('.tabs button')) x.setAttribute('aria-selected', x.dataset.v === view);

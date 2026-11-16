@@ -10,6 +10,9 @@ SOCKSEEK="${SOCKSEEK:-$HOME/.local/bin/sockseek}"
 SERVICE=soundcloud-sync-soulseek   # Keychain item made by soulseek-login.sh
 LOG="$DIR/soulseek.log"
 say() { echo "$(date '+%F %R')  $1" | tee -a "$LOG"; }
+# The page's note that a file was thrown back and its track wants looking for (soulseek-now.sh): this run does that.
+# One thrown back while this run is going leaves the note again, and the page starts another run after this one.
+rm -f "$DIR/.soulseek-again"
 
 [ -x "$SOCKSEEK" ] || { say "Soulseek skipped: sockseek isn't installed (run install.sh)"; exit 0; }
 SUSER="$(security find-generic-password -s "$SERVICE" 2>/dev/null | sed -n 's/^ *"acct"<blob>="\(.*\)"$/\1/p')"
@@ -27,6 +30,7 @@ prep() { python3 "$DIR/safety.py" check "$DIR" "${SLSK:h}" 2>>"$DIR/safety.log";
 # (--strict-conditions drops files whose bitrate the peer doesn't report). Nothing lower is ever taken.
 # Same version only: the file must be within 5 seconds of the SoundCloud track's length (an extended mix is not
 # the radio edit), unless the SoundCloud upload is itself a clip or edit (soulseek.py leaves its length out).
+# That is asked of sockseek here and checked on the file itself afterwards (soulseek.py record).
 # Only these settings count: a private one-run config file holds the sign-in (a password on the command line
 # would show in the list of running programs). --no-skip-existing: soulseek.py's list (soulseek.tsv: got once,
 # never again) alone decides what to search.
@@ -34,17 +38,26 @@ CONF="$(mktemp "$DIR/.sockseek-XXXXXX")" || { say "Soulseek FAILED: could not wr
 trap 'rm -f "$CONF"' EXIT
 printf 'username = %s\npassword = %s\n' "$SUSER" "$SPASS" >"$CONF"
 get() {
+  # Never the same wrong file twice: the people whose file you threw back aren't asked again, and the ones whose
+  # file the check threw back come last (soulseek-wrong.tsv, kept by soulseek.py).
+  local BAN=(${(f)"$(python3 "$DIR/soulseek.py" banned "$DIR" "$SLSK" 2>>"$LOG")"})
   "$SOCKSEEK" "$DIR/soulseek.csv" --input-type csv --config "$CONF" \
     -o "$SLSK" --index-path "$SLSK/.index.sldl" --name-format '{sartist( - )stitle|slsk-filename}' \
-    --strict-title --length-tol 5 --desperate --artist-maybe-wrong --no-skip-existing --no-progress "$@" >"$DIR/soulseek-pass.log" 2>&1
+    --strict-title --length-tol 5 --desperate --artist-maybe-wrong --no-skip-existing --no-progress "${BAN[@]}" "$@" >"$DIR/soulseek-pass.log" 2>&1
   cat "$DIR/soulseek-pass.log" >>"$DIR/soulseek-run.log"
   # Before anything counts as got: a file that isn't real audio (or that the virus scan flags) goes to Quarantine.
   python3 "$DIR/safety.py" check "$DIR" "${SLSK:h}" 2>>"$DIR/safety.log"
-  python3 "$DIR/soulseek.py" record "$DIR" "$SLSK" >>"$LOG" 2>&1
+  # Then each file is looked at itself (its real length, the song named inside it): sockseek's own title and
+  # length checks only see what the other person's computer says about a file. One that isn't the playlist's song
+  # is thrown back (to the Trash) and its track stays on the list.
+  local said="$(python3 "$DIR/soulseek.py" record "$DIR" "$SLSK" 2>&1)"
+  [ -n "$said" ] && print -r -- "$said" >>"$LOG"
+  local back=$(print -r -- "$said" | grep -c '^thrown back')
   # sockseek writes one "SongJob: succeeded" line per track it got (a failed try on one peer is only a [warn]).
   local n=$(( $(wc -l < "$DIR/soulseek.csv") - 1 ))
   if grep -q 'Job List: ' "$DIR/soulseek-pass.log"; then
-    echo "got $(grep -c '\] SongJob: succeeded:' "$DIR/soulseek-pass.log") of $n"
+    local got=$(( $(grep -c '\] SongJob: succeeded:' "$DIR/soulseek-pass.log") - back ))
+    echo "got $(( got > 0 ? got : 0 )) of $n$( [ "$back" -gt 0 ] && echo " ($back thrown back: not the playlist's song)")"
   else
     echo "FAILED, see soulseek-run.log"
   fi
