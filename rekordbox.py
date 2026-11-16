@@ -153,6 +153,14 @@ def sync(db, job, models, running, db_file):
     path = {s["rel"]: os.path.join(src, s["rel"]) for s in songs}
     songs = [s for s in songs if os.path.isfile(path[s["rel"]])]
     have = {nfc(c.FolderPath): c for c in db.get_content().all() if c.FolderPath}
+    # A file that moved inside the music folder (dj.py's "was") is the same track at a new place: its row follows,
+    # cues and all, instead of a second row being added beside one whose file is gone.
+    moved = []
+    for s in songs:
+        old, now = nfc(os.path.join(src, s["was"])) if s.get("was") else "", nfc(path[s["rel"]])
+        if old in have and now not in have:
+            have[now] = have.pop(old)
+            moved.append((now, have[now]))
 
     def genre_of(c):
         return c.Genre.Name if c.Genre is not None else ""
@@ -176,7 +184,7 @@ def sync(db, job, models, running, db_file):
     # covers: tracks whose file carries one and whose row has none yet
     arts = {s["rel"]: a for s in songs if not getattr(have.get(nfc(path[s["rel"]])), "ImagePath", "")
             for a in [art(path[s["rel"]])] if a}
-    if not new and not regenre and same_lists and not stale and not arts:
+    if not new and not regenre and same_lists and not stale and not arts and not moved:
         return ""
     if running():
         return "rekordbox is open, so its library was left alone; it catches up when you close it"
@@ -189,7 +197,7 @@ def sync(db, job, models, running, db_file):
         where = cover(share, str(c.UUID), arts.pop(rel)) if c.UUID else ""
         if where:
             covers[rel] = where
-    if not new and not regenre and same_lists and not stale and not covers:
+    if not new and not regenre and same_lists and not stale and not covers and not moved:
         return ""
     saved = backup(file, job["backups"])
 
@@ -212,6 +220,8 @@ def sync(db, job, models, running, db_file):
             keys[name] = k.ID
         return keys[name]
     try:
+        for now, c in moved:
+            c.FolderPath = now
         for s in new:
             year = str(s.get("year") or "")
             c = db.add_content(
@@ -263,6 +273,8 @@ def sync(db, job, models, running, db_file):
     if ok != "ok":
         raise RuntimeError(f"the library didn't pass its check after the change; the copy from before is {saved}")
     said = f"{len(have_crate(have, path))} tracks in the library ({len(new)} new), {len(wanted)} playlists in \"{FOLDER}\""
+    if moved:
+        said += f"; {len(moved)} followed to where their file{'s are' if len(moved) != 1 else ' is'} now"
     if covers:
         said += f"; {len(covers)} cover{'s' if len(covers) != 1 else ''} added"
     if skipped:

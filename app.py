@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.expanduser("~/Music/SoundCloud Sync")
-SLSK = os.path.join(OUT, "From Soulseek")  # soulseek.sh's downloads
+SLSK = OUT  # soulseek.sh's downloads land in the music folder, with everything else
 PORT = int(os.environ.get("CRATE_PORT", 4780))  # another port only for trying a copy side by side
 HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
@@ -801,15 +801,21 @@ def state():
     have = []
     free = {l.split("\t")[2] for l in read("free.tsv").splitlines() if l.count("\t") == 2}
     wrong = soulseek.suspects(DIR)  # Soulseek files that don't look like their playlist song, and why
-    for folder, src in ((OUT, ""), (SLSK, "Soulseek")):
+    slsk = soulseek.ours(DIR, SLSK)
+    # (The folder Soulseek files had to themselves is still listed until the next sync moves them in with the rest.)
+    for folder, old in ((OUT, ""), (os.path.join(OUT, soulseek.OLD), soulseek.OLD)):
         if os.path.isdir(folder):
             for f in os.listdir(folder):
                 if f.lower().endswith(AUDIO):
                     p = os.path.join(folder, f)
                     name, ext = os.path.splitext(f)
-                    have.append({"name": name, "kind": ext[1:].upper(), "mb": round(os.path.getsize(p) / 1e6, 1),
-                                 "src": src or ("Free download" if p in free else ""), "kbps": lossy_kbps(p),
-                                 **({"file": f, "wrong": wrong.get(p, "")} if src else {})})
+                    try:
+                        mb = round(os.path.getsize(p) / 1e6, 1)
+                    except OSError:  # thrown back this instant
+                        continue
+                    have.append({"name": name, "kind": ext[1:].upper(), "mb": mb, "kbps": lossy_kbps(p),
+                                 "src": "Soulseek" if old or p in slsk else "Free download" if p in free else "",
+                                 "file": os.path.join(old, f), "wrong": wrong.get(p, "")})
     have.sort(key=lambda t: t["name"].lower())
     got = soulseek.got_links(DIR, SLSK)  # on the Mac from Soulseek, even mid-run: not still to get
     # What a running sync is doing: reading SoundCloud first, then Soulseek (its log is newer than the sync's flag).
@@ -851,7 +857,7 @@ def state():
     return {
         "playlist": read("playlist.txt"), "service": svc, "capped": capped, "pasted": pasted,
         "missing": info.get("missing", 0), "reading": reading, "usb": usb, "unread": unread, "volumes": volumes(),
-        "usbPlugged": bool(usb) and os.path.isdir(f"/Volumes/{usb}"),
+        "usbPlugged": bool(usb) and os.path.isdir(os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)),
         "usbEject": os.path.exists(os.path.join(DIR, "usb-eject.txt")),  # off unless ticked
         "usbCopy": usb_copy(), "usbResult": usb_result(usblog),
         # new tracks passed the safety check since the last copy: they go on the next time it's plugged in
@@ -1218,9 +1224,10 @@ class Handler(BaseHTTPRequestHandler):
             file = str(body.get("file", ""))
             if not file and not body.get("all"):
                 return self.send(400, {"error": "Which file?"})
-            if not soulseek.bad(DIR, SLSK, file):
-                return self.send(400, {"error": "That file couldn't be moved to the Trash."})
-            dj_run(0)  # the decks' playlists follow
+            went = soulseek.bad(DIR, SLSK, file, YTDLP)
+            if not went or isinstance(went, str):
+                return self.send(400, {"error": went or "That file couldn't be moved to the Trash."})
+            dj_run(0)  # the decks' playlists follow, and its copy on the USB goes too (now, or when the USB is next in)
             search_again()  # and Soulseek is asked for another copy now, not at the next sync
         elif self.path == "/api/watch":
             link = str(body.get("link", ""))

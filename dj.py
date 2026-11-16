@@ -13,7 +13,7 @@ Standard library only. Tempo and key need the private Python dj-setup.sh sets up
 still reach the decks, which then analyse them on load."""
 import fcntl, json, os, re, subprocess, sys, time, unicodedata
 
-import genres, recognise
+import genres, recognise, usb_tidy
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 # The private Python with Essentia, Mutagen and pyrekordbox (dj-setup.sh); the second is where the first build kept it.
@@ -54,6 +54,43 @@ def tracks(dir, src):
         if rel.lower().endswith(AUDIO) and os.path.isfile(os.path.join(src, rel)):
             out.append(rel)
     return out
+
+
+def follow(dir, src):
+    """Soulseek files once sat in a folder of their own; soulseek.py moved them in with the rest and noted each move
+    (soulseek-moved.tsv). The notes kept per file here go along, so no track is listened to again and the decks'
+    libraries are pointed at the new place instead of getting every track twice. Returns {where it is: where it was}."""
+    was = {}
+    for line in read(dir, "soulseek-moved.tsv").splitlines():
+        old, _, new = line.partition("\t")
+        if old and new:
+            was[os.path.relpath(new, src)] = os.path.relpath(old, src)
+    if not was:
+        return was
+
+    def rename(name, inner=False):
+        try:
+            got = json.load(open(os.path.join(dir, name)))
+        except (OSError, ValueError):
+            return
+        if not isinstance(got, dict):
+            return
+        changed = False
+        for part in ([v for v in got.values() if isinstance(v, dict)] if inner else [got]):
+            for new, old in was.items():
+                if old in part and new not in part:
+                    part[new] = part.pop(old)
+                    if isinstance(part[new], dict) and "path" in part[new]:  # (recognised.json keeps the full path too)
+                        part[new]["path"] = os.path.realpath(os.path.join(src, new))
+                    changed = True
+        if changed:
+            with open(os.path.join(dir, name + ".tmp"), "w") as f:
+                json.dump(got, f, ensure_ascii=False, indent=0, sort_keys=True)
+            os.replace(os.path.join(dir, name + ".tmp"), os.path.join(dir, name))
+    rename(CACHE)
+    rename(recognise.FILE)
+    rename(WRITTEN, inner=True)
+    return was
 
 
 def listing(dir):
@@ -113,6 +150,7 @@ def split_name(name):
 def library(dir, src):
     """Every track, ready for the decks and the page."""
     rels = tracks(dir, src)
+    was = follow(dir, src)
     try:
         cache = json.load(open(os.path.join(dir, CACHE)))
     except (OSError, ValueError):
@@ -138,7 +176,8 @@ def library(dir, src):
                 "mb_genres": (known.get(rel) or {}).get("genres") or [],
                 "sounds_like": " - ".join(x for x in ((known.get(rel) or {}).get("names") or [["", ""]])[0] if x),
                 "sc_tags": (row or {}).get("tags", []), "url": (row or {}).get("url", ""),
-                "playlist": (row or {}).get("playlist", ""), "index": (row or {}).get("index", 0)}
+                "playlist": (row or {}).get("playlist", ""), "index": (row or {}).get("index", 0),
+                "was": was.get(rel, "")}  # where this file sat before it was moved: the decks' libraries follow
         try:
             st = os.stat(os.path.join(src, rel))
             song["size"], song["mtime"] = st.st_size, int(st.st_mtime)
@@ -179,6 +218,7 @@ def analyse(dir, src):
     if not os.path.exists(PY):
         log(dir, "no tempo/key yet: the analyser isn't set up on this Mac (dj-setup.sh; the decks analyse on load meanwhile)")
         return
+    follow(dir, src)  # a moved file keeps the tempo and key it already has
     here = os.path.dirname(os.path.abspath(__file__))
     r = subprocess.run([PY, os.path.join(here, "dj_analyze.py"), src, os.path.join(dir, CACHE)],
                        input="\n".join(tracks(dir, src)) + "\n", capture_output=True, text=True)
@@ -218,10 +258,17 @@ def busy(dir):
 
 
 def once(dir, src, volumes):
-    analyse(dir, src)
-    songs = library(dir, src)
     usb = read(dir, "usb.txt").strip()
     stick = os.path.join(volumes, usb) if usb and os.path.isdir(os.path.join(volumes, usb)) else ""
+    if stick:  # first, so it's right away: a song you threw back leaves the USB too (usb.sh does this as well)
+        try:
+            said = usb_tidy.say(*usb_tidy.tidy(dir, src, os.path.join(stick, "SoundCloud Sync")))
+            if said:
+                log(dir, f'USB "{usb}": {said}')
+        except Exception as e:  # never silent: the page shows the last lines of dj.log
+            log(dir, f'USB PROBLEM on "{usb}": {e}')
+    analyse(dir, src)
+    songs = library(dir, src)
     there = seen(dir, src, songs, stick)
     if adopt(dir, songs, there):  # a genre you changed on the decks' side is now your pick
         songs = library(dir, src)

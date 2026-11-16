@@ -53,7 +53,9 @@ safety check and Full Disk Access.
 3. **Soulseek:** lossless first, then MP3 at a real 320 kbps, same title and same length as the SoundCloud track.
    Every file is checked again once it's on your Mac (its real length, and the song named inside it); a wrong one
    goes to the Trash and that file is never taken again. Got the wrong song or a bad copy anyway? Press **Wrong or
-   bad file** beside it: The Crate throws it back and starts looking for another copy right away.
+   bad file** under it (every song on your Mac has the button, wherever it came from): The Crate throws it back,
+   takes it off your USB too, and starts looking for another copy right away. Soulseek songs sit in the music
+   folder with everything else, not in a folder of their own.
 4. **Downloads folder:** got one yourself? A free gate (Hypeddit, Laylo), Bandcamp "name your price", or bought
    it (Beatport, Bandcamp, Traxsource...)? Just leave the file in Downloads. The Crate picks it up within a minute
    if it's on your list, top quality only.
@@ -67,7 +69,10 @@ Never YouTube rips or recorded streams: low quality.
 - New tracks are copied after every sync (daily at your **Auto sync** time, or **Sync Now**) and the moment the USB is plugged in.
 - When new tracks land, it tells you. Tick **Eject the USB…** on the page to have it ejected then too, so you can
   just pull it out (off unless you tick it; never while a sync is still adding tracks).
-- It only adds files. Nothing on the USB is ever deleted or overwritten.
+- It only adds files. Nothing on the USB is ever deleted or overwritten. The one exception: a song you threw back
+  with **Wrong or bad file** leaves the USB as well (right away if it's plugged in, else the next time you plug it
+  in). It goes to the USB's own Trash, so you can still take it back until you empty the Trash; only The Crate's
+  own folder on the USB is ever touched.
 
 ## Your DJ decks (Engine DJ and rekordbox)
 
