@@ -122,6 +122,10 @@ def write(usb, songs, lists, backups):
                 if diff:
                     con.execute(f"UPDATE Track SET {', '.join(c + '=?' for c in diff)} WHERE id=?", (*diff.values(), tid))
                 continue
+            if not added and not con.execute("SELECT 1 FROM AlbumArt WHERE id=1").fetchone():
+                # a library the deck has only just made has no "no cover" row yet (the deck adds it with its first
+                # track, as id 1 with nothing in it); every track without a cover points at it
+                con.execute("INSERT INTO AlbumArt (id, hash, albumArt) VALUES (1, NULL, NULL)")
             r.update({"albumArtId": 1, "rating": 0, "isPlayed": 0, "isAnalyzed": 0, "isAvailable": 1,
                       "dateCreated": s.get("mtime") or now, "dateAdded": now, "isMetadataOfPackedTrackChanged": 0,
                       "isPerfomanceDataOfPackedTrackChanged": 0, "isMetadataImported": 1, "pdbImportKey": 0,
