@@ -16,9 +16,16 @@ import genres
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 # The private Python with Essentia, Mutagen and pyrekordbox (dj-setup.sh); the second is where the first build kept it.
-PY = next((p for p in map(os.path.expanduser, ("~/.local/share/crate-dj/python/bin/python3",
-                                               "~/.local/share/crate-dj/venv/bin/python")) if os.path.exists(p)),
-          os.path.expanduser("~/.local/share/crate-dj/python/bin/python3"))
+PYS = tuple(map(os.path.expanduser, ("~/.local/share/crate-dj/python/bin/python3",
+                                     "~/.local/share/crate-dj/venv/bin/python")))
+
+
+def python():
+    """Where the private Python is right now (the page asks each time: dj-setup.sh may finish while it's open)."""
+    return next((p for p in PYS if os.path.exists(p)), PYS[0])
+
+
+PY = python()
 CACHE = "dj-analysis.json"
 
 
