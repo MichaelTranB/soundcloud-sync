@@ -83,6 +83,11 @@ straight into your decks' libraries, with no dragging and no clicks:
   describes land in *No genre yet*: tap their genre on the page. Wrong genre? Tap **Edit**. A song can have several
   genres; it shows in each one's playlist, and the first is the Genre column on the decks. Your picks always win,
   and you can add or remove genres from the list.
+- **Recognise songs by their sound (optional):** The Crate can listen to each song and look it up in MusicBrainz,
+  the way the free app MusicBrainz Picard does. It fills in genres for songs nothing describes, and flags a
+  Soulseek file that sounds like a different song. It needs a free AcoustID key, once: the page has the link and
+  a box to paste it in. Only a fingerprint of the sound and the song's length leave your Mac, never file names.
+  Remixes, flips and bootlegs are often not in that database; those stay as they are.
 - **What it never touches:** your own playlists, cues, loops and beat grids, and the music files themselves. No
   song is ever removed from a library. A copy of the library is kept before every change (*dj-backups* in the app
   folder, the last 20).

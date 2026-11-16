@@ -36,7 +36,8 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   `blocked-originals.txt` so it counts as not got.
 - **DJ library (`dj.py`, page `/dj`):** after every sync and USB copy, every safety-checked track gets tempo and key
   (`dj_analyze.py`: Essentia, cached in `dj-analysis.json`) and its genres (`genres.py`: his pick in `genres.json`
-  wins, then the file's tag, SoundCloud's genre and tags, a genre word in the title; else "No genre yet"), and is
+  wins, then the file's tag, SoundCloud's genre, what it sounds like, SoundCloud's tags, a genre word in the title;
+  else "No genre yet"), and is
   written into the Engine DJ library on the USB (`engine.py`, plain sqlite3: Denon Prime and other Engine OS decks)
   and rekordbox on the Mac (`rekordbox.py`, pyrekordbox; only while rekordbox is closed). A song can have several
   genres: the first is the decks' Genre column, and it sits in every one of its genre playlists. Both libraries get
@@ -45,6 +46,13 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   and grids are never touched, and the library file is copied to `dj-backups/` before every change (last 20 kept).
   New rows are "not analysed", so the deck draws its own grid and waveform on first load. Problems land in `dj.log`
   with the word PROBLEM and show on the page.
+- **Recognising songs by their sound (`recognise.py`):** as MusicBrainz Picard does: a Chromaprint fingerprint (from
+  Essentia) is looked up on AcoustID, and MusicBrainz names the recording and its genres (`recognised.json`). Used
+  for genres, and to flag (never throw back by itself) a Soulseek file that sounds like another song: flips and
+  bootlegs are often not in the database. Needs an AcoustID application key: `acoustid-key.txt` (saved from the DJ
+  page, mode 600, never sent back to the page) or `KEY`, the one the app ships with; without a key nothing runs.
+  Only the fingerprint and the length leave the Mac, never file names; one question at a time, inside both
+  services' limits. Standard library only at import (Essentia only when it runs, in the analyser's Python).
 - **`dj-setup.sh`:** the analyser's own Python (python-build-standalone, pinned by version and sha256) with the
   packages in `dj-requirements.txt` (every file pinned by hash), in `~/.local/share/crate-dj`; from `install.sh`
   and each sync, a no-op once done. `app.py`, `dj.py`, `genres.py` and `engine.py` stay standard library only and
