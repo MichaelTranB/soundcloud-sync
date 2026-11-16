@@ -901,7 +901,7 @@ def dj_state():
     plugged = bool(usb) and os.path.isdir(at)
     last = lambda word: next((l for l in reversed(log[-40:]) if word in l), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
-            "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged,
+            "analyser": os.path.exists(dj.python()), "usb": usb, "usbIn": plugged,
             "engine": plugged and os.path.isfile(os.path.join(at, "Engine Library", "Database2", "m.db")),
             "rekordbox": os.path.isfile(os.path.expanduser("~/Library/Pioneer/rekordbox/master.db")),
             "lastEngine": last("Engine DJ on") or last("ENGINE PROBLEM"),
