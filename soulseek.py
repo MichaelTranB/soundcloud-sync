@@ -11,7 +11,8 @@ Every file sockseek brings is looked at before it counts (judge): its real lengt
 be the playlist's song. A wrong one goes to the Trash and is remembered (soulseek-wrong.tsv); its track is looked
 for again, from someone else. The page can throw a file back the same way ("Wrong or bad file").
 
-DIR is the app folder (to-buy.tsv lives there); SLSK is the "From Soulseek" folder inside the music folder.
+DIR is the app folder (to-buy.tsv lives there); SLSK is the music folder: Soulseek files sit with every other
+song (they had a "From Soulseek" folder of their own once; flatten() moves those across).
 Standard library only.
 
 Soulseek's server bans an account for 30 minutes after too many searches, so sockseek allows 34 every 220 s and
@@ -30,6 +31,9 @@ SLACK = 3600  # a sync at about the same time the next day still counts as a day
 WRONG = "soulseek-wrong.tsv"  # every file thrown back: link, when, bytes, peer, the peer's file, who, why
 AGAIN = ".soulseek-again"  # left by the page when a file is thrown back: Soulseek is asked again right away
 FROM = "soulseek-from.tsv"  # where each kept file came from: file, peer, the peer's file
+OLD = "From Soulseek"  # the folder inside the music folder that Soulseek files had to themselves, before
+MOVED = "soulseek-moved.tsv"  # each file flatten() moved: where it was, where it is now
+USB_THROWN = "usb-thrown.tsv"  # each file you threw back on the page: where it was, its bytes (usb_tidy.py)
 CHECKED = "soulseek-checked.json"  # each kept file, looked at once: file -> [bytes, time, why it looks wrong or ""]
 STRIKES, STRIKE_DAYS = 3, 30  # 3 wrong files in a row for one track: Soulseek has only other songs by that name
 # Words that don't say which song it is.
@@ -104,12 +108,73 @@ def save_got(d, got):
     os.replace(tmp, os.path.join(d, "soulseek.tsv"))
 
 
+def ours(d, slsk):
+    """Every file here that came from Soulseek: the recorded ones, and ones sockseek finished that aren't recorded
+    (yet, or their track left the playlists)."""
+    return {g[2] for g in load_got(d)} | set(finished(slsk).values())
+
+
+def flatten(d, music):
+    """Soulseek files used to sit in "From Soulseek" inside the music folder; now they are with every other song.
+    Moves each one across, once, with every note of where it is (a name already taken there stays where it was).
+    Returns {old path: new path}; dj.py renames its own notes with it, so nothing is listened to twice."""
+    old = os.path.join(music, OLD)
+    if not os.path.isdir(old):
+        return {}
+    moved = {}
+    with locked(d):
+        for f in sorted(os.listdir(old)):
+            p, to = os.path.join(old, f), os.path.join(music, f)
+            if f.lower().endswith(AUDIO) and not f.startswith(".") and os.path.isfile(p) and not os.path.lexists(to):
+                os.rename(p, to)
+                moved[p] = to
+        index, rows = os.path.join(old, ".index.sldl"), None
+        if not os.path.lexists(os.path.join(music, ".index.sldl")):
+            try:  # sockseek's own list goes along; a file that stayed behind is pointed at where it still is
+                with open(index, newline="") as f:
+                    rows = list(csv.reader(f))
+                col = rows[0].index("filepath")
+                for r in rows[1:]:
+                    if len(r) > col and r[col] and not os.path.isabs(r[col]):
+                        if os.path.normpath(os.path.join(old, r[col])) not in moved:
+                            r[col] = "./" + os.path.join(OLD, os.path.normpath(r[col]))
+                with open(os.path.join(music, ".index.sldl.tmp"), "w", newline="") as f:
+                    csv.writer(f, lineterminator="\n").writerows(rows)
+                os.replace(os.path.join(music, ".index.sldl.tmp"), os.path.join(music, ".index.sldl"))
+                os.remove(index)
+            except (OSError, ValueError, IndexError):
+                pass
+        if moved:
+            save_got(d, [[link, name, moved.get(p, p)] for link, name, p in load_got(d)])
+            came = {moved.get(p, p): v for p, v in load_from(d).items()}
+            if came:
+                save_from(d, came)
+            seen = load_checked(d)
+            if seen:
+                dump(d, CHECKED, {moved.get(p, p): v for p, v in seen.items()})
+            with open(os.path.join(d, MOVED), "a") as f:  # for the DJ library and the decks, which key by file
+                f.writelines(f"{p}\t{to}\n" for p, to in moved.items())
+        try:
+            left = [f for f in os.listdir(old) if f != ".DS_Store"]
+            if not left:
+                if os.path.exists(os.path.join(old, ".DS_Store")):
+                    os.remove(os.path.join(old, ".DS_Store"))
+                os.rmdir(old)  # empty now
+        except OSError:
+            pass
+    if moved:
+        print(f"{len(moved)} Soulseek file(s) moved in with the rest of the music (no \"{OLD}\" folder any more)")
+    return moved
+
+
 def prepare(d, slsk):
+    flatten(d, slsk)  # files from the time Soulseek had a folder of its own join the rest, once
     record(d, slsk)  # a track sockseek got in a run that stopped early counts before anything is searched again
     rows = to_get(d)
     wanted = {link for link, *_ in rows}
-    music = os.path.dirname(slsk)
-    originals = {norm(os.path.splitext(f)[0]) for f in os.listdir(music) if f.lower().endswith(AUDIO)}
+    mine = ours(d, slsk)  # Soulseek's own files sit in the same folder: none of them is "the original"
+    originals = {norm(os.path.splitext(f)[0]) for f in os.listdir(slsk)
+                 if f.lower().endswith(AUDIO) and os.path.join(slsk, f) not in mine}
     kept = []
     with locked(d):  # the page can throw a file back while a sync runs: one writer of soulseek.tsv at a time
         for link, name, path in load_got(d):
@@ -413,8 +478,9 @@ def trash(d, path):
     return ""
 
 
-def throw_back(d, path, link, who, why, src=None):
-    """One file out: to the Trash, and remembered so the same file is never taken again."""
+def throw_back(d, path, link, who, why, src=None, usb=False):
+    """One file out: to the Trash, and remembered so the same file is never taken again. With usb (you threw it
+    back on the page), its copy on the USB goes as well, the next time the USB is in (usb_tidy.py)."""
     try:
         size = os.path.getsize(path)
     except OSError:
@@ -422,6 +488,9 @@ def throw_back(d, path, link, who, why, src=None):
     peer, remote = src or load_from(d).get(path, ("", ""))
     if not trash(d, path):
         return False
+    if usb:
+        with open(os.path.join(d, USB_THROWN), "a") as f:
+            f.write(f"{path}\t{size}\n")
     with open(os.path.join(d, WRONG), "a") as f:
         f.write("\t".join([link, str(int(time.time())), str(size), peer, remote, who,
                            re.sub(r"\s+", " ", why).strip()]) + "\n")
@@ -446,6 +515,13 @@ def load_checked(d):
         return {}
 
 
+def dump(d, name, what):
+    tmp = os.path.join(d, name + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(what, f, ensure_ascii=False, indent=0)
+    os.replace(tmp, os.path.join(d, name))
+
+
 def check_all(d, slsk):
     """Looks once at every Soulseek file already kept (the ones from before this check, and any that changed). A file
     that doesn't look like its playlist song is only marked: the page shows it and asks before it's thrown back."""
@@ -462,10 +538,7 @@ def check_all(d, slsk):
             out[path] = [st.st_size, int(st.st_mtime),
                          judge(path, name, length_of(secs, link, name), came.get(path, ("", ""))[1])]
     if out != seen:
-        tmp = os.path.join(d, CHECKED + ".tmp")
-        with open(tmp, "w") as f:
-            json.dump(out, f, ensure_ascii=False, indent=0)
-        os.replace(tmp, os.path.join(d, CHECKED))
+        dump(d, CHECKED, out)
     return out
 
 
@@ -496,26 +569,147 @@ def suspects(d):
     return {p: why for p, why in out.items() if os.path.exists(p)}
 
 
-def bad(d, slsk, file=""):
-    """From the page: one Soulseek file is the wrong song or a bad file (file: its name), or, with no name, every
-    file the check marked. Each goes to the Trash, is never taken again, and its track is back on the to-get list.
-    Returns how many went."""
+TRACK = re.compile(rb"https://soundcloud\.com/[\w-]+/[\w-]+")
+OTHER = "you marked the file you had wrong or bad"  # a thrown-back file that wasn't Soulseek's (progress says so)
+
+
+def links_inside(path):
+    """SoundCloud track links written inside a file, the one named most first. The sync writes each artist's own
+    file's link into it; a description in there may name other tracks too, so own() checks before it believes one."""
+    try:
+        with open(path, "rb") as f:
+            blob = f.read(1 << 20)
+            f.seek(max(os.path.getsize(path) - (1 << 20), len(blob)))
+            blob += b"\0" + f.read()
+    except OSError:
+        return []
+    n = {}
+    for u in TRACK.findall(blob) + TRACK.findall(blob.replace(b"\0", b"")):  # (tags in two-byte letters too)
+        n[u.decode()] = n.get(u.decode(), 0) + 1
+    return sorted(n, key=lambda u: -n[u])
+
+
+def own(d, path, ytdlp):
+    """The track an artist's own file is: (SoundCloud link, name, the key archive.txt knows it by), or None. The
+    file itself names its link; SoundCloud is asked once which track that is (the track's public page, no sign-in),
+    and only a track the sync really downloaded, with this file's name, counts."""
+    try:
+        with open(os.path.join(d, "archive.txt")) as f:
+            got = {" ".join(l.split()).lower() for l in f if l.strip()}
+    except OSError:
+        return None
+    stem = norm(os.path.splitext(os.path.basename(path))[0])
+    for link in links_inside(path)[:3]:
+        try:
+            said = subprocess.run([ytdlp, "--skip-download", "--no-playlist", "--ignore-no-formats-error",
+                                   "--extractor-args", "soundcloud:formats=none", "--print",
+                                   "%(extractor_key)s %(id)s\t%(uploader)s - %(title)s", link],
+                                  capture_output=True, encoding="utf-8", errors="replace", timeout=90).stdout
+        except (OSError, subprocess.SubprocessError):
+            continue
+        key, _, name = said.strip().partition("\n")[0].partition("\t")
+        if key.lower() in got and norm(name) and (norm(name) in stem or stem in norm(name)):
+            return link, re.sub(r"\s+", " ", name).strip(), key.lower()
+    return None
+
+
+def free_links(d, link):
+    """The free-download links a track carries (its Free Download button, the links in its description): the ones
+    freedl.py would fetch from."""
+    out = [p[1] for p in rows_of(d, "buttons.tsv", 3) if p[0] == link and p[1]]
+    try:
+        with open(os.path.join(d, ".listing"), errors="replace") as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                    if r.get("webpage_url") == link:
+                        out += [u.rstrip(".,") for u in re.findall(r"https?://[^\s\"'<>)]+", r.get("description") or "")]
+                except (ValueError, AttributeError):
+                    pass
+    except OSError:
+        pass
+    return out
+
+
+def add_lines(d, name, new):
+    """Adds the lines a file doesn't hold yet (free-tried.txt, blocked-originals.txt)."""
+    try:
+        with open(os.path.join(d, name)) as f:
+            there = {l.strip() for l in f}
+    except OSError:
+        there = set()
+    new = [x for x in dict.fromkeys(new) if x and x not in there]
+    if new:
+        with open(os.path.join(d, name), "a") as f:
+            f.writelines(x + "\n" for x in new)
+
+
+def bad_other(d, path, ytdlp):
+    """"Wrong or bad file" for a song that didn't come from Soulseek. To the Trash, never taken again, and its track
+    goes back on the to-get list so another copy is looked for:
+      a free download (or a file picked up from Downloads): its note in free.tsv goes, and its free link isn't
+        fetched from again (free-tried.txt);
+      the artist's own file: counted as not got from now on (blocked-originals.txt, as the safety check does it),
+        so the sync never downloads that same file again;
+      a file The Crate has no note of: only to the Trash.
+    Returns (how many went, the tracks back on the list as (link, name, seconds)), or a sentence when it must stay."""
+    free = rows_of(d, "free.tsv", 3)
+    mine = [r for r in free if r[2] == path]
+    track = None
+    if not mine and links_inside(path):  # the artist's own file, by the look of it
+        track = own(d, path, ytdlp)
+        if not track:
+            return ("Couldn't check with SoundCloud which song this file is, so it stays where it is. "
+                    "Try again when you're online.")
+    secs = round(inside(path)[0])  # its real length: this file is the playlist's version
+    link, name = (mine[0][0], mine[0][1]) if mine else track[:2] if track else ("", "")
+    if not throw_back(d, path, link, "you", OTHER, ("", ""), usb=True):
+        return 0, []
+    if mine:
+        tmp = os.path.join(d, "free.tsv.tmp")
+        with open(tmp, "w") as f:
+            f.writelines("\t".join(r) + "\n" for r in free if r[2] != path)
+        os.replace(tmp, os.path.join(d, "free.tsv"))
+        add_lines(d, "free-tried.txt", free_links(d, link))
+    elif track:
+        add_lines(d, "blocked-originals.txt", [track[2]])
+    return 1, ([(link, name, secs)] if link else [])
+
+
+def bad(d, slsk, file="", ytdlp="yt-dlp"):
+    """From the page: one song on the Mac is the wrong song or a bad file (file: where it is inside the music
+    folder), or, with no file, every Soulseek file the check marked. Each goes to the Trash, is never taken again,
+    its track is back on the to-get list, and its copy on the USB goes too (USB_THROWN; usb_tidy.py).
+    Returns how many went (or a sentence saying why one must stay)."""
     marked, secs, kept, back = suspects(d), lengths(d), [], []
+    root = os.path.normpath(slsk)
+    want = os.path.normpath(os.path.join(root, file)) if file else ""
+    if file and (not want.startswith(root + os.sep) or not want.lower().endswith(AUDIO) or not os.path.isfile(want)):
+        return 0  # only a song in the music folder
     with locked(d):
         for link, name, path in load_got(d):
-            mine = os.path.basename(path) == file if file else path in marked
+            mine = os.path.normpath(path) == want if file else path in marked
             if mine and os.path.exists(path) and throw_back(
                     d, path, link, "you" if file else "check",
-                    ("you marked it wrong or bad" + (": " + marked[path] if path in marked else "")) if file else marked[path]):
+                    ("you marked it wrong or bad" + (": " + marked[path] if path in marked else "")) if file
+                    else marked[path], usb=True):
                 back.append((link, name))
             else:
                 kept.append([link, name, path])
-        if file and not back and file == os.path.basename(file):  # a file in the folder The Crate has no note of
-            path = os.path.join(slsk, file)
-            if os.path.isfile(path) and throw_back(d, path, "", "you", "you marked it wrong or bad"):
-                return 1
+        if file and not back and os.path.isfile(want):
+            if want in finished(slsk).values() or want in finished(os.path.join(slsk, OLD)).values():
+                # Soulseek's, though its track has left the playlists: nothing to look for again
+                return int(throw_back(d, want, "", "you", "you marked it wrong or bad", usb=True))
+            went = bad_other(d, want, ytdlp)
+            if isinstance(went, str) or not went[1]:
+                return went if isinstance(went, str) else went[0]
+            for link, name, length in went[1]:
+                back.append((link, name))
+                secs[link] = secs.get(link) or length
+            kept = None  # (soulseek.tsv is as it was)
         if back:
-            save_got(d, kept)
+            if kept is not None:
+                save_got(d, kept)
             tsv = os.path.join(d, "to-buy.tsv")
             try:
                 with open(tsv) as f:
@@ -623,7 +817,8 @@ def progress(d, live):
                 continue
             again = ("on " + time.strftime("%b %-d", time.localtime(when + STRIKE_DAYS * 86400))
                      if resting(thrown[link], t) else "next sync")
-            what = "you threw back Soulseek's file" if who == "you" else f"Soulseek's file wasn't this song ({said})"
+            what = f"Soulseek's file wasn't this song ({said})" if who != "you" else \
+                "you threw back the file you had" if said == OTHER else "you threw back Soulseek's file"
             out[link] = ("missing", f"Not found yet: {what}. Looks for another copy {again}.")
         elif state == "failed" and reason != "no search results":
             out[link] = ("missing", WHY.get(reason, f"Soulseek: {reason}." if reason else "Not found on Soulseek."))

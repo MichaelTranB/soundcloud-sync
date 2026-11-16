@@ -1,11 +1,11 @@
 #!/bin/zsh
 # Last fallback, run by sync.sh after the artist downloads: every track still to get is searched on Soulseek
-# with sockseek; only lossless or 320 kbps MP3 is taken, and it lands in "From Soulseek" inside the music folder.
+# with sockseek; only lossless or 320 kbps MP3 is taken, and it lands in the music folder with everything else.
 # sockseek only downloads; it shares nothing. When the artist's own file arrives later, the Soulseek copy on
 # the Mac is removed (usb.sh never deletes, so the USB keeps what it already has).
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 DIR="${0:A:h}"
-SLSK="${SLSK:-$HOME/Music/SoundCloud Sync/From Soulseek}"   # overridable for tests
+SLSK="${SLSK:-$HOME/Music/SoundCloud Sync}"   # the music folder itself; overridable for tests
 SOCKSEEK="${SOCKSEEK:-$HOME/.local/bin/sockseek}"
 SERVICE=soundcloud-sync-soulseek   # Keychain item made by soulseek-login.sh
 LOG="$DIR/soulseek.log"
@@ -21,7 +21,7 @@ SPASS="$(security find-generic-password -s "$SERVICE" -w 2>/dev/null)"
 
 mkdir -p "$SLSK"
 # The safety check first: a file a stopped run left behind is checked before soulseek.py counts it as got.
-prep() { python3 "$DIR/safety.py" check "$DIR" "${SLSK:h}" 2>>"$DIR/safety.log"; python3 "$DIR/soulseek.py" prepare "$DIR" "$SLSK" >>"$LOG" 2>&1 || { say "Soulseek FAILED: could not read the to-get list"; exit 1; }; }
+prep() { python3 "$DIR/safety.py" check "$DIR" "$SLSK" 2>>"$DIR/safety.log"; python3 "$DIR/soulseek.py" prepare "$DIR" "$SLSK" >>"$LOG" 2>&1 || { say "Soulseek FAILED: could not read the to-get list"; exit 1; }; }
 # Each track is also searched in looser ways (--desperate: the artist or the title alone, then filtered;
 # --artist-maybe-wrong: once without the artist, as a SoundCloud uploader isn't always the artist). The quality, title and length checks
 # below still decide what is taken, so a looser search only finds more, never a worse or wrong file. sockseek's own
@@ -46,7 +46,7 @@ get() {
     --strict-title --length-tol 5 --desperate --artist-maybe-wrong --no-skip-existing --no-progress "${BAN[@]}" "$@" >"$DIR/soulseek-pass.log" 2>&1
   cat "$DIR/soulseek-pass.log" >>"$DIR/soulseek-run.log"
   # Before anything counts as got: a file that isn't real audio (or that the virus scan flags) goes to Quarantine.
-  python3 "$DIR/safety.py" check "$DIR" "${SLSK:h}" 2>>"$DIR/safety.log"
+  python3 "$DIR/safety.py" check "$DIR" "$SLSK" 2>>"$DIR/safety.log"
   # Then each file is looked at itself (its real length, the song named inside it): sockseek's own title and
   # length checks only see what the other person's computer says about a file. One that isn't the playlist's song
   # is thrown back (to the Trash) and its track stays on the list.

@@ -111,6 +111,10 @@ def write(usb, songs, lists, backups):
         ids, added, analysed = {}, 0, 0
         for s, usb_file in on_usb:
             r = row(s, usb_file)
+            old = nfc(f"../{MUSIC}/{s['was']}") if s.get("was") else ""
+            if old in have and r["path"] not in have:  # the file moved: the same track, cues and all, at its new place
+                con.execute("UPDATE Track SET path=?, filename=? WHERE id=?", (r["path"], r["filename"], have[old][0]))
+                have[r["path"]] = have.pop(old)
             if r["path"] in have:
                 tid, done = have[r["path"]]
                 ids[s["rel"]] = tid

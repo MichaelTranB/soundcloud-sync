@@ -2,7 +2,8 @@
 # Copies the music folder to the chosen USB when it is plugged in. Runs after every sync and whenever
 # any drive is mounted, so tracks downloaded while the USB was away land on it the next time it appears.
 # Only ever ADDS tracks: no track on the USB is deleted or overwritten. Only music goes on it: the to-buy list stays
-# on the Mac (the page shows it), and the list older versions put on the USB is taken off.
+# on the Mac (the page shows it), and the list older versions put on the USB is taken off. The one exception is a song
+# you threw back on the page ("Wrong or bad file"): its copy here goes to the USB's own Trash (usb_tidy.py).
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 DIR="${0:A:h}"
 SRC="${SRC:-$HOME/Music/SoundCloud Sync}"   # both overridable for tests
@@ -26,6 +27,9 @@ fail() {
 }
 [ -w "$DEST" ] || fail "the drive is read-only (locked, or formatted so a Mac can only read it, like NTFS). Use a drive formatted exFAT, FAT32 or Mac."
 mkdir -p "$DEST/SoundCloud Sync" 2>"$DIR/.usb-err" || fail "couldn't make the SoundCloud Sync folder on it ($(tail -1 "$DIR/.usb-err"))."
+# First, inside that folder only: a song you threw back on the page goes to the USB's Trash, and Soulseek songs that
+# sat in a folder of their own move in with the rest (so the copy below doesn't put them on it a second time).
+python3 "$DIR/usb_tidy.py" "$DIR" "$SRC" "$DEST/SoundCloud Sync" >>"$DIR/usb.log" 2>&1
 # Only files that passed the safety check (safety.py) are copied. During a sync the check runs at its end.
 kill -0 "$(cat "$DIR/.running" 2>/dev/null)" 2>/dev/null || python3 "$DIR/safety.py" check "$DIR" "$SRC" 2>>"$DIR/safety.log"
 LIST="$DIR/.usb-list"

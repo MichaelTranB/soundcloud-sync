@@ -631,8 +631,11 @@ function draw() {
       ...(rd ? [el('span', { className: 'bar' }, el('i', { style: `width:${Math.round(100 * rd.done / rd.total)}%` }))] : []))] : []),
     ...now.map(t => el('li', {}, nameEl(t),
       el('span', { className: 'state on' }, el('i', { className: 'dot live' }), STATE[t.state]))));
-  // Soulseek files can be the wrong song or a bad copy: each can be thrown back (to the Trash; that copy is never
-  // taken again and another one is looked for). The ones The Crate's own check doubts are marked.
+  // Any song on the Mac can be the wrong song or a bad copy: each can be thrown back (to the Trash; that file is never
+  // taken again, another copy is looked for, and its copy on the USB goes too). The ones The Crate's own check
+  // doubts are marked.
+  const offUsb = many => !s.usb ? '' : `\n\n${many ? 'They also come' : 'It also comes'} off your USB "${s.usb}" ` +
+    (s.usbPlugged ? 'right now' : 'the next time you plug it in') + `, into the USB's own Trash.`;
   const throwBack = (body, ask) => async () => {
     if (!confirm(ask)) return;
     try { await call('/api/soulseek-bad', body); } catch (e) { alert(e.message); }
@@ -644,7 +647,7 @@ function draw() {
       el('button', { className: 'undo', textContent: doubted.length === 1 ? 'Throw it back' : 'Throw them all back',
         onclick: throwBack({ all: true }, `Throw back ${doubted.length === 1 ? 'this file' : `these ${doubted.length} files`}?\n\n` +
           doubted.map(t => `${t.name}: ${t.wrong}`).slice(0, 12).join('\n') + (doubted.length > 12 ? '\n…' : '') +
-          '\n\nThey go to the Trash, are never taken again, and The Crate starts looking for the right ones right away.') }))] : []),
+          '\n\nThey go to the Trash, are never taken again, and The Crate starts looking for the right ones right away.' + offUsb(true)) }))] : []),
     ...(have.length ? have.map(t => el('li', {},
     el('span', { className: 'n', textContent: t.name }),
     ...(t.wrong ? [el('span', { className: 'tag low', title: 'Probably not the playlist\'s song: ' + t.wrong, textContent: 'Looks wrong' })] : []),
@@ -653,8 +656,8 @@ function draw() {
     el('span', { className: 'tag', textContent: t.mb + ' MB' }),
     ...((s.justGot || []).includes(t.name) ? [el('span', { className: 'tag new', title: 'Just picked up from your Downloads folder', textContent: 'New' })] : []),
     ...(t.src ? [el('span', { className: 'tag', title: t.src === 'Soulseek' ? 'Found on Soulseek; replaced by the artist\'s own file when it comes' : 'Fetched from the artist\'s own free-download link', textContent: t.src })] : []),
-    ...(t.file ? [el('button', { className: 'undo bad', title: 'Wrong song or a bad copy? It goes to the Trash, is never taken again, and another copy is looked for right away.',
-      textContent: 'Wrong or bad file', onclick: throwBack({ file: t.file }, `Throw back "${t.name}"?\n\n${t.wrong ? 'It looks wrong: ' + t.wrong + '.\n\n' : ''}It goes to the Trash, this copy is never taken again, and The Crate starts looking for another one right away.`) })] : [])))
+    el('button', { className: 'undo bad', title: 'Wrong song or a bad copy? It goes to the Trash, is never taken again, comes off your USB too, and another copy is looked for right away.',
+      textContent: 'Wrong or bad file', onclick: throwBack({ file: t.file }, `Throw back "${t.name}"?\n\n${t.wrong ? 'It looks wrong: ' + t.wrong + '.\n\n' : ''}It goes to the Trash, this file is never taken again, and The Crate starts looking for another copy right away.` + offUsb(false)) })))
     : [el('div', { className: 'empty', textContent: q ? 'No match.' : 'Nothing yet. Tracks whose artists allow downloads land here in their original quality.' })]));
 
   for (const x of document.querySelectorAll('.tabs button')) x.setAttribute('aria-selected', x.dataset.v === view);

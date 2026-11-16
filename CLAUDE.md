@@ -17,21 +17,27 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   `afinfo`). The page flags any file under 320 kbps.
 - **`soulseek.sh`:** last fallback: sockseek (`~/.local/bin/sockseek`, pinned in `install.sh`) searches every track
   still to get; pass 1 lossless only, pass 2 MP3 at a confirmed 320 kbps; exact title and within 5 s of the
-  SoundCloud length (same version). Into `From Soulseek/`; the artist's own file replaces it when it arrives.
+  SoundCloud length (same version). Into the music folder with everything else (no folder of its own; `soulseek.py`
+  `flatten` moves an older `From Soulseek/` in once, noting each move in `soulseek-moved.tsv` so the records, the
+  decks' libraries and the USB copy follow instead of doubling). The artist's own file replaces it when it arrives.
   Download-only. Sign-in: `soulseek-login.sh` once (Keychain `soundcloud-sync-soulseek`).
 - **The right-song check (`soulseek.py` `judge`):** sockseek only sees what the other person's computer says about
   a file, so every file is checked again once it's here: its real length against the playlist's, the song named
   inside it, a remix by someone else, the same size as a file thrown back before. A wrong one is thrown back: into
   the Trash (never deleted), back on the to-get list, remembered in `soulseek-wrong.tsv` so that file and that
   person are never taken again (`--banned-users`); three wrong files in a row and the track rests 30 days. The page
-  has "Wrong or bad file" on every Soulseek song for what the check can't hear (a bad copy); a file he marks is
-  looked for again at once (`.soulseek-again`, `soulseek-now.sh`: the Soulseek step alone, one at a time with a sync).
+  has "Wrong or bad file" under every song on the Mac, wherever it came from (`soulseek.py` `bad`), for what the
+  check can't hear (a bad copy); a file he marks is looked for again at once (`.soulseek-again`, `soulseek-now.sh`:
+  the Soulseek step alone, one at a time with a sync) and leaves the USB too (`usb-thrown.tsv`, below).
 - **Safety check (`safety.py`):** every file in the music folder must be real audio: an audio name, that type's own
   first bytes, opened by `afinfo`, and clean in ClamAV (Homebrew's, else `clamav.sh` unpacks Cisco's signed pkg into `~/.local/share/clamav` with wrappers in `~/.local/bin`; `freshclam` daily from `sync.sh`).
   Anything else goes to `Quarantine/` beside the app with its run permission removed. Runs after Soulseek (before a
   track counts as got), at the end of every sync, and before a USB copy. Never loosen it.
 - **`usb.sh`:** adds new files to the chosen USB after every sync and whenever a drive is mounted, only those on
-  the safety check's list (`safety-ok.tsv`). Never deletes. When new tracks land it ejects the USB and shows a Mac
+  the safety check's list (`safety-ok.tsv`). Never deletes, with one exception he asked for (`usb_tidy.py`, run
+  first here and by `dj.py`, inside `<USB>/SoundCloud Sync/` only): a song he threw back on the page
+  (`usb-thrown.tsv`: path, size) has its same-size copy moved to the USB's own Trash, now if plugged in, else at
+  the next plug-in. When new tracks land it ejects the USB and shows a Mac
   notice (off when `usb-keep.txt` exists; the page's switch). An original the safety check blocks is added to
   `blocked-originals.txt` so it counts as not got.
 - **DJ library (`dj.py`, page `/dj`):** after every sync and USB copy, every safety-checked track gets tempo and key
