@@ -931,6 +931,25 @@ def dj_run(wait=0):
     _dj["timer"].start()
 
 
+def rekordbox_closes():
+    """rekordbox's library can only be written while rekordbox is closed (rekordbox.py), and a genre you change
+    in rekordbox is read back at the next run. So when rekordbox closes, the decks' libraries are brought in step
+    right then, with no button. Also at start, when the last run had to leave rekordbox alone and it's closed now."""
+    def is_open():
+        try:
+            return subprocess.run(["/usr/bin/pgrep", "-x", "rekordbox"], capture_output=True).returncode == 0
+        except OSError:
+            return False
+    lines = [l for l in dj.read(DIR, "dj.log").splitlines()[-40:] if "rekordbox: " in l or "REKORDBOX PROBLEM" in l]
+    was = is_open() or "rekordbox is open" in (lines or [""])[-1]
+    while True:
+        now = is_open()
+        if was and not now:
+            dj_run(5)
+        was = now
+        time.sleep(30)
+
+
 def dj_state():
     """Everything the DJ library page shows: each track with its tempo, key and genres, the genre list, and where
     the decks' libraries stand."""
@@ -1308,6 +1327,7 @@ def picked_up(got):
 
 if __name__ == "__main__":
     threading.Thread(target=watch_downloads, daemon=True).start()
+    threading.Thread(target=rekordbox_closes, daemon=True).start()
     # Soulseek files kept before the right-song check existed are looked at once (the page marks the odd ones).
     threading.Thread(target=soulseek.check_all, args=(DIR, SLSK), daemon=True).start()
     if os.path.exists(AGAIN):  # a file thrown back just before the page restarted still gets its search

@@ -77,12 +77,13 @@ straight into your decks' libraries, with no dragging and no clicks:
 - **Denon Prime and other Engine DJ decks:** the songs are added to the Engine library on your USB (plug the USB
   into the deck once first, so it makes its library). On the deck: *Playlists → The Crate*.
 - **rekordbox (Pioneer DDJ controllers, and its own USB export for CDJs):** the songs are added to rekordbox on
-  this Mac, in a playlist folder called *The Crate*. This happens while rekordbox is closed; if it's open, it
-  catches up the next time.
+  this Mac, in a playlist folder called *The Crate*, with their cover when the file carries one. This happens
+  while rekordbox is closed; if it's open, it catches up by itself the moment you close it.
 - **Genres:** each song is sorted by what's written on it (the file, SoundCloud's genre and tags). Songs nothing
   describes land in *No genre yet*: tap their genre on the page. Wrong genre? Tap **Edit**. A song can have several
   genres; it shows in each one's playlist, and the first is the Genre column on the decks. Your picks always win,
-  and you can add or remove genres from the list.
+  and you can add or remove genres from the list. Change a song's genre in rekordbox (or in Engine DJ on the USB)
+  instead, and that becomes your pick on the page too.
 - **Recognise songs by their sound (optional):** The Crate can listen to each song and look it up in MusicBrainz,
   the way the free app MusicBrainz Picard does. It fills in genres for songs nothing describes, and flags a
   Soulseek file that sounds like a different song. It needs a free AcoustID key, once: the page has the link and
