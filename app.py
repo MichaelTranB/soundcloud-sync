@@ -6,7 +6,7 @@ in the browser cannot press the buttons.
 """
 import json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
-import dj, genres
+import dj, genres, recognise
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -937,14 +937,17 @@ def dj_state():
     g = genres.load(DIR)
     songs = [{"key": s["key"], "title": s["title"], "artist": s["artist"], "bpm": s["bpm"], "tone": s["musical_key"],
               "genres": s["genres"], "from": s["from"], "heard": s["heard"], "playlist": s["playlist"],
+              "sounds": s["sounds_like"],
               "kind": os.path.splitext(s["rel"])[1][1:].upper()} for s in dj.library(DIR, OUT)]
     log = read("dj.log").splitlines()
     usb = read("usb.txt")
     at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)  # as usb.sh and dj.py: overridable for tests
     plugged = bool(usb) and os.path.isdir(at)
-    last = lambda word: next((l for l in reversed(log[-40:]) if word in l), "")
+    last = lambda *words: next((l for l in reversed(log[-40:]) if any(w in l for w in words)), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
             "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged,
+            "recognise": bool(recognise.key(DIR)),
+            "lastRecognise": last("song recognition", "RECOGNISE PROBLEM"),
             "engine": plugged and os.path.isfile(os.path.join(at, "Engine Library", "Database2", "m.db")),
             "rekordbox": os.path.isfile(os.path.expanduser("~/Library/Pioneer/rekordbox/master.db")),
             "lastEngine": last("Engine DJ on") or last("ENGINE PROBLEM"),
@@ -960,6 +963,18 @@ def genre_name(raw):
 
 def dj_post(path, body):
     """The DJ library page's buttons. Returns an error line, or None when done."""
+    if path == "/api/dj/recognise":  # the AcoustID key for recognising songs by their sound; "" switches it off
+        key, file = "".join(str(body.get("key", "")).split()), os.path.join(DIR, recognise.KEY_FILE)
+        if key and not re.fullmatch(r"[A-Za-z0-9]{6,40}", key):
+            return "That doesn't look like an AcoustID key: it's the short code under \"API key\" on your application's page."
+        if key:
+            with open(os.open(file + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+                f.write(key + "\n")
+            os.replace(file + ".tmp", file)
+        elif os.path.exists(file):
+            os.remove(file)
+        dj_run(0)
+        return None
     g = genres.load(DIR)
     if path == "/api/dj/genres":  # your pick for one track: its genres, the first the main one; null = automatic again
         key, picked = str(body.get("key", "")), body.get("genres")

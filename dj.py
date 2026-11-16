@@ -12,7 +12,7 @@ Standard library only. Tempo and key need the private Python dj-setup.sh sets up
 still reach the decks, which then analyse them on load."""
 import fcntl, json, os, re, subprocess, sys, time, unicodedata
 
-import genres
+import genres, recognise
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 # The private Python with Essentia, Mutagen and pyrekordbox (dj-setup.sh); the second is where the first build kept it.
@@ -117,6 +117,7 @@ def library(dir, src):
         cache = {}
     rows = listing(dir)
     pairs = pair(dir, src, rels, rows)
+    known = recognise.load(dir)  # what each track sounds like, when recognise.py has asked
     g = genres.load(dir)
     table = genres.lookup(g["list"])
     out = []
@@ -132,6 +133,8 @@ def library(dir, src):
                 "length": a.get("length", 0), "bitrate": a.get("bitrate", 0), "rate": a.get("rate", 0),
                 "bpm": a.get("bpm", 0), "musical_key": a.get("key", ""),
                 "tag_genre": a.get("genre", ""), "sc_genre": (row or {}).get("genre", ""),
+                "mb_genres": (known.get(rel) or {}).get("genres") or [],
+                "sounds_like": " - ".join(x for x in ((known.get(rel) or {}).get("names") or [["", ""]])[0] if x),
                 "sc_tags": (row or {}).get("tags", []), "url": (row or {}).get("url", ""),
                 "playlist": (row or {}).get("playlist", ""), "index": (row or {}).get("index", 0)}
         try:
@@ -226,6 +229,10 @@ def once(dir, src, volumes):
         except Exception as e:  # never silent: the page shows the last lines of dj.log
             log(dir, f'ENGINE PROBLEM on "{usb}": {e}')
     rekordbox(dir, src, songs, lists)
+    if recognise.key(dir) and os.path.exists(PY):  # on its own: it asks the internet, and comes back here when it learns something
+        subprocess.Popen([PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "recognise.py"), dir, src],
+                         start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=open(os.path.join(dir, "dj.log"), "a"))
 
 
 def rekordbox(dir, src, songs, lists):

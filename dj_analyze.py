@@ -84,8 +84,8 @@ def sharpen(audio, bpm, sr=44100, hop=256, n=1024):
     return float(whole) if whole_score >= 0.9 * top else round(best, 2)
 
 
-def listen(path):
-    """Tempo and key from the audio itself."""
+def load(path):
+    """The audio as one channel at 44.1 kHz."""
     import essentia
     essentia.log.warningActive = False
     essentia.log.infoActive = False
@@ -102,6 +102,13 @@ def listen(path):
             if subprocess.run(cmd, capture_output=True).returncode:
                 raise ValueError("this Mac can't read the audio in this file")
             audio = es.MonoLoader(filename=wav, sampleRate=44100)()
+    return audio
+
+
+def listen(path):
+    """Tempo and key from the audio itself."""
+    import essentia.standard as es
+    audio = load(path)
     bpm, beats, conf, _, _ = es.RhythmExtractor2013(method="multifeature")(audio)
     key, scale, strength = es.KeyExtractor(profileType="edma")(audio)
     bpm = float(bpm)

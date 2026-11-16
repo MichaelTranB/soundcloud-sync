@@ -469,9 +469,31 @@ def check_all(d, slsk):
     return out
 
 
+def sounds_wrong(d):
+    """file -> why, for the kept files that sound like another song: recognise.py's answer (the audio's fingerprint,
+    looked up on AcoustID) names a song with other words than the playlist's. Only when the match is a sure one."""
+    try:
+        with open(os.path.join(d, "recognised.json")) as f:
+            known = {v.get("path"): v for v in json.load(f).values() if isinstance(v, dict) and v.get("names")}
+    except (OSError, ValueError, AttributeError):
+        return {}
+    out = {}
+    for link, name, path in load_got(d):
+        v = known.get(os.path.realpath(path))
+        want = words(name.partition(" - ")[2] or name)
+        if not v or not want or v.get("score", 0) < 0.9:
+            continue
+        if not any(len(want & words(" ".join(n))) * 2 >= len(want) for n in v["names"]):
+            artist, title = (list(v["names"][0]) + ["", ""])[:2]
+            out[path] = f"it sounds like another song: {artist + ' - ' if artist else ''}{title}"[:160]
+    return out
+
+
 def suspects(d):
-    """file -> why, for the kept files that don't look like their playlist song."""
-    return {p: v[2] for p, v in load_checked(d).items() if isinstance(v, list) and len(v) == 3 and v[2] and os.path.exists(p)}
+    """file -> why, for the kept files that don't look like, or don't sound like, their playlist song."""
+    out = sounds_wrong(d)
+    out.update({p: v[2] for p, v in load_checked(d).items() if isinstance(v, list) and len(v) == 3 and v[2]})
+    return {p: why for p, why in out.items() if os.path.exists(p)}
 
 
 def bad(d, slsk, file=""):
