@@ -5,7 +5,7 @@ Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so an
 in the browser cannot press the buttons.
 """
 import json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, urllib.parse
-import audio, freedl, playlists, safety, soulseek
+import audio, freedl, links, playlists, safety, soulseek
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -113,6 +113,10 @@ Then for each song on that page, top to bottom:
 3. Once the file has started downloading, close every tab that song opened (the gate page, SoundCloud, the
    download page): keep only the list page open, so a long list doesn't fill Chrome and slow the Mac. Then go back
    to the list page and wait a few seconds before the next song, so none of my accounts looks like a bot.
+If a song isn't free after all (it costs money, it's for paying Patreon members only, or the link is dead), or you
+skip it, don't buy anything: under that song on the list page open "Can't get it free?", pick what it is, write
+the price or the reason in a few words (like "$1.50 or more on Bandcamp" or "$5/month Patreon tier"), and press
+Save. The Crate shows that beside the song (paid, members-only and dead links leave the list).
 Reload the list page whenever you like: songs that have arrived drop off it. If a song you downloaded stays on the
 list with a "Use this file" button, The Crate turned the file away (usually its length differs from SoundCloud's):
 if it's the song you downloaded for that row, click the button. At the end, close every tab you opened.
@@ -132,10 +136,56 @@ At the end, tell me in a short list what you got, and what you skipped and why.
 """
 
 
-def free_rows():
-    """The songs still to get that have the artist's own free link: (name, track link, free link)."""
+def free_rows(every=False):
+    """The songs still to get that have the artist's own free link: (name, track link, free link). Not the ones
+    found paid, for paying members only or gone (links.py), unless every."""
+    ls = links.load(DIR)
     return [p[:3] for p in (l.split("\t") for l in read("to-buy.tsv").splitlines())
-            if len(p) > 2 and re.match(r"https?://\S+$", p[2])]
+            if len(p) > 2 and re.match(r"https?://\S+$", p[2]) and (every or links.status(ls, p[1], p[2])["kind"] not in links.NOT_FREE)]
+
+
+_checking = threading.Lock()
+
+
+def check_links():
+    """Reads what each free link needs (price, gone...) in the background, once a day per link."""
+    if _checking.acquire(blocking=False):
+        def run():
+            try:
+                links.refresh(DIR, [(t, f) for _, t, f in free_rows(every=True)])
+            except Exception as e:
+                print("link check:", e, file=sys.stderr)
+            finally:
+                _checking.release()
+        threading.Thread(target=run, daemon=True).start()
+
+
+def helper_name():
+    try:
+        return (json.loads(read(".agent-run.json") or "{}") or {}).get("who") or "helper"
+    except ValueError:
+        return "helper"
+
+
+def helper_run():
+    """While Claude or Codex works through the free links: who, how many it started with, how many are done, and the
+    song it's on (its last click on its list page, in the last 10 minutes). None when it isn't working."""
+    try:
+        run = json.loads(read(".agent-run.json") or "null") or {}
+        cur = json.loads(read(".agent-current.json") or "null") or {}
+    except ValueError:
+        return None
+    now = time.time()
+    if not run or now - run.get("at", 0) > 3 * 3600:
+        return None
+    live = run.get("who") == "claude" and subprocess.run(["pgrep", "-fq", "agent-settings.json"]).returncode == 0
+    recent = now - max(run.get("at", 0), cur.get("at", 0)) < 15 * 60
+    if not (live or recent):
+        return None
+    left = {p[1] for p in (l.split("\t") for l in read("to-buy.tsv").splitlines()) if len(p) > 1}
+    left -= soulseek.got_links(DIR, SLSK)
+    return {"who": run.get("who", ""), "n": run.get("n", 0), "done": sum(t not in left for t in run.get("links", [])),
+            "on": cur.get("link", "") if now - cur.get("at", 0) < 10 * 60 else ""}
 
 
 def agent_task(who="claude"):
@@ -151,21 +201,31 @@ def free_page():
     rows = free_rows()
     why = {k: v for k, v in freedl.load_json(DIR, freedl.WHY).items()
            if isinstance(v, dict) and v.get("file") and os.path.exists(v["file"])}
+    form = lambda t: (f'<details><summary>Can\'t get it free?</summary><form data-needs="{escape(t)}">'
+                      '<select name="kind"><option value="paid">Paid</option><option value="members">Paying members only'
+                      '</option><option value="gone">Link gone</option><option value="skipped">Skipped</option></select>'
+                      '<input name="note" maxlength="140" placeholder="The price, or why (e.g. $5/month Patreon tier)">'
+                      '<button>Save</button></form></details>')
     items = "".join(f'<li><span>{escape(n)}</span> <a href="{escape(f)}" target="_blank" rel="noopener" '
                     f'data-link="{escape(t)}">Free Download</a>'
                     + (f'<br><small>{escape(why[t]["text"])}</small> <button data-take="{escape(t)}">Use this file'
-                       '</button>' if t in why else "") + '</li>' for n, t, f in rows)
+                       '</button>' if t in why else "") + form(t) + '</li>' for n, t, f in rows)
     return f"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Crate: free downloads</title>
 <style>body{{font:16px/1.5 -apple-system,system-ui,sans-serif;background:#0c0c12;color:#f0eef8;max-width:760px;margin:32px auto;padding:0 16px}}
 p{{color:#a4a2b6}} li{{margin:10px 0}} a{{color:#ff6b7d;font-weight:600;margin-left:8px}}
-small{{color:#f0a868}} button{{font:inherit;font-size:14px;margin-left:8px;padding:2px 10px;border-radius:8px;border:1px solid #ff6b7d;background:none;color:#ff6b7d;cursor:pointer}}</style>
+small{{color:#f0a868}} summary{{color:#a4a2b6;font-size:14px;cursor:pointer}}
+form{{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}} select,input{{font:inherit;font-size:14px;padding:3px 8px;border-radius:8px;border:1px solid #3a3a48;background:#16161e;color:#f0eef8}} input{{flex:1;min-width:220px}}
+button{{font:inherit;font-size:14px;margin-left:8px;padding:2px 10px;border-radius:8px;border:1px solid #ff6b7d;background:none;color:#ff6b7d;cursor:pointer}}</style>
 <h1>Free downloads: {len(rows)} left</h1>
 <p>Click each song's Free Download link here, one at a time: the click tells The Crate which song is coming.
 Songs that have arrived drop off this list when the page is reloaded.</p>
 <ol>{items}</ol>
 <script>const post = (u, b) => fetch(u, {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(b) }});
-for (const a of document.querySelectorAll('a[data-link]')) a.addEventListener('click', () => post('/api/watch', {{ link: a.dataset.link }}));
+for (const a of document.querySelectorAll('a[data-link]')) a.addEventListener('click', () => post('/api/watch', {{ link: a.dataset.link, from: 'helper' }}));
+for (const f of document.querySelectorAll('form[data-needs]')) f.addEventListener('submit', async e => {{
+  e.preventDefault(); const r = await post('/api/needs', {{ link: f.dataset.needs, kind: f.kind.value, note: f.note.value, from: 'helper' }});
+  if (r.ok) location.reload(); else alert((await r.json()).error); }});
 for (const b of document.querySelectorAll('button[data-take]')) b.addEventListener('click', async () => {{
   b.disabled = true; const r = await post('/api/take', {{ link: b.dataset.take }});
   if (r.ok) location.reload(); else {{ b.disabled = false; alert((await r.json()).error); }} }});</script>
@@ -712,12 +772,15 @@ def state():
     phase = sync_phase()
     running = bool(phase)
     prog = soulseek.progress(DIR, phase == "soulseek")
-    buy = []
+    buy, ls = [], links.load(DIR)
     for line in read("to-buy.tsv").splitlines():
         name, link, free = (line.split("\t") + ["", ""])[:3]
         if name and link not in got:
             st, why = prog.get(link, ("missing", ""))
-            buy.append({"name": name, "link": link, "free": free, "state": st, "why": why})
+            buy.append({"name": name, "link": link, "free": free, "state": st, "why": why,
+                        **({"needs": links.status(ls, link, free)} if re.match(r"https?://", free) else {})})
+    if any("needs" in t for t in buy):
+        check_links()
     try:
         unread = int(read("unread.txt") or 0)
     except ValueError:
@@ -753,7 +816,7 @@ def state():
         "signIn": sign_in_status(browser()),
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
-        "have": have, "buy": buy, "watching": watching(),
+        "have": have, "buy": buy, "watching": watching(), "helperRun": helper_run(),
         "agents": [w for w in ("claude", "codex") if agent_app(w)], "claudeInChrome": in_chrome("claude"), "codexInChrome": in_chrome("codex"), "chrome": bool(chrome_app()), "agentUses": agent_uses(),
         "inboxWhy": {k: v.get("text", "") for k, v in freedl.load_json(DIR, freedl.WHY).items() if isinstance(v, dict)},
         "inboxFile": {k: os.path.basename(v["file"]) for k, v in freedl.load_json(DIR, freedl.WHY).items()
@@ -929,6 +992,8 @@ class Handler(BaseHTTPRequestHandler):
             task, n = agent_task(who)
             if not n:
                 return self.send(400, {"error": "No free links to get right now."})
+            with open(os.path.join(DIR, ".agent-run.json"), "w") as f:  # the page shows its progress
+                json.dump({"who": who, "at": time.time(), "n": n, "links": [t for _, t, _ in free_rows()]}, f)
             if who == "claude":
                 # A Terminal window the friend watches and answers in: Claude with its Chrome connection, started
                 # in Downloads (where it renames the files), with the list as its first message.
@@ -983,7 +1048,19 @@ class Handler(BaseHTTPRequestHandler):
                 if not any(l.split("\t")[1:2] == [link] for l in read("to-buy.tsv").splitlines()):
                     return self.send(400, {"error": "That track isn't on the list."})
                 freedl.claim(DIR, link)
+                if body.get("from") == "helper":  # Claude or Codex, on its list page: the song it's on now
+                    with open(os.path.join(DIR, ".agent-current.json"), "w") as f:
+                        json.dump({"link": link, "at": time.time()}, f)
             _watch.set()
+        elif self.path == "/api/needs":  # what a free link needs: paid, members only, gone, skipped (or cleared)
+            link, kind = str(body.get("link", "")), str(body.get("kind", ""))
+            row = next((p for p in (l.split("\t") for l in read("to-buy.tsv").splitlines()) if p[1:2] == [link]), None)
+            if not row or len(row) < 3 or not re.match(r"https?://", row[2]):
+                return self.send(400, {"error": "That song has no free link on the list."})
+            if kind and kind not in links.KINDS:
+                return self.send(400, {"error": "Pick what it needs."})
+            links.mark(DIR, link, row[2], kind, str(body.get("note", "")),
+                       helper_name() if body.get("from") == "helper" else "you")
         elif self.path == "/api/copy":
             usb = read("usb.txt")
             if not usb or not os.path.isdir(f"/Volumes/{usb}"):

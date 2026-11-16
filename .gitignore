@@ -66,3 +66,7 @@ spotify-songs.json.tmp
 .spotify-cache.json.tmp
 .reading.json
 .reading.json.tmp
+link-status.json
+link-status.json.tmp
+.agent-run.json
+.agent-current.json
