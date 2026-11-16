@@ -6,7 +6,7 @@ in the browser cannot press the buttons.
 """
 import json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
-import dj, genres, recognise
+import club, dj, genres, recognise
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -956,14 +956,28 @@ def rekordbox_closes():
         time.sleep(30)
 
 
+def dj_problem(lines):
+    """The newest PROBLEM line that still stands: one the same deck's later run didn't put right."""
+    fine = {"ENGINE": "Engine DJ on", "REKORDBOX": "rekordbox: ", "ANALYSER": "listened to",
+            "RECOGNISE": "song recognition"}
+    for i in range(len(lines) - 1, -1, -1):
+        if "PROBLEM" in lines[i]:
+            m = re.search(r"([A-Z]+) PROBLEM", lines[i])
+            after = fine.get(m.group(1)) if m else None
+            if not (after and any(after in l and "PROBLEM" not in l for l in lines[i + 1:])):
+                return lines[i]
+    return ""
+
+
 def dj_state():
     """Everything the DJ library page shows: each track with its tempo, key and genres, the genre list, and where
     the decks' libraries stand."""
     g = genres.load(DIR)
+    lib = dj.library(DIR, OUT)
     songs = [{"key": s["key"], "title": s["title"], "artist": s["artist"], "bpm": s["bpm"], "tone": s["musical_key"],
               "genres": s["genres"], "from": s["from"], "heard": s["heard"], "playlist": s["playlist"],
               "sounds": s["sounds_like"],
-              "kind": os.path.splitext(s["rel"])[1][1:].upper()} for s in dj.library(DIR, OUT)]
+              "kind": os.path.splitext(s["rel"])[1][1:].upper()} for s in lib]
     log = read("dj.log").splitlines()
     usb = read("usb.txt")
     at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)  # as usb.sh and dj.py: overridable for tests
@@ -971,13 +985,13 @@ def dj_state():
     last = lambda *words: next((l for l in reversed(log[-40:]) if any(w in l for w in words)), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
             "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged,
-            "recognise": bool(recognise.key(DIR)),
+            "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb),
             "lastRecognise": last("song recognition", "RECOGNISE PROBLEM"),
             "engine": plugged and os.path.isfile(os.path.join(at, "Engine Library", "Database2", "m.db")),
             "rekordbox": os.path.isfile(os.path.expanduser("~/Library/Pioneer/rekordbox/master.db")),
             "lastEngine": last("Engine DJ on") or last("ENGINE PROBLEM"),
             "lastRekordbox": last("rekordbox: ") or last("REKORDBOX PROBLEM"),
-            "problem": next((l for l in reversed(log[-6:]) if "PROBLEM" in l), "")}
+            "problem": dj_problem(log[-6:])}
 
 
 def genre_name(raw):

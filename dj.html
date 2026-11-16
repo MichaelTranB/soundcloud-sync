@@ -44,6 +44,14 @@
   .alert[hidden] { display: none; }
   .alert + .strip { margin-top: 14px; }
   .decks { color: var(--dim); font-size: 14.5px; display: grid; gap: 4px; margin-bottom: 36px; }
+  /* The club check: would this music play on a club's decks tonight? */
+  .club { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 20px 24px; margin-bottom: 36px; }
+  .club[hidden] { display: none; }
+  .club h2 { margin: 0 0 12px; font-size: 17px; font-weight: 700; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .club h2 small { color: var(--dim); font-size: 14px; font-weight: 400; }
+  .club .row { display: grid; grid-template-columns: 17px 1fr; padding: 7px 0; font-size: 15px; }
+  .club .row .dot { margin-top: 7px; }
+  .club .row small { display: block; color: var(--dim); font-size: 14px; }
   .note { color: var(--dim); font-size: 14.5px; min-height: 18px; }
   .note.bad { color: var(--warn); }
 
@@ -118,6 +126,8 @@
     <input id="recKey" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Paste your AcoustID API key" aria-label="AcoustID API key">
     <button id="recGo">Save</button>
   </div>
+
+  <div class="club" id="club" hidden></div>
 
   <div class="pills" id="pills"></div>
   <div class="addrow" id="addRow" hidden>
@@ -294,6 +304,12 @@ function draw() {
     rec.append('Recognise songs by their sound (fills in genres, and flags a Soulseek file that is another song). Needs ', get, ', once.  ', on);
   }
   dk.append(rec);
+  // the club check (club.py): green is fine, amber would go wrong in a club, grey is worth knowing
+  const cl = $('club'), checks = S.club || [], fix = checks.filter(r => r.ok === false).length;
+  cl.hidden = !checks.length; cl.textContent = '';
+  cl.append(el('h2', {}, 'Club check', el('small', { textContent: fix ? fix + (fix === 1 ? ' thing' : ' things') + ' to sort out before a gig' : 'what a club\'s decks need from your USB' })));
+  checks.forEach(r => cl.append(el('div', { className: 'row' }, el('span', { className: 'dot' + (r.ok === true ? ' ok' : r.ok === false ? ' warn' : '') }),
+    el('div', {}, r.say, r.do ? el('small', { textContent: r.do }) : ''))));
 
   // the pills
   const p = $('pills'); p.textContent = '';

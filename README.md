@@ -94,6 +94,11 @@ straight into your decks' libraries, with no dragging and no clicks:
   Soulseek file that sounds like a different song. It needs a free AcoustID key, once: the page has the link and
   a box to paste it in. Only a fingerprint of the sound and the song's length leave your Mac, never file names.
   Remixes, flips and bootlegs are often not in that database; those stay as they are.
+- **Club check:** the page also says whether your USB would work on a club's decks (nearly always Pioneer CDJs):
+  how the USB is formatted (FAT32 is read by every club deck, exFAT only by the newest), how many songs are FLAC
+  (older club decks skip those), and whether your songs are in the USB's rekordbox export, which club decks need
+  for playlists, tempo and key (in rekordbox, with the USB in: drag your playlists onto it under *Devices*). It only
+  looks; it changes nothing.
 - **What it never touches:** your own playlists, cues, loops and beat grids, and the music files themselves. No
   song is ever removed from a library. A copy of the library is kept before every change (*dj-backups* in the app
   folder, the last 20).
