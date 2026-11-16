@@ -51,6 +51,9 @@ safety check and Full Disk Access.
    Hypeddit or ToneDen), which the description doesn't always repeat. Gates that ask for a follow first go in the
    **Free links** list for you to click; the file then comes in through step 4.
 3. **Soulseek:** lossless first, then MP3 at a real 320 kbps, same title and same length as the SoundCloud track.
+   Every file is checked again once it's on your Mac (its real length, and the song named inside it); a wrong one
+   goes to the Trash and that file is never taken again. Got the wrong song or a bad copy anyway? Press **Wrong or
+   bad file** beside it: The Crate throws it back and starts looking for another copy right away.
 4. **Downloads folder:** got one yourself? A free gate (Hypeddit, Laylo), Bandcamp "name your price", or bought
    it (Beatport, Bandcamp, Traxsource...)? Just leave the file in Downloads. The Crate picks it up within a minute
    if it's on your list, top quality only.

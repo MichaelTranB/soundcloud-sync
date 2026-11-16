@@ -19,6 +19,13 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   still to get; pass 1 lossless only, pass 2 MP3 at a confirmed 320 kbps; exact title and within 5 s of the
   SoundCloud length (same version). Into `From Soulseek/`; the artist's own file replaces it when it arrives.
   Download-only. Sign-in: `soulseek-login.sh` once (Keychain `soundcloud-sync-soulseek`).
+- **The right-song check (`soulseek.py` `judge`):** sockseek only sees what the other person's computer says about
+  a file, so every file is checked again once it's here: its real length against the playlist's, the song named
+  inside it, a remix by someone else, the same size as a file thrown back before. A wrong one is thrown back: into
+  the Trash (never deleted), back on the to-get list, remembered in `soulseek-wrong.tsv` so that file and that
+  person are never taken again (`--banned-users`); three wrong files in a row and the track rests 30 days. The page
+  has "Wrong or bad file" on every Soulseek song for what the check can't hear (a bad copy); a file he marks is
+  looked for again at once (`.soulseek-again`, `soulseek-now.sh`: the Soulseek step alone, one at a time with a sync).
 - **Safety check (`safety.py`):** every file in the music folder must be real audio: an audio name, that type's own
   first bytes, opened by `afinfo`, and clean in ClamAV (Homebrew's, else `clamav.sh` unpacks Cisco's signed pkg into `~/.local/share/clamav` with wrappers in `~/.local/bin`; `freshclam` daily from `sync.sh`).
   Anything else goes to `Quarantine/` beside the app with its run permission removed. Runs after Soulseek (before a
