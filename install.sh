@@ -27,6 +27,9 @@ if command -v brew >/dev/null && brew list clamav >/dev/null 2>&1; then
   fi
 fi
 zsh "$DIR/clamav.sh"
+# The DJ library's analyser (dj-setup.sh: its own Python with tempo, key and rekordbox support, pinned and checked).
+# Without it songs still reach the decks, which analyse them on load; every sync tries it again.
+zsh "$DIR/dj-setup.sh"
 chmod +x "$DIR"/*.sh
 mkdir -p "$AGENTS" "$HOME/Music/SoundCloud Sync"
 

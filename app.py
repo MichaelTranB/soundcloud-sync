@@ -6,6 +6,7 @@ in the browser cannot press the buttons.
 """
 import json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
+import dj, genres
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -870,6 +871,90 @@ def open_for_setup(what):
     return ""
 
 
+_dj = {"timer": None}  # the wait after a genre edit before the decks' libraries are written (several edits, one write)
+
+
+def dj_run(wait=0):
+    """Brings the decks' libraries in step (dj.py), now or after a quiet moment. On its own, so a page restart
+    never stops it halfway."""
+    def go():
+        _dj["timer"] = None
+        subprocess.Popen([sys.executable, os.path.join(DIR, "dj.py"), DIR, OUT], start_new_session=True,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if _dj["timer"]:
+        _dj["timer"].cancel()
+    _dj["timer"] = threading.Timer(wait, go)
+    _dj["timer"].daemon = True
+    _dj["timer"].start()
+
+
+def dj_state():
+    """Everything the DJ library page shows: each track with its tempo, key and genres, the genre list, and where
+    the decks' libraries stand."""
+    g = genres.load(DIR)
+    songs = [{"key": s["key"], "title": s["title"], "artist": s["artist"], "bpm": s["bpm"], "tone": s["musical_key"],
+              "genres": s["genres"], "from": s["from"], "heard": s["heard"], "playlist": s["playlist"],
+              "kind": os.path.splitext(s["rel"])[1][1:].upper()} for s in dj.library(DIR, OUT)]
+    log = read("dj.log").splitlines()
+    usb = read("usb.txt")
+    at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)  # as usb.sh and dj.py: overridable for tests
+    plugged = bool(usb) and os.path.isdir(at)
+    last = lambda word: next((l for l in reversed(log[-40:]) if word in l), "")
+    return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
+            "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged,
+            "engine": plugged and os.path.isfile(os.path.join(at, "Engine Library", "Database2", "m.db")),
+            "rekordbox": os.path.isfile(os.path.expanduser("~/Library/Pioneer/rekordbox/master.db")),
+            "lastEngine": last("Engine DJ on") or last("ENGINE PROBLEM"),
+            "lastRekordbox": last("rekordbox: ") or last("REKORDBOX PROBLEM"),
+            "problem": next((l for l in reversed(log[-6:]) if "PROBLEM" in l), "")}
+
+
+def genre_name(raw):
+    """A genre name as typed, tidied; "" when it can't be one."""
+    name = " ".join(str(raw or "").split())[:40]
+    return name if name and name.isprintable() and name != genres.NONE else ""
+
+
+def dj_post(path, body):
+    """The DJ library page's buttons. Returns an error line, or None when done."""
+    g = genres.load(DIR)
+    if path == "/api/dj/genres":  # your pick for one track: its genres, the first the main one; null = automatic again
+        key, picked = str(body.get("key", "")), body.get("genres")
+        if key not in {s["key"] for s in dj.library(DIR, OUT)}:
+            return "That track isn't on your Mac any more."
+        if picked is None:
+            g["songs"].pop(key, None)
+        else:
+            if not isinstance(picked, list) or len(picked) > 8:
+                return "Up to 8 genres a track."
+            names = list(dict.fromkeys(n for n in map(genre_name, picked) if n))
+            for n in names:  # a new one joins your list
+                if genres.norm(n) not in {genres.norm(x) for x in g["list"]}:
+                    g["list"].append(n)
+            table = {genres.norm(x): x for x in g["list"]}
+            g["songs"][key] = [table[genres.norm(n)] for n in names]
+    elif path == "/api/dj/list":  # your genre list: add one, or take one off (and off every track you gave it to)
+        name = genre_name(body.get("add") or body.get("remove"))
+        if not name:
+            return "Type a genre name."
+        same = [x for x in g["list"] if genres.norm(x) == genres.norm(name)]
+        if body.get("add"):
+            if same:
+                return f"{same[0]} is already on your list."
+            if len(g["list"]) >= 60:
+                return "That's a lot of genres: take one off first."
+            g["list"].append(name)
+        else:
+            g["list"] = [x for x in g["list"] if x not in same]
+            g["songs"] = {k: [x for x in v if x not in same] for k, v in g["songs"].items()}
+    elif path != "/api/dj/run":
+        return "not found"
+    if path != "/api/dj/run":
+        genres.save(DIR, g)
+    dj_run(0 if path == "/api/dj/run" else 15)
+    return None
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -895,6 +980,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, f.read(), "image/svg+xml" if svg else "image/png")
         if self.path == "/api/state":
             return self.send(200, state())
+        if self.path == "/dj":  # the DJ library page: genres, tempo, key, and the decks' libraries
+            with open(os.path.join(DIR, "dj.html"), "rb") as f:
+                return self.send(200, f.read(), "text/html; charset=utf-8")
+        if self.path == "/api/dj":
+            return self.send(200, dj_state())
         if self.path.split("?")[0] == "/free":  # the list Claude or Codex works from
             return self.send(200, free_page().encode(), "text/html; charset=utf-8")
         self.send(404, {"error": "not found"})
@@ -908,6 +998,11 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
         except ValueError:
             return self.send(400, {"error": "bad request"})
+        if self.path.startswith("/api/dj/"):
+            if not isinstance(body, dict):
+                return self.send(400, {"error": "bad request"})
+            bad = dj_post(self.path, body)
+            return self.send(404 if bad == "not found" else 400, {"error": bad}) if bad else self.send(200, dj_state())
         if self.path == "/api/playlist":
             url = str(body.get("url", "")).strip()
             if not is_playlist(url):

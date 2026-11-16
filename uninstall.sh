@@ -10,6 +10,7 @@ while security delete-generic-password -s soundcloud-sync-soulseek >/dev/null 2>
 # The virus scanner clamav.sh put in the home folder (never one from Homebrew or elsewhere).
 for w in clamscan freshclam; do grep -qF "/.local/share/clamav/" "$HOME/.local/bin/$w" 2>/dev/null && rm -f "$HOME/.local/bin/$w"; done
 [ -d "$HOME/.local/share/clamav" ] && mv "$HOME/.local/share/clamav" "$HOME/.Trash/ClamAV $(date +%s)"
+[ -d "$HOME/.local/share/crate-dj" ] && mv "$HOME/.local/share/crate-dj" "$HOME/.Trash/crate-dj $(date +%s)"  # the DJ library's Python
 [ -d "$HOME/Applications/The Crate.app" ] && mv "$HOME/Applications/The Crate.app" "$HOME/.Trash/The Crate $(date +%s).app"
 mv "$DIR" "$HOME/.Trash/TheCrate $(date +%s)"
 echo "The Crate is removed (its folder is in the Trash). Your music is still in Music > SoundCloud Sync."

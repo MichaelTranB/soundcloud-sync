@@ -3,7 +3,7 @@
 Michael's personal tool: keeps a SoundCloud playlist on his Mac as real files and copies them to his DJ USB.
 Not Almari work; nothing here touches Almari's repo, board or accounts.
 
-- **Page:** http://localhost:4780 (`app.py`, standard library only, bound to 127.0.0.1). `index.html` is the whole interface.
+- **Page:** http://localhost:4780 (`app.py`, standard library only, bound to 127.0.0.1). `index.html` is the main page, `dj.html` the DJ library page (`/dj`).
 - **`sync.sh`:** downloads the artist's ORIGINAL file for every playlist track with downloads switched on; the rest
   go to `to-buy.tsv` (and `To Buy.txt` in the music folder). Nightly at 3:10am, or Sync Now on the page.
 - **Where files come from, best first:** (1) the artist's original upload on SoundCloud (`sync.sh`); (2) the artist's
@@ -27,6 +27,22 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   the safety check's list (`safety-ok.tsv`). Never deletes. When new tracks land it ejects the USB and shows a Mac
   notice (off when `usb-keep.txt` exists; the page's switch). An original the safety check blocks is added to
   `blocked-originals.txt` so it counts as not got.
+- **DJ library (`dj.py`, page `/dj`):** after every sync and USB copy, every safety-checked track gets tempo and key
+  (`dj_analyze.py`: Essentia, cached in `dj-analysis.json`) and its genres (`genres.py`: his pick in `genres.json`
+  wins, then the file's tag, SoundCloud's genre and tags, a genre word in the title; else "No genre yet"), and is
+  written into the Engine DJ library on the USB (`engine.py`, plain sqlite3: Denon Prime and other Engine OS decks)
+  and rekordbox on the Mac (`rekordbox.py`, pyrekordbox; only while rekordbox is closed). A song can have several
+  genres: the first is the decks' Genre column, and it sits in every one of its genre playlists. Both libraries get
+  one folder, "The Crate" (All songs, Newest 50, the SoundCloud playlist, one list per genre); nothing outside that
+  folder is read or changed, no track is ever deleted, music files are never edited, the decks' own analysis, cues
+  and grids are never touched, and the library file is copied to `dj-backups/` before every change (last 20 kept).
+  New rows are "not analysed", so the deck draws its own grid and waveform on first load. Problems land in `dj.log`
+  with the word PROBLEM and show on the page.
+- **`dj-setup.sh`:** the analyser's own Python (python-build-standalone, pinned by version and sha256) with the
+  packages in `dj-requirements.txt` (every file pinned by hash), in `~/.local/share/crate-dj`; from `install.sh`
+  and each sync, a no-op once done. `app.py`, `dj.py`, `genres.py` and `engine.py` stay standard library only and
+  run on the Mac's own Python 3.9; without the analyser, tracks still reach the Engine library and the deck
+  analyses them. Essentia is AGPLv3 (fine for a personal tool; a closed or paid version would need another analyser).
 - **`install.sh`:** (re)creates the three launchd jobs. Run it after moving the folder. Friends install with the one
   line in `get.sh` (README); `uninstall.sh` removes it, music stays.
 - **Music lives in** `~/Music/SoundCloud Sync/`. State (`playlist.txt`, `usb.txt`, `archive.txt`, logs) is git-ignored.

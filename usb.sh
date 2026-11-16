@@ -41,6 +41,9 @@ if rsync -a --ignore-existing --out-format='%n' --files-from="$LIST" "$SRC/" "$D
   echo "$(date '+%F %R')  copied to \"$NAME\" ($NEW new, $TOTAL on it${MID:+, sync still running})" >> "$DIR/usb.log"
   touch "$DIR/.usb-done"
   [ -n "$MID" ] && [ "$NEW" -gt 0 ] && touch "$DIR/.usb-mid"  # tracks went on mid-sync: the last copy ejects
+  # The decks' libraries (dj.py): the tracks now on the USB join its Engine DJ library, and rekordbox on this Mac
+  # catches up. Before any eject, and not back until it's written. A sync does the listening itself, at its end.
+  [ -z "$MID" ] && VOLUMES="${VOLUMES:-/Volumes}" python3 "$DIR/dj.py" "$DIR" "$SRC" --wait 2>>"$DIR/dj.log"
 else
   cat "$DIR/.usb-err" >> "$DIR/usb.log"
   [ -d "$DEST" ] || fail "it was unplugged before the copy finished. Plug it back in; it carries on."

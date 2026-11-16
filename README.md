@@ -66,6 +66,28 @@ Never YouTube rips or recorded streams: low quality.
   just pull it out (off unless you tick it; never while a sync is still adding tracks).
 - It only adds files. Nothing on the USB is ever deleted or overwritten.
 
+## Your DJ decks (Engine DJ and rekordbox)
+
+Open **DJ library** on the page. Every song is listed with its tempo, key and genres, and The Crate puts them
+straight into your decks' libraries, with no dragging and no clicks:
+
+- **Denon Prime and other Engine DJ decks:** the songs are added to the Engine library on your USB (plug the USB
+  into the deck once first, so it makes its library). On the deck: *Playlists → The Crate*.
+- **rekordbox (Pioneer DDJ controllers, and its own USB export for CDJs):** the songs are added to rekordbox on
+  this Mac, in a playlist folder called *The Crate*. This happens while rekordbox is closed; if it's open, it
+  catches up the next time.
+- **Genres:** each song is sorted by what's written on it (the file, SoundCloud's genre and tags). Songs nothing
+  describes land in *No genre yet*: tap their genre on the page. Wrong genre? Tap **Edit**. A song can have several
+  genres; it shows in each one's playlist, and the first is the Genre column on the decks. Your picks always win,
+  and you can add or remove genres from the list.
+- **What it never touches:** your own playlists, cues, loops and beat grids, and the music files themselves. No
+  song is ever removed from a library. A copy of the library is kept before every change (*dj-backups* in the app
+  folder, the last 20).
+- The first time you load a song, the deck (or rekordbox) draws its own beat grid and waveform, as for any new file.
+
+Tempo and key come from a free listening tool (Essentia) that The Crate sets up by itself the first time (about
+a 100 MB download, kept in your home folder). Until then the songs still reach your decks, which analyse them on load.
+
 ## Safety
 
 Every file is checked before it counts or goes on the USB: it must be real audio (name, contents, and macOS can

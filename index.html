@@ -223,6 +223,7 @@
     <div class="acts">
       <button class="ghost" id="startShow" hidden>Setup <span id="startLeft"></span></button>
       <button class="ghost ask" id="faqOpen" aria-haspopup="dialog"><b aria-hidden="true">?</b> How it works</button>
+      <button class="ghost" id="djOpen">DJ library</button>
       <button class="big" id="sync">Sync Now</button>
     </div>
   </header>
@@ -774,6 +775,8 @@ function paintSetup(s) {
     'Safety check on' + (s.safety.virusScan ? ' + virus scan' : '') +
       (s.safety.blocked ? ' (' + s.safety.blocked + ' blocked, in the Quarantine folder)' : '')].filter(Boolean).join('  ·  ');
 }
+
+$('djOpen').onclick = () => { location.href = '/dj'; };  // genres, tempo and key, and what your decks have
 
 async function call(path, body) {
   const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
