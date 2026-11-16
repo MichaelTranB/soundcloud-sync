@@ -70,3 +70,11 @@ link-status.json
 link-status.json.tmp
 .agent-run.json
 .agent-current.json
+dj-analysis.json
+dj-analysis.json.tmp
+genres.json
+genres.json.tmp
+dj.log
+.dj.lock
+dj-backups/
+.dj-again

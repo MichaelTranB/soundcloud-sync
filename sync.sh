@@ -119,6 +119,10 @@ echo "$(date '+%F %R')  have: $HAVE  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d
 awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" > "$OUT/To Buy.txt"
 # Every new file must be real audio (and pass the virus scan) before it stays or reaches the USB.
 python3 "$DIR/safety.py" check "$DIR" "$OUT" 2>>"$DIR/safety.log"
+# The DJ library (dj.py): tempo and key for the new tracks, then rekordbox on this Mac. The USB's Engine DJ library
+# follows in usb.sh, once the files are on it. dj-setup.sh brings the analyser if this Mac doesn't have it yet.
+zsh "$DIR/dj-setup.sh" 2>&1 | sed "s/^/$(date '+%F %R')  /" >>"$DIR/dj.log"
+python3 "$DIR/dj.py" "$DIR" "$OUT" --wait 2>>"$DIR/dj.log"
 CRATE_FINAL=1 "$DIR/usb.sh"  # the sync's last copy: the one that may eject
 # The Crate keeps itself up to date: once a day it takes the newest version from GitHub (only a clean step forward on
 # main; a copy someone changed by hand is left alone). The page restarts on it at once; the sync's own parts are new
