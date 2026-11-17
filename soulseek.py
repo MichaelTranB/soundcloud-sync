@@ -33,6 +33,7 @@ AGAIN = ".soulseek-again"  # left by the page when a file is thrown back: Soulse
 FROM = "soulseek-from.tsv"  # where each kept file came from: file, peer, the peer's file
 OLD = "From Soulseek"  # the folder inside the music folder that Soulseek files had to themselves, before
 MOVED = "soulseek-moved.tsv"  # each file flatten() moved: where it was, where it is now
+BETTER = "better.tsv"  # songs you asked a better copy of (friend.py): looked for like the to-get list
 USB_THROWN = "usb-thrown.tsv"  # each file you threw back on the page: where it was, its bytes (usb_tidy.py)
 CHECKED = "soulseek-checked.json"  # each kept file, looked at once: file -> [bytes, time, why it looks wrong or ""]
 STRIKES, STRIKE_DAYS = 3, 30  # 3 wrong files in a row for one track: Soulseek has only other songs by that name
@@ -78,18 +79,22 @@ def split(name):
 
 
 def to_get(d):
+    """The tracks to look for: the to-get list, then the songs you asked a better copy of on the Library Manager
+    page (better.tsv, written by app.py; its rows have the same first six columns, and dj.py takes one off once
+    its better copy is in)."""
     rows = []
-    try:
-        with open(os.path.join(d, "to-buy.tsv")) as f:
-            for line in f:
-                name, link, _, secs, artist, title = (line.rstrip("\n").split("\t") + [""] * 5)[:6]
-                if name and link:
-                    # Spotify and Apple Music rows carry the artist and title apart (playlists.py): taken as they
-                    # are, first artist only (the one in file names), without a " - Remastered 2011" kind of tail.
-                    at = (artist.split(", ")[0], REMASTER.sub("", title)) if artist and title else split(name)
-                    rows.append((link, name, *at, "" if CUT.search(name) else secs))
-    except OSError:
-        pass
+    for file in ("to-buy.tsv", BETTER):
+        try:
+            with open(os.path.join(d, file)) as f:
+                for line in f:
+                    name, link, _, secs, artist, title = (line.rstrip("\n").split("\t") + [""] * 5)[:6]
+                    if name and link:
+                        # Spotify and Apple Music rows carry the artist and title apart (playlists.py): taken as
+                        # they are, first artist only (the one in file names), without a " - Remastered 2011" tail.
+                        at = (artist.split(", ")[0], REMASTER.sub("", title)) if artist and title else split(name)
+                        rows.append((link, name, *at, "" if CUT.search(name) else secs))
+        except OSError:
+            pass
     return rows
 
 

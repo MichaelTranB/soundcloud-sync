@@ -98,3 +98,13 @@ soulseek-moved.tsv
 soulseek-moved.tsv.tmp
 usb-thrown.tsv
 usb-thrown.tsv.tmp
+dj-friends.json
+dj-friends.json.tmp
+friend-anlz/
+better.tsv
+better.tsv.tmp
+.friend-copy.json
+.friend-copy.json.tmp
+.friend-library.json
+.friend-library.json.tmp
+.friend.lock

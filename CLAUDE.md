@@ -63,6 +63,16 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   his pick: `dj-written.json` remembers what each library showed after the last write, and a difference is his
   edit (not when emptied, not when it's just the file's own tag). `app.py` runs `dj.py` when rekordbox closes.
   Problems land in `dj.log` with the word PROBLEM and show on the page.
+- **Copy from another USB (`friend.py`, the card on `/dj`):** lists a second plugged-in USB's rekordbox playlists
+  (read from a copy of its `exportLibrary.db` made on the Mac) or its folders; the picked songs are copied into the
+  music folder (never twice: same name, any file kind), so the normal pipeline does the rest. `dj-friends.json`
+  remembers each copied playlist ("<name> (<whose>)") and each song's tempo, key, cue rows and analysis files
+  (`friend-anlz/`), which `rekordbox_usb.py` carries into the USB's library (`repath()` re-addresses an analysis
+  file byte for byte; pyrekordbox can't write one that holds cues). The other USB is only read.
+- **Below gig quality (`friend.low`: MP3/M4A under 320 kbps):** "Find a better copy" adds a row to `better.tsv`,
+  which `soulseek.to_get` reads beside `to-buy.tsv`; when it lands, `dj.better` puts the old file in the Trash
+  (and `usb-thrown.tsv`, so it leaves the USB) and its playlists follow the new file. A better copy thrown back
+  is looked for again for 30 days. `/play?f=` streams a file from the music folder only (ranges, same-origin).
 - **Recognising songs by their sound (`recognise.py`):** as MusicBrainz Picard does: a Chromaprint fingerprint (from
   Essentia) is looked up on AcoustID, and MusicBrainz names the recording and its genres (`recognised.json`). Used
   for genres, and to flag (never throw back by itself) a Soulseek file that sounds like another song: flips and
