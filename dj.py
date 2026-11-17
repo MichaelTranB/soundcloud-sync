@@ -13,7 +13,7 @@ Standard library only. Tempo and key need the private Python dj-setup.sh sets up
 still reach the decks, which then analyse them on load."""
 import fcntl, json, os, re, subprocess, sys, time, unicodedata
 
-import friend, genres, recognise, usb_tidy
+import friend, genres, recognise, usb_ask, usb_tidy
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 # The private Python with Essentia, Mutagen and pyrekordbox (dj-setup.sh); the second is where the first build kept it.
@@ -66,6 +66,13 @@ def follow(dir, src):
         old, _, new = line.partition("\t")
         if old and new:
             was[os.path.relpath(new, src)] = os.path.relpath(old, src)
+    turned = {}  # a FLAC that is now an AIFF (aiff.py), or back again: the same song under another name
+    for line in read(dir, "dj-converted.tsv").splitlines():
+        old, new = (line.split("\t") + [""])[:2]
+        if old and new:
+            turned[new] = old
+    was.update({new: old for new, old in turned.items()
+                if os.path.isfile(os.path.join(src, new)) and not os.path.lexists(os.path.join(src, old))})
     if not was:
         return was
 
@@ -276,9 +283,31 @@ def busy(dir):
         return isinstance(e, BlockingIOError)
 
 
+def convert(dir, src):
+    """FLACs that arrived since last time become AIFFs (aiff.py): the same sound, in a file every deck plays. Not while
+    a sync is still getting songs, except as that sync's own last step."""
+    try:
+        pid = int(read(dir, ".running").strip() or 0)
+        os.kill(pid, 0) if pid else None
+    except (ValueError, ProcessLookupError):
+        pid = 0
+    except OSError:
+        pass
+    if (pid and not os.environ.get("CRATE_FINAL") and os.getppid() != pid) or not os.path.exists(PY):
+        return
+    here = os.path.dirname(os.path.abspath(__file__))
+    r = subprocess.run([PY, os.path.join(here, "aiff.py"), "auto", dir, src], capture_output=True, text=True)
+    if r.returncode:
+        log(dir, f"AIFF PROBLEM: {(r.stderr.strip().splitlines() or ['it stopped'])[-1]}"[:300])
+
+
 def once(dir, src, volumes):
     usb = read(dir, "usb.txt").strip()
     stick = os.path.join(volumes, usb) if usb and os.path.isdir(os.path.join(volumes, usb)) else ""
+    if stick and not usb_ask.ready(dir, stick):  # it has things on it already: nothing there changes before your OK
+        if "waiting for your OK" not in (read(dir, "dj.log").splitlines() or [""])[-1]:
+            log(dir, f'USB "{usb}" already has things on it: waiting for your OK on the page')
+        stick = ""
     if stick:  # first, so it's right away: a song you threw back leaves the USB too (usb.sh does this as well)
         try:
             said = usb_tidy.say(*usb_tidy.tidy(dir, src, os.path.join(stick, "SoundCloud Sync")))
@@ -291,6 +320,7 @@ def once(dir, src, volumes):
             step(dir, src)
         except Exception as e:  # never silent: the page shows the last lines of dj.log
             log(dir, f"COPY PROBLEM: {e!r}"[:300])
+    convert(dir, src)
     analyse(dir, src)
     songs = library(dir, src)
     there = seen(dir, src, songs, stick)

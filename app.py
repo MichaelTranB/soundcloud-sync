@@ -6,7 +6,7 @@ in the browser cannot press the buttons.
 """
 import json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
-import club, dj, friend, genres, recognise
+import club, dj, friend, genres, recognise, usb_ask
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -859,6 +859,7 @@ def state():
         "missing": info.get("missing", 0), "reading": reading, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)),
         "usbEject": os.path.exists(os.path.join(DIR, "usb-eject.txt")),  # off unless ticked
+        "usbAsk": usb_asking(),
         "usbCopy": usb_copy(), "usbResult": usb_result(usblog),
         # new tracks passed the safety check since the last copy: they go on the next time it's plugged in
         "usbBehind": bool(usb) and newer("safety-ok.tsv", ".usb-done"),
@@ -971,6 +972,17 @@ def dj_problem(lines):
     return ""
 
 
+def usb_asking():
+    """Where the chosen USB stands with "ask before changing a USB that has things on it" (usb_ask.py): None when it
+    isn't plugged in, else its state, and for the question itself what would change, in numbers."""
+    usb = read("usb.txt").strip()
+    at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)
+    if not usb or not os.path.isdir(at):
+        return None
+    s = usb_ask.state(DIR, at)
+    return usb_ask.what(DIR, OUT, at) if s == "ask" else {"name": usb, "state": s, "content": usb_ask.content(at)}
+
+
 def dj_state():
     """Everything the DJ library page shows: each track with its tempo, key and genres, the genre list, and where
     the decks' libraries stand."""
@@ -988,7 +1000,7 @@ def dj_state():
     plugged = bool(usb) and os.path.isdir(at)
     last = lambda *words: next((l for l in reversed(log[-40:]) if any(w in l for w in words)), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
-            "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged,
+            "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged, "usbAsk": usb_asking(),
             "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb, club.kept(DIR, usb)),
             "lastRecognise": last("song recognition", "RECOGNISE PROBLEM"),
             "engine": plugged and os.path.isfile(os.path.join(at, "Engine Library", "Database2", "m.db")),
@@ -1320,6 +1332,17 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(DIR, "usb.txt"), "w") as f:
                 f.write(name + "\n")
             if name:
+                subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True)
+        elif self.path == "/api/usb/ok":  # your answer to "this USB has things on it: may The Crate add to it?"
+            usb = read("usb.txt").strip()
+            at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)
+            if not usb or not os.path.isdir(at):
+                return self.send(400, {"error": "That drive isn't plugged in."})
+            try:
+                usb_ask.answer(DIR, at, bool(body.get("yes")))
+            except OSError:
+                return self.send(400, {"error": "Couldn't write on that drive. Is it locked or full?"})
+            if body.get("yes"):
                 subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True)
         elif self.path == "/api/eject":
             flag = os.path.join(DIR, "usb-eject.txt")

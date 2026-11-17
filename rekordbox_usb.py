@@ -410,7 +410,7 @@ def write(job, master=None, is_open=running):
             old = device(s["was"]) if s.get("was") else ""
             if old in own and at[s["rel"]] not in own:
                 own[at[s["rel"]]] = own.pop(old)
-                moved.append(at[s["rel"]])
+                moved.append((at[s["rel"]], s))
         # What needs doing, worked out before anything is touched.
         new = [s for s in songs if at[s["rel"]] not in own]
         mine = set(at.values())
@@ -469,9 +469,11 @@ def write(job, master=None, is_open=running):
             return n
         junk = []  # files of rows that go, taken off the USB once the library is safely written
         try:
-            for p in moved:
-                run("UPDATE content SET path = :p, fileName = :f WHERE content_id = :i", p=p, f=os.path.basename(p),
-                    i=own[p]["id"])
+            for p, s in moved:  # (or another kind of file with the same sound: a FLAC that is now an AIFF, aiff.py)
+                run("UPDATE content SET path = :p, fileName = :f, fileType = :t, fileSize = :n, "
+                    "bitrate = CASE WHEN :b > 0 THEN :b ELSE bitrate END WHERE content_id = :i", p=p,
+                    f=os.path.basename(p), t=KINDS[os.path.splitext(p)[1].lower()], b=int(s.get("bitrate") or 0),
+                    n=os.path.getsize(os.path.join(folder, s["rel"])), i=own[p]["id"])
                 if own[p]["anlz"]:
                     readdress(usb, own[p]["anlz"], p)
             for s in new:

@@ -113,7 +113,9 @@ def write(usb, songs, lists, backups):
             r = row(s, usb_file)
             old = nfc(f"../{MUSIC}/{s['was']}") if s.get("was") else ""
             if old in have and r["path"] not in have:  # the file moved: the same track, cues and all, at its new place
-                con.execute("UPDATE Track SET path=?, filename=? WHERE id=?", (r["path"], r["filename"], have[old][0]))
+                # (or became another kind of file with the same sound: a FLAC that is now an AIFF, aiff.py)
+                con.execute("UPDATE Track SET path=?, filename=?, fileType=?, fileBytes=?, bitrate=COALESCE(?, bitrate) "
+                            "WHERE id=?", (r["path"], r["filename"], r["fileType"], r["fileBytes"], r["bitrate"], have[old][0]))
                 have[r["path"]] = have.pop(old)
             if r["path"] in have:
                 tid, done = have[r["path"]]
