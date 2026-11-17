@@ -4,9 +4,9 @@
 Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so another website open
 in the browser cannot press the buttons.
 """
-import json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, urllib.parse
+import json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, unicodedata, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
-import club, dj, friend, genres, recognise, usb_ask
+import aiff, club, details, dj, friend, genres, recognise, usb_ask
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -983,6 +983,79 @@ def usb_asking():
     return usb_ask.what(DIR, OUT, at) if s == "ask" else {"name": usb, "state": s, "content": usb_ask.content(at)}
 
 
+def usb_answer(yes):
+    """Your answer to "this USB has things on it: may The Crate add to it?". A yes starts the copy. Returns an error
+    line, or None."""
+    usb = read("usb.txt").strip()
+    at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)
+    if not usb or not os.path.isdir(at):
+        return "That drive isn't plugged in."
+    try:
+        usb_ask.answer(DIR, at, bool(yes))
+    except OSError:
+        return "Couldn't write on that drive. Is it locked or full?"
+    if yes:
+        subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True)
+    return None
+
+
+_fix = {}  # the song list's jobs started from the page (aiff.py, details.py): one of each kind at a time
+
+
+def fix_start(kind, how, feed):
+    """Starts one of the song list's jobs on its own (a page restart never stops it): aiff.py or details.py with the
+    private Python, the ticked songs on its stdin. False while the last one of its kind is still at work."""
+    if (_fix.get(kind) and _fix[kind].poll() is None) or progress("." + kind + "-progress"):
+        return False
+    with open(os.path.join(DIR, "dj.log"), "a") as log:
+        _fix[kind] = p = subprocess.Popen([dj.PY, os.path.join(DIR, kind + ".py"), how, DIR, OUT],
+                                          stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=log,
+                                          start_new_session=True)
+    threading.Thread(target=lambda: p.communicate(feed.encode()), daemon=True).start()
+    return True
+
+
+def progress(name):
+    """A job's own note while it runs ("done<TAB>of<TAB>its pid": aiff.py, details.py): [done, of], else None."""
+    try:
+        done, of, pid = read(name).split("\t")
+        os.kill(int(pid), 0)
+        return [int(done), int(of)]
+    except (ValueError, OSError):
+        return None
+
+
+def on_usb(at, plugged):
+    """The names in The Crate's folder on the chosen USB, however the drive spells them (None: not plugged in)."""
+    try:
+        return {unicodedata.normalize("NFC", f).casefold() for f in os.listdir(os.path.join(at, usb_ask.FOLDER))} \
+            if plugged else None
+    except OSError:
+        return set()
+
+
+def fix_song(rel, lacks, det, back, left, on):
+    """What the song list's filters go by, for one song: only what is so, to keep the page's load small."""
+    d, out = det.get(rel) or {}, {}
+    if lacks.get(rel):
+        out["lacks"] = lacks[rel]
+    if d.get("ask"):
+        out["ask"] = [{k: c.get(k) for k in ("title", "artist", "album", "year", "genre", "cover", "source") if c.get(k)}
+                      for c in d["ask"][:3]]
+    elif d.get("looked") and lacks.get(rel):
+        out["none"] = True  # looked up, nothing sure enough to offer
+    if d.get("undoable"):
+        out["filled"] = sorted({f["field"] for f in d["filled"]})
+    if rel in back:
+        out["back"] = True
+    if rel in left:
+        out["left"] = left[rel]
+    if on is not None:
+        out["usb"] = unicodedata.normalize("NFC", rel).casefold() in on if os.sep not in rel else \
+            os.path.isfile(os.path.join(os.environ.get("VOLUMES") or "/Volumes", read("usb.txt"), usb_ask.FOLDER, rel))
+    return out
+
+
 def dj_state():
     """Everything the DJ library page shows: each track with its tempo, key and genres, the genre list, and where
     the decks' libraries stand."""
@@ -998,9 +1071,15 @@ def dj_state():
     usb = read("usb.txt")
     at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)  # as usb.sh and dj.py: overridable for tests
     plugged = bool(usb) and os.path.isdir(at)
+    rec, lacks, det, back, on = aiff.load(DIR), details.have(DIR), details.status(DIR), aiff.undoable(DIR), on_usb(at, plugged)
+    for s in songs:
+        s.update(fix_song(s["file"], lacks, det, back, rec["skip"], on))
     last = lambda *words: next((l for l in reversed(log[-40:]) if any(w in l for w in words)), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
             "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged, "usbAsk": usb_asking(),
+            "fix": {"auto": rec["auto"], "autoDetails": details.load(DIR)["auto"], "aiff": progress(".aiff-progress"), "details": progress(".details-progress"),
+                    "lastAiff": last("AIFF: ", "AIFF PROBLEM"), "lastDetails": last("details: ", "DETAILS PROBLEM"),
+                    "lastCues": last("cues: ", "CUES PROBLEM")},
             "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb, club.kept(DIR, usb)),
             "lastRecognise": last("song recognition", "RECOGNISE PROBLEM"),
             "engine": plugged and os.path.isfile(os.path.join(at, "Engine Library", "Database2", "m.db")),
@@ -1076,6 +1155,70 @@ def genre_name(raw):
     return name if name and name.isprintable() and name != genres.NONE else ""
 
 
+def follow():
+    """A song's file changed (details added or taken out again): the decks' lists follow, and the USB's copy when it
+    is plugged in."""
+    usb = read("usb.txt")
+    if usb and os.path.isdir(os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)):
+        subprocess.Popen([os.path.join(DIR, "usb.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    else:
+        dj_run(5)
+    return None
+
+
+def fix_post(path, body):
+    """The song list's buttons: the ticked songs become AIFFs (or one goes back), get their missing cover and details
+    looked up (or one put back, or your pick of the candidates written), or go onto the USB. Ticking and pressing is
+    the yes. Each runs on its own and the decks' lists follow when it is done."""
+    have = {s["rel"] for s in dj.library(DIR, OUT)}
+    names = lambda v: [r for r in (v if isinstance(v, list) else [v]) if isinstance(r, str) and r in have]
+    if path == "/api/dj/usb-ok":  # the same answer as on the main page, from this page
+        return usb_answer(body.get("yes"))
+    if path == "/api/dj/put":
+        usb = read("usb.txt")
+        if not usb or not os.path.isdir(os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)):
+            return f"Plug in {usb or 'your USB'} first."
+        subprocess.Popen([os.path.join(DIR, "usb.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        return None
+    if not os.path.exists(dj.PY):
+        return "The DJ tools aren't set up on this Mac yet."
+    kind = path.rsplit("/", 1)[1]
+    if kind == "aiff" and "auto" in body:
+        rec = aiff.load(DIR)
+        rec["auto"] = bool(body["auto"])
+        aiff.save(DIR, rec)
+        return None
+    if kind == "details" and "auto" in body:
+        details.save(DIR, {**details.load(DIR), "auto": bool(body["auto"])})
+        return None
+    if kind == "details" and "pick" in body:  # your pick among the candidates of a song that needs a look
+        rel, n = names(body["pick"]), body.get("n")
+        if not rel or not isinstance(n, int):
+            return "That song isn't in your library any more."
+        r = subprocess.run([dj.PY, os.path.join(DIR, "details.py"), "pick", DIR, OUT, rel[0], str(n)],
+                           capture_output=True, text=True, timeout=90)
+        if r.returncode:
+            return "Couldn't write that one: " + (r.stderr.strip().splitlines() or ["no reason given"])[-1][:160]
+        return follow()
+    back = "undo" in body
+    rels = names(body.get("undo") if back else body.get("files"))
+    if not rels:
+        return "Tick the songs first."
+    if kind == "details" and back:
+        try:
+            subprocess.run([dj.PY, os.path.join(DIR, "details.py"), "undo", DIR, OUT, *rels[:200]],
+                           capture_output=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            return "That took too long. Try fewer songs at once."
+        return follow()
+    how = ("undo" if back else "pick") if kind == "aiff" else "fill"
+    if not fix_start(kind, how, json.dumps(rels) if kind == "aiff" else "\n".join(rels)):
+        return "Still working on the last ones. Try again when it's done."
+    return None
+
+
 def dj_post(path, body):
     """The DJ library page's buttons. Returns an error line, or None when done."""
     if path == "/api/dj/recognise":  # the AcoustID key for recognising songs by their sound; "" switches it off
@@ -1108,6 +1251,8 @@ def dj_post(path, body):
         p.stdin.close()
         threading.Thread(target=p.wait, daemon=True).start()
         return None
+    if path in ("/api/dj/aiff", "/api/dj/details", "/api/dj/put", "/api/dj/usb-ok"):
+        return fix_post(path, body)
     if path == "/api/dj/show":  # a song's file in Finder (for a kind of file the browser can't play)
         p = song_path(body.get("file", ""))
         if not p:
@@ -1260,7 +1405,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {"error": "wrong origin"})
         try:
             # a pasted song list is ~55 bytes a song; the playlists and folders ticked to copy from another USB
-            cap = 600_000 if self.path == "/api/spotify-songs" else 200_000 if self.path == "/api/dj/copy" else 4096
+            cap = 600_000 if self.path in ("/api/spotify-songs", "/api/dj/aiff", "/api/dj/details") else \
+                200_000 if self.path == "/api/dj/copy" else 4096
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
         except ValueError:
             return self.send(400, {"error": "bad request"})
@@ -1334,16 +1480,9 @@ class Handler(BaseHTTPRequestHandler):
             if name:
                 subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True)
         elif self.path == "/api/usb/ok":  # your answer to "this USB has things on it: may The Crate add to it?"
-            usb = read("usb.txt").strip()
-            at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)
-            if not usb or not os.path.isdir(at):
-                return self.send(400, {"error": "That drive isn't plugged in."})
-            try:
-                usb_ask.answer(DIR, at, bool(body.get("yes")))
-            except OSError:
-                return self.send(400, {"error": "Couldn't write on that drive. Is it locked or full?"})
-            if body.get("yes"):
-                subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True)
+            bad = usb_answer(body.get("yes"))
+            if bad:
+                return self.send(400, {"error": bad})
         elif self.path == "/api/eject":
             flag = os.path.join(DIR, "usb-eject.txt")
             if body.get("on"):

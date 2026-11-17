@@ -10,15 +10,18 @@ the decks' libraries were made from (usb.sh itself only ever adds):
     song's name but not its size is another download of it, so it is swapped for the library's file (the tempo,
     beat grid and waveform in the decks' libraries were made from that one); and the same song as another kind of
     file (name.mp3 beside name.flac) that isn't in the library is a double, and goes. Both to the USB's Trash.
-    Songs on the USB that aren't in this library at all are someone's own, and are left alone.
+    Songs on the USB that aren't in this library at all are someone's own, and are left alone;
+  a song whose cover or details were filled in on the Mac since it was copied (details-changed.tsv, kept by
+    details.py): the USB's copy is the older file, so it is swapped for the library's the same way.
 
   usb_tidy.py DIR SRC DEST    DIR: the app folder; SRC: the music folder on the Mac; DEST: its copy on the USB
 
 Only files inside DEST are ever touched; anything else on the USB is left alone. Run by usb.sh before it copies, and
 by dj.py before it writes the decks' libraries. Standard library only."""
-import os, shutil, sys, time, unicodedata
+import filecmp, os, shutil, sys, time, unicodedata
 
 OLD, MOVED, THROWN = "From Soulseek", "soulseek-moved.tsv", "usb-thrown.tsv"  # as soulseek.py names them
+FILLED = "details-changed.tsv"  # songs whose tags details.py changed: their copy on the USB is the older file
 CHECKED = "safety-ok.tsv"  # the files that passed the safety check (safety.py): the only ones usb.sh copies
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus", ".alac", ".aac")
 
@@ -107,9 +110,10 @@ def swap(dest, src_file, p):
         return False
 
 
-def doubles(src, dest, rels):
-    """rels: the library's songs (checked()). Returns (files swapped for the library's own, doubles taken off, ones
-    that couldn't be)."""
+def doubles(src, dest, rels, changed=()):
+    """rels: the library's songs (checked()); changed: the ones whose tags changed since they were copied (their
+    copy can be the same size and still the older file). Returns (files swapped for the library's own, doubles taken
+    off, ones that couldn't be)."""
     swapped = off = stuck = 0
     folders = {}  # each folder on the USB, listed once
     def listed(folder):
@@ -128,7 +132,8 @@ def doubles(src, dest, rels):
         return folders[folder]
     for rel in rels:
         mine, p = os.path.join(src, rel), os.path.join(dest, rel)
-        if size(p) >= 0 and size(p) != size(mine):
+        if size(p) >= 0 and size(mine) >= 0 and (size(p) != size(mine) or (
+                rel in changed and not filecmp.cmp(mine, p, shallow=False))):
             if swap(dest, mine, p):
                 swapped += 1
             else:
@@ -182,7 +187,15 @@ def tidy(d, src, dest):
                     off += 1
                 else:
                     stuck += 1
-    swapped, twice, more = doubles(src, dest, checked(d, src))
+    changed = {rel for rel, _ in rows(d, FILLED)}
+    swapped, twice, more = doubles(src, dest, checked(d, src), changed)
+    if changed and not more:  # every copy on this USB is the library's file now: only newer notes stay
+        keep = [r for r in rows(d, FILLED) if r[0] not in changed]
+        try:
+            with open(os.path.join(d, FILLED), "w") as f:
+                f.writelines("\t".join(r) + "\n" for r in keep)
+        except OSError:
+            pass
     old = os.path.join(dest, OLD)
     try:  # the old folder goes once nothing of anyone's is left in it
         left = os.listdir(old)

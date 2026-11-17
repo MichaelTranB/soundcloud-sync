@@ -320,6 +320,8 @@ def follow(dir, src, old, new):
             os.replace(os.path.join(dir, "dj-analysis.json.tmp"), os.path.join(dir, "dj-analysis.json"))
     except (OSError, ValueError, Problem):
         pass
+    import details
+    details.moved(dir, old, new)  # a cover or details filled in before stay undoable
 
 
 def safe(dir, src):
@@ -445,6 +447,22 @@ def say(done, why, back=False):
     return "AIFF: " + "; ".join(bits) if bits else ""
 
 
+def decks(dir, src):
+    """The decks' lists follow now (and your USB, when it's in), as after any new song."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:
+        with open(os.path.join(dir, "usb.txt")) as f:
+            mine = f.read().strip()
+    except OSError:
+        mine = ""
+    env = {**os.environ, "SRC": src}
+    if mine and os.path.isdir(os.path.join(os.environ.get("VOLUMES") or "/Volumes", mine)):
+        subprocess.run([os.path.join(here, "usb.sh")], env=env, stdin=subprocess.DEVNULL)
+    else:
+        with open(os.path.join(dir, "dj.log"), "a") as err:
+            subprocess.run(["/usr/bin/python3", os.path.join(here, "dj.py"), dir, src, "--wait"], env=env, stderr=err)
+
+
 def log(dir, text):
     if text:
         with open(os.path.join(dir, "dj.log"), "a", encoding="utf-8") as f:
@@ -465,16 +483,5 @@ if __name__ == "__main__":
         got = run(dir, src, names, back=how == "undo", show=True)
         if got:
             log(dir, say(*got, back=how == "undo"))
-        if got and got[0]:  # the decks' lists follow now (and your USB, when it's in), as after any new song
-            here = os.path.dirname(os.path.abspath(__file__))
-            try:
-                with open(os.path.join(dir, "usb.txt")) as f:
-                    mine = f.read().strip()
-            except OSError:
-                mine = ""
-            env = {**os.environ, "SRC": src}
-            if mine and os.path.isdir(os.path.join(os.environ.get("VOLUMES") or "/Volumes", mine)):
-                subprocess.run([os.path.join(here, "usb.sh")], env=env, stdin=subprocess.DEVNULL)
-            else:
-                with open(os.path.join(dir, "dj.log"), "a") as err:
-                    subprocess.run(["/usr/bin/python3", os.path.join(here, "dj.py"), dir, src, "--wait"], env=env, stderr=err)
+        if got and got[0]:
+            decks(dir, src)
