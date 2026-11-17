@@ -307,11 +307,10 @@
   <div class="hd"><b>Your decks</b><small>Where your songs stand in each DJ app. Updates by itself after every sync and when you plug in your USB.</small>
     <button class="q" data-help="hDecks" aria-expanded="false" aria-label="How your decks are updated">?</button></div>
   <div class="help" id="hDecks" hidden>
-    <p><b>Update decks now</b> sends new songs, genres, tempo and key to your USB and rekordbox right away.</p>
-    <p>rekordbox on this Mac is only written while it is closed. If it is open, it catches up when you close it.</p>
-    <p>Never touched: your own playlists, cues, grids and files. Songs go only into The Crate's own folder on the USB.</p>
-    <p><b>Cues</b>: hot cues, memory cues and loops set on the Prime 4, in rekordbox or on a club's decks reach the others. Newest wins, nothing is deleted, and <b>Undo</b> puts the last change back.</p>
-    <p>Undo: every library is copied to the app's <b>dj-backups</b> folder before a change.</p>
+    <p><b>Update decks now</b> sends new songs, genres, tempo and key to your USB and rekordbox right away. rekordbox is written only while it's closed; it catches up when you close it.</p>
+    <p><b>Cues</b> you set on the Prime 4, in rekordbox or on a club's decks reach the others. Newest wins, none is deleted, and <b>Undo</b> puts the last change back.</p>
+    <p><b>Never:</b> moves or deletes your own playlists, folders or files.</p>
+    <p><b>Undo:</b> every library is copied to <b>dj-backups</b> first.</p>
     <p id="cuesNote" hidden></p>
     <p id="usbOk" hidden></p>
   </div>
@@ -337,10 +336,10 @@
   <div class="hd gap"><b>Songs</b><small>Tick songs, then choose what to do with them.</small>
     <button class="q" data-help="hSongs" aria-expanded="false" aria-label="How the song list's buttons work">?</button></div>
   <div class="help" id="hSongs" hidden>
-    <p><b>Convert to AIFF</b>: the same sound, in a file every club deck plays. The original goes to the Trash only once the AIFF is checked, and playlists and cues follow. <span id="autoSay"></span></p>
-    <p><b>Add cover &amp; details</b>: fills only what is empty (cover, title, artist, album, genre, year), never over what is there. It writes only when two sources agree; otherwise you choose. <span id="autoFill"></span></p>
-    <p><b>Put on USB</b>: copies every song that isn't on your USB yet into The Crate's own folder there. Nothing else on it is moved or deleted.</p>
-    <p>Each one shows <b>Undo</b> on the song's row afterwards.</p>
+    <p><b>Convert to AIFF</b>: the same sound, in a file every club deck plays. The original goes to the Trash once the AIFF is checked; playlists and cues follow. <span id="autoSay"></span></p>
+    <p><b>Add cover &amp; details</b>: fills only what is empty, and only when it's sure; otherwise you choose. <span id="autoFill"></span></p>
+    <p><b>Put on USB</b>: copies songs not on your USB yet into The Crate's own folder. Nothing else on it is moved or deleted.</p>
+    <p>Each one shows <b>Undo</b> on the song's row.</p>
   </div>
   <div class="bar">
     <input id="q" type="search" placeholder="Search song, artist, genre, key or format" aria-label="Search">
