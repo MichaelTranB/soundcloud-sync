@@ -92,3 +92,7 @@ dj-backups/
 .dj-again
 dj-written.json
 dj-written.json.tmp
+soulseek-moved.tsv
+soulseek-moved.tsv.tmp
+usb-thrown.tsv
+usb-thrown.tsv.tmp
