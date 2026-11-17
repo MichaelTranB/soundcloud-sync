@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
-"""Keeps the USB's copy of the music folder in step with two things done on the Mac (usb.sh itself only ever adds):
+"""Keeps the USB's copy of the music folder in step with the Mac's, so it holds each song once and the very file
+the decks' libraries were made from (usb.sh itself only ever adds):
 
   a song you threw back on the page ("Wrong or bad file": usb-thrown.tsv) leaves the USB as well. Its copy there
     (the same place, the same size) goes to the USB's own Trash, never deleted;
   Soulseek files that moved out of their old "From Soulseek" folder (soulseek-moved.tsv) move the same way on the
-    USB, so they are not copied onto it a second time.
+    USB, so they are not copied onto it a second time;
+  a USB that already had songs on it (filled by another Mac's Crate, or half-filled by hand): a file there with a
+    song's name but not its size is another download of it, so it is swapped for the library's file (the tempo,
+    beat grid and waveform in the decks' libraries were made from that one); and the same song as another kind of
+    file (name.mp3 beside name.flac) that isn't in the library is a double, and goes. Both to the USB's Trash.
+    Songs on the USB that aren't in this library at all are someone's own, and are left alone.
 
   usb_tidy.py DIR SRC DEST    DIR: the app folder; SRC: the music folder on the Mac; DEST: its copy on the USB
 
 Only files inside DEST are ever touched; anything else on the USB is left alone. Run by usb.sh before it copies, and
 by dj.py before it writes the decks' libraries. Standard library only."""
-import os, shutil, sys, time
+import os, shutil, sys, time, unicodedata
 
 OLD, MOVED, THROWN = "From Soulseek", "soulseek-moved.tsv", "usb-thrown.tsv"  # as soulseek.py names them
+CHECKED = "safety-ok.tsv"  # the files that passed the safety check (safety.py): the only ones usb.sh copies
+AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus", ".alac", ".aac")
 
 
 def rows(d, name):
@@ -65,11 +73,87 @@ def trash(dest, p):
     return ""
 
 
+def checked(d, src):
+    """The songs usb.sh copies: each file in the music folder that passed the safety check, as it sits in there."""
+    try:
+        with open(os.path.join(d, CHECKED), errors="replace") as f:
+            rels = [l.rstrip("\n").split("\t")[0] for l in f]
+    except OSError:
+        return []
+    return [r for r in dict.fromkeys(rels) if r and not os.path.isabs(r) and ".." not in r.split(os.sep)
+            and r.lower().endswith(AUDIO) and size(os.path.join(src, r)) > 0]
+
+
+def same(a, b):
+    """Two names for one thing, however the drive spells its letters (accents, capitals)."""
+    return unicodedata.normalize("NFC", a).lower() == unicodedata.normalize("NFC", b).lower()
+
+
+def swap(dest, src_file, p):
+    """The library's file in place of the one at p (which goes to the USB's Trash). Copied beside it first, so a
+    copy that fails (a full USB) leaves what was there."""
+    tmp = os.path.join(os.path.dirname(p), ".crate-" + os.path.basename(p))
+    try:
+        shutil.copy2(src_file, tmp)
+        if size(tmp) != size(src_file) or not trash(dest, p):
+            raise OSError("not swapped")
+        os.rename(tmp, p)
+        return True
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False
+
+
+def doubles(src, dest, rels):
+    """rels: the library's songs (checked()). Returns (files swapped for the library's own, doubles taken off, ones
+    that couldn't be)."""
+    swapped = off = stuck = 0
+    folders = {}  # each folder on the USB, listed once
+    def listed(folder):
+        if folder not in folders:
+            try:
+                found = os.listdir(os.path.join(dest, folder))
+            except OSError:
+                found = []
+            for f in found:
+                if f.startswith(".crate-"):  # a swap that was cut short left its half-made copy
+                    try:
+                        os.remove(os.path.join(dest, folder, f))
+                    except OSError:
+                        pass
+            folders[folder] = [f for f in found if not f.startswith(".")]
+        return folders[folder]
+    for rel in rels:
+        mine, p = os.path.join(src, rel), os.path.join(dest, rel)
+        if size(p) >= 0 and size(p) != size(mine):
+            if swap(dest, mine, p):
+                swapped += 1
+            else:
+                stuck += 1
+        folder, name = os.path.split(rel)
+        stem = os.path.splitext(name)[0]
+        for at in dict.fromkeys((folder, OLD)):
+            for f in list(listed(at)):
+                other, ext = os.path.splitext(f)
+                if ext.lower() in AUDIO and same(other, stem) and not same(f, name) and \
+                        size(os.path.join(src, at, f)) < 0 and size(os.path.join(dest, at, f)) >= 0:
+                    if trash(dest, os.path.join(dest, at, f)):
+                        off += 1
+                    else:
+                        stuck += 1
+                    listed(at).remove(f)
+    return swapped, off, stuck
+
+
 def tidy(d, src, dest):
-    """Returns (thrown-back songs taken off the USB, songs moved in with the rest, ones that couldn't be moved)."""
+    """Returns (thrown-back songs taken off the USB, songs moved in with the rest, ones that couldn't be moved,
+    files swapped for the library's own, doubles taken off)."""
     off = moved = stuck = 0
     if not os.path.isdir(dest):
-        return 0, 0, 0
+        return 0, 0, 0, 0, 0
     for was, now in rows(d, MOVED):
         a, b = inside(src, was), inside(src, now)
         if not a or not b or size(os.path.join(dest, a)) < 0:
@@ -98,6 +182,7 @@ def tidy(d, src, dest):
                     off += 1
                 else:
                     stuck += 1
+    swapped, twice, more = doubles(src, dest, checked(d, src))
     old = os.path.join(dest, OLD)
     try:  # the old folder goes once nothing of anyone's is left in it
         left = os.listdir(old)
@@ -107,13 +192,17 @@ def tidy(d, src, dest):
             os.rmdir(old)
     except OSError:
         pass
-    return off, moved, stuck
+    return off, moved, stuck + more, swapped, twice
 
 
-def say(off, moved, stuck):
+def say(off, moved, stuck, swapped=0, twice=0):
     s = lambda n: "" if n == 1 else "s"
     parts = ([f"{off} song{s(off)} you threw back taken off it (in the USB's Trash)"] if off else []) + \
             ([f"{moved} Soulseek song{s(moved)} moved in with the rest"] if moved else []) + \
+            ([f"{swapped} file{s(swapped)} that {'was' if swapped == 1 else 'were'} another download of a song "
+              "swapped for your library's (the old one is in the USB's Trash)"] if swapped else []) + \
+            ([f"{twice} double{s(twice)} taken off it (a song that was on it twice; in the USB's Trash)"]
+             if twice else []) + \
             ([f"PROBLEM: {stuck} file{s(stuck)} couldn't be moved (is the USB locked or full?)"] if stuck else [])
     return "; ".join(parts)
 

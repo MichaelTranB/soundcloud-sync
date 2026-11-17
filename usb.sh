@@ -3,7 +3,9 @@
 # any drive is mounted, so tracks downloaded while the USB was away land on it the next time it appears.
 # Only ever ADDS tracks: no track on the USB is deleted or overwritten. Only music goes on it: the to-buy list stays
 # on the Mac (the page shows it), and the list older versions put on the USB is taken off. The one exception is a song
-# you threw back on the page ("Wrong or bad file"): its copy here goes to the USB's own Trash (usb_tidy.py).
+# you threw back on the page ("Wrong or bad file"): its copy here goes to the USB's own Trash, and on a USB that
+# already held songs, another download of a library song is swapped for the library's file and a double of one is
+# taken off, both to that Trash as well (usb_tidy.py). Songs that aren't from this library are left alone.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 DIR="${0:A:h}"
 SRC="${SRC:-$HOME/Music/SoundCloud Sync}"   # both overridable for tests

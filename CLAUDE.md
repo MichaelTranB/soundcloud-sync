@@ -37,7 +37,9 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   the safety check's list (`safety-ok.tsv`). Never deletes, with one exception he asked for (`usb_tidy.py`, run
   first here and by `dj.py`, inside `<USB>/SoundCloud Sync/` only): a song he threw back on the page
   (`usb-thrown.tsv`: path, size) has its same-size copy moved to the USB's own Trash, now if plugged in, else at
-  the next plug-in. When new tracks land it ejects the USB and shows a Mac
+  the next plug-in; and on a USB that already held songs (a friend's, or filled by hand), a file under a library
+  song's name with another size is swapped for the library's file, and the same song as another kind of file
+  (name.mp3 beside name.flac, not on the Mac) is taken off, both to the USB's Trash. Songs not in the library stay. When new tracks land it ejects the USB and shows a Mac
   notice (off when `usb-keep.txt` exists; the page's switch). An original the safety check blocks is added to
   `blocked-originals.txt` so it counts as not got.
 - **DJ library (`dj.py`, page `/dj`):** after every sync and USB copy, every safety-checked track gets tempo and key
@@ -45,7 +47,13 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   wins, then the file's tag, SoundCloud's genre, what it sounds like, SoundCloud's tags, a genre word in the title;
   else "No genre yet"), and is
   written into the Engine DJ library on the USB (`engine.py`, plain sqlite3: Denon Prime and other Engine OS decks)
-  and rekordbox on the Mac (`rekordbox.py`, pyrekordbox; only while rekordbox is closed). A song can have several
+  and rekordbox on the Mac (`rekordbox.py`, pyrekordbox; only while rekordbox is closed), then into the USB's own
+  rekordbox library (`rekordbox_usb.py`: `PIONEER/rekordbox/exportLibrary.db`, the "OneLibrary" the CDJ-3000X,
+  XDJ-AZ, OPUS-QUAD and OMNIS-DUO read and rekordbox shows under the USB; only its own `/SoundCloud Sync/` rows and
+  "The Crate" folder, made fresh on a USB without one, left alone on a USB with only the older `export.pdb`, never
+  while rekordbox is open, backed up first, the Mac's analysis files and covers carried along; what it wrote is in
+  `dj-rekordbox-usb.json`) and into Serato crates on the USB (`serato.py`: `_Serato_/Subcrates/The Crate*.crate`,
+  only its own; written from Serato's published layout, not yet tried in Serato itself). A song can have several
   genres: the first is the decks' Genre column, and it sits in every one of its genre playlists. Both libraries get
   one folder, "The Crate" (All songs, Newest 50, the SoundCloud playlist, one list per genre); nothing outside that
   folder is read or changed, no track is ever deleted, music files are never edited, the decks' own analysis, cues
@@ -64,8 +72,9 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   services' limits. Standard library only at import (Essentia only when it runs, in the analyser's Python).
 - **Club check (`club.py`, shown on the Library Manager page):** would the music play on a club's Pioneer decks: the
   USB's format (from `mount`; FAT32 or Mac OS Extended is read by all, exFAT only by the newest), FLAC (older decks
-  skip it), and whether each song's file name is in the USB's rekordbox export (`PIONEER/rekordbox/export.pdb`,
-  which only rekordbox writes). It only looks: it never changes the USB or rekordbox, and never formats anything.
+  skip it), whether the songs are in the USB's own rekordbox library (`dj-rekordbox-usb.json`, the newest decks),
+  and whether each song's file name is in the USB's older rekordbox export (`PIONEER/rekordbox/export.pdb`: the
+  CDJ-3000, CDJ-2000NXS2 and earlier; only rekordbox's own export writes it). It only looks: it never changes the USB or rekordbox, and never formats anything.
 - **`dj-setup.sh`:** the analyser's own Python (python-build-standalone, pinned by version and sha256) with the
   packages in `dj-requirements.txt` (every file pinned by hash), in `~/.local/share/crate-dj`; from `install.sh`
   and each sync, a no-op once done. `app.py`, `dj.py`, `genres.py` and `engine.py` stay standard library only and
