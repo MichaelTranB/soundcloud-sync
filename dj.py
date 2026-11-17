@@ -350,6 +350,7 @@ def once(dir, src, volumes):
     wrote = rekordbox(dir, src, songs, lists) or wrote
     if stick:  # after the Mac's library: a track rekordbox knows takes its beat grid and waveform along
         rekordbox_usb(dir, src, songs, lists, stick, usb)
+        cues(dir, src, stick, usb, [s["rel"] for s in songs])  # last: every library has its songs by now
     remember(dir, seen(dir, src, songs, stick) if wrote else there)
     if recognise.key(dir) and os.path.exists(PY):  # on its own: it asks the internet, and comes back here when it learns something
         subprocess.Popen([PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "recognise.py"), dir, src],
@@ -448,6 +449,38 @@ def rekordbox_usb(dir, src, songs, lists, stick, usb):
             log(dir, said)
 
 
+def cues(dir, src, stick, usb, rels=None, undo=False):
+    """Cue points in step (cues.py, through the private Python): hot cues, memory cues and loops set on the Prime 4,
+    in rekordbox on this Mac or on a club's decks reach the other two. Nothing is ever deleted; undo puts the last
+    run's replaced ones back. Quietly nothing when the private Python isn't there."""
+    if not os.path.exists(PY):
+        return "The DJ tools aren't set up on this Mac yet." if undo else None
+    job = {"dir": dir, "src": src, "usb": stick, **({"undo": True} if undo else {"rels": rels})}
+    try:
+        r = subprocess.run([PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "cues.py")],
+                           input=json.dumps(job), capture_output=True, text=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        log(dir, f'CUES PROBLEM on "{usb}": took over 15 minutes and was stopped')
+        return "That took too long."
+    if r.returncode:
+        log(dir, f'CUES PROBLEM on "{usb}": ' + (r.stderr.strip().splitlines() or ["stopped"])[-1][:300])
+        return "The cues couldn't be read. Nothing was changed."
+    if r.stdout.strip():
+        log(dir, ("cues put back: " if undo else "cues: ") + r.stdout.strip().splitlines()[-1][:300])
+    return None
+
+
+def cues_back(dir, src, volumes):
+    """The page's Undo for cues: the last run's replaced cues go back. Waits for a run in flight to finish first."""
+    usb = read(dir, "usb.txt").strip()
+    stick = os.path.join(volumes, usb) if usb and os.path.isdir(os.path.join(volumes, usb)) else ""
+    if stick and not usb_ask.ready(dir, stick):
+        stick = ""
+    with open(os.path.join(dir, ".dj.lock"), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return cues(dir, src, stick, usb, undo=True)
+
+
 def seen(dir, src, songs, stick):
     """The genre each deck library shows for each track right now: {"rekordbox": {rel: genre}, "engine": {...}}.
     A library that isn't there is left out. Reads only. A library that can't be read is left out too: the write
@@ -532,5 +565,7 @@ if __name__ == "__main__":
     d, s = sys.argv[1], sys.argv[2]
     if "--list" in sys.argv:
         json.dump(library(d, s), sys.stdout, ensure_ascii=False)
+    elif "--cues-back" in sys.argv:
+        sys.exit(cues_back(d, s, os.environ.get("VOLUMES") or "/Volumes"))
     else:
         run(d, s, os.environ.get("VOLUMES") or "/Volumes", "--wait" in sys.argv)

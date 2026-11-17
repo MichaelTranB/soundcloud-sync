@@ -174,6 +174,9 @@
   .hd b { font-size: 17px; }
   .hd small { color: var(--dim); font-size: 14.5px; flex: 1 1 240px; }
   button.q { background: transparent; border: 1px solid var(--dim); color: var(--dim); width: 24px; height: 24px; padding: 0; font-size: 13px; line-height: 1; flex: none; align-self: center; }
+  button.mini { padding: 3px 12px; font-size: 13.5px; }
+  .club h2 button.q, .other .hd button.q { margin-left: auto; }
+  .other .hd { margin: 0; padding: 4px 0 8px; }
   button.q[aria-expanded="true"] { background: var(--lib); border-color: var(--lib); color: var(--hot); }
   .help { border-left: 2px solid var(--hot); padding: 2px 0 2px 14px; margin: 0 0 16px; max-width: 720px; }
   .help[hidden] { display: none; }
@@ -258,8 +261,25 @@
     <h3>Listening and quality</h3>
     <p>Press <b>&#9654;</b> on a song to hear it. <b>Below gig quality</b> means an MP3 under 320 kbps (or an AAC under 256): fine at home, thin on a club system. <b>Find a better copy</b> asks Soulseek, and you keep your file until the better one lands.</p>
 
+    <h3>AIFF for club decks</h3>
+    <p>Older club decks skip FLAC. So a new FLAC becomes an AIFF by itself: the same sound, bit for bit, with its cover, tags, playlists and cues. The FLAC goes to the Trash only once the AIFF is checked. <b>Undo</b> is on the song's row.</p>
+
+    <h3>Cover and details</h3>
+    <p>Fills only what is empty: cover, title, artist, album, genre, year. It looks at the song's own SoundCloud page, then Apple Music and MusicBrainz, and writes only when the sources agree. If they don't, you pick from two or three. <b>Undo</b> is on the song's row.</p>
+
+    <h3>Cues</h3>
+    <p>Hot cues, memory cues and loops you set anywhere reach everywhere: the Prime 4, rekordbox on this Mac, and your USB for club decks. So you set a cue once.</p>
+    <ol>
+      <li>Runs at every update. The newest edit wins, and nothing is ever deleted.</li>
+      <li><b>Undo</b> on the Cues line puts the last change back.</li>
+      <li>Not carried: MP3 cues to or from the Prime 4, memory cues to the Prime 4, and beat grids. Each app keeps its own grid.</li>
+    </ol>
+
+    <h3>Your USB is asked first</h3>
+    <p>A USB that already has things on it is not touched until you press <b>Go ahead</b>. After that, songs go only into The Crate's own folder and playlists into its own <b>The Crate</b> folder. Your files, folders and playlists are never moved, renamed or deleted. You can stop any time.</p>
+
     <h3>Is my library safe?</h3>
-    <p>It only touches its own songs and its own <b>The Crate</b> folder. Your other playlists, cues and grids are left alone. Each library is backed up before a change, and rekordbox's is never written while rekordbox is open: it catches up when you close it.</p>
+    <p>It only touches its own songs and its own <b>The Crate</b> folder. Your other playlists and grids are left alone. Each library is backed up before a change, and rekordbox's is never written while rekordbox is open: it catches up when you close it.</p>
 
     <h3>What it uses</h3>
     <p>Free, open-source tools on your Mac: <b>Essentia</b> (tempo and key), <b>Mutagen</b> (song details), <b>pyrekordbox</b> (rekordbox's libraries), <b>Chromaprint</b>, <b>AcoustID</b> and <b>MusicBrainz</b> (song recognition). No AI, no account besides the AcoustID key.</p>
@@ -290,7 +310,9 @@
     <p><b>Update decks now</b> sends new songs, genres, tempo and key to your USB and rekordbox right away.</p>
     <p>rekordbox on this Mac is only written while it is closed. If it is open, it catches up when you close it.</p>
     <p>Never touched: your own playlists, cues, grids and files. Songs go only into The Crate's own folder on the USB.</p>
+    <p><b>Cues</b>: hot cues, memory cues and loops set on the Prime 4, in rekordbox or on a club's decks reach the others. Newest wins, nothing is deleted, and <b>Undo</b> puts the last change back.</p>
     <p>Undo: every library is copied to the app's <b>dj-backups</b> folder before a change.</p>
+    <p id="cuesNote" hidden></p>
     <p id="usbOk" hidden></p>
   </div>
   <div class="decks" id="decks"></div>
@@ -406,6 +428,11 @@ async function lookUsbs() {
 }
 const num = n => n.toLocaleString();
 const size = mb => mb >= 1000 ? (Math.round(mb / 100) / 10) + ' GB' : mb + ' MB';
+// a "?" beside a card that is drawn again at every look: what is open stays open
+const openHelp = new Set();
+const ask = (id, label) => { const b = el('button', { className: 'q', textContent: '?' }); b.setAttribute('aria-label', label); b.setAttribute('aria-expanded', openHelp.has(id));
+  b.onclick = () => { openHelp.has(id) ? openHelp.delete(id) : openHelp.add(id); draw(); }; return b; };
+const notes2 = (id, lines) => { const h = el('div', { className: 'help' }, ...lines.map(t => el('p', { textContent: t }))); h.hidden = !openHelp.has(id); return h; };
 const link = (text, go) => { const b = el('button', { textContent: text }); b.onclick = go; return b; };
 
 // The player: one song at a time, in a bar at the foot of the page.
@@ -585,6 +612,13 @@ function draw() {
   deck('rekordbox', 'on this Mac', S.rekordbox ? S.lastRekordbox : '', S.rekordbox ? 'Ready: filled in at the next update.' : 'rekordbox is not on this Mac. Nothing to do: install it and its library fills in by itself.');
   deck('rekordbox', stick, away ? '' : S.lastRekordboxUsb, away || 'Ready: filled in at the next update.');
   deck('Serato', stick, away ? '' : S.lastSerato, away || 'Ready: filled in at the next update.');
+  // cue points in step (cues.py): the last run's line, and Undo while there is something it sent
+  const cue = (S.fix || {}).lastCues || '', back = el('button', { className: 'ghost mini', textContent: 'Undo' });
+  back.onclick = () => { say('Putting the last cue changes back.'); post('/api/dj/cues', { undo: true }); };
+  deck('Cues', 'every deck', away ? '' : cue, away || 'In step: a cue you set on one deck reaches the others at the next update.', away ? '' : ' ok',
+    !away && / sent to /.test(cue) ? el('span', {}, '  ', back) : '');
+  const cn = $('cuesNote'), notes = (S.fix || {}).cuesNote || [];
+  cn.hidden = !notes.length; cn.textContent = notes.length ? 'Not carried: ' + notes.join('; ') + '.' : '';
   // recognising songs by their sound (AcoustID and MusicBrainz, as MusicBrainz Picard does): until it is set up,
   // the set-up card above asks for it
   $('setup').hidden = S.recognise || !S.analyser;
@@ -596,7 +630,9 @@ function draw() {
   // the club check (club.py): green is fine, amber would go wrong in a club, grey is worth knowing
   const cl = $('club'), checks = S.club || [], fix = checks.filter(r => r.ok === false).length;
   cl.hidden = !checks.length; cl.textContent = '';
-  cl.append(el('h2', {}, 'Club check', el('small', { textContent: fix ? fix + (fix === 1 ? ' thing' : ' things') + ' to sort out before a gig' : 'what a club\'s decks need from your USB' })));
+  cl.append(el('h2', {}, 'Club check', el('small', { textContent: fix ? fix + (fix === 1 ? ' thing' : ' things') + ' to sort out before a gig' : 'what a club\'s decks need from your USB' }), ask('club', 'How the club check works')),
+    notes2('club', ['Checks your USB against what club decks need: how it is formatted, the kinds of files, the right lists.',
+      'Green is fine. Amber would go wrong in a club. Grey is worth knowing.', 'It only reads: this check changes nothing on your USB.']));
   checks.forEach(r => cl.append(el('div', { className: 'row' }, el('span', { className: 'dot' + (r.ok === true ? ' ok' : r.ok === false ? ' warn' : '') }),
     el('div', {}, r.say, r.do ? el('small', { textContent: r.do }) : ''))));
 
@@ -607,6 +643,9 @@ function draw() {
   copying = !!S.copy;
   const ot = $('other'), offered = ((usbs || {}).usbs || []).filter(u => (S.others || []).includes(u.usb));
   ot.hidden = !offered.length && !S.copy && !S.lastFriend; ot.textContent = '';
+  if (offered.length) ot.append(el('div', { className: 'hd' }, el('b', { textContent: 'Copy from another USB' }), el('small', { textContent: 'Tick playlists or folders; they land in your library.' }), ask('other', 'How copying from another USB works')),
+    notes2('other', ['Copied songs get everything your own songs get: safety check, tempo, key, genres, every deck.',
+      'A song you already have isn\'t copied twice. Hot cues set in rekordbox come along.', 'The other USB is only read, never changed.']));
   if (S.copy) {
     ot.append(el('div', { className: 'head' }, el('b', {}, el('span', { className: 'spin' }), 'Copying songs from "' + S.copy.usb + '"',
       el('small', { textContent: S.copy.total ? num(S.copy.done) + ' of ' + num(S.copy.total) + '. Leave both USBs in until it is done.' : 'Reading what is on it.' }))));
@@ -732,6 +771,7 @@ function drawAsk() {
   const adds = [u.songs ? num(u.songs) + (u.songs === 1 ? ' song' : ' songs') + ' into The Crate\'s own folder (SoundCloud Sync)' : 'New songs into The Crate\'s own folder (SoundCloud Sync)',
     'a playlist folder called The Crate' + (u.lists && u.lists.length ? ', beside the playlists already in ' + u.lists.join(', ') : ' in the DJ apps\' lists')];
   const ul = el('ul', {}, el('li', {}, el('b', { textContent: 'Adds: ' }), adds.join('; ') + '.'),
+    el('li', {}, el('b', { textContent: 'Cues: ' }), 'on The Crate\'s own songs only, kept in step with your other decks. None is deleted.'),
     el('li', {}, el('b', { textContent: 'Never: ' }), 'moves, renames or deletes your files, folders or playlists.'),
     el('li', {}, el('b', { textContent: 'Undo: ' }), 'each list is copied to dj-backups first, and you can stop any time.'));
   if (u.trash) ul.append(el('li', {}, el('b', { textContent: 'To its Trash: ' }), num(u.trash) + ' older ' + (u.trash === 1 ? 'copy' : 'copies') + ' of The Crate\'s own songs, swapped for the library\'s file.'));

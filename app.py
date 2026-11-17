@@ -1077,9 +1077,11 @@ def dj_state():
     last = lambda *words: next((l for l in reversed(log[-40:]) if any(w in l for w in words)), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
             "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged, "usbAsk": usb_asking(),
-            "fix": {"auto": rec["auto"], "autoDetails": details.load(DIR)["auto"], "aiff": progress(".aiff-progress"), "details": progress(".details-progress"),
+            "fix": {"auto": rec["auto"], "autoDetails": details.load(DIR)["auto"],
+                    "aiff": progress(".aiff-progress"), "details": progress(".details-progress"),
                     "lastAiff": last("AIFF: ", "AIFF PROBLEM"), "lastDetails": last("details: ", "DETAILS PROBLEM"),
-                    "lastCues": last("cues: ", "CUES PROBLEM")},
+                    "lastCues": last("cues: ", "cues put back: ", "CUES PROBLEM"),
+                    "cuesNote": read("cues-unmapped.txt").splitlines()[:6]},
             "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb, club.kept(DIR, usb)),
             "lastRecognise": last("song recognition", "RECOGNISE PROBLEM"),
             "engine": plugged and os.path.isfile(os.path.join(at, "Engine Library", "Database2", "m.db")),
@@ -1175,6 +1177,13 @@ def fix_post(path, body):
     names = lambda v: [r for r in (v if isinstance(v, list) else [v]) if isinstance(r, str) and r in have]
     if path == "/api/dj/usb-ok":  # the same answer as on the main page, from this page
         return usb_answer(body.get("yes"))
+    if path == "/api/dj/cues":  # Undo: the cues the last run replaced go back (dj.py waits for a run in flight)
+        try:
+            r = subprocess.run([sys.executable, os.path.join(DIR, "dj.py"), DIR, OUT, "--cues-back"],
+                               capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            return "That took too long. Try again in a moment."
+        return (r.stderr.strip().splitlines() or [""])[-1][:200] or None
     if path == "/api/dj/put":
         usb = read("usb.txt")
         if not usb or not os.path.isdir(os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)):
@@ -1251,7 +1260,7 @@ def dj_post(path, body):
         p.stdin.close()
         threading.Thread(target=p.wait, daemon=True).start()
         return None
-    if path in ("/api/dj/aiff", "/api/dj/details", "/api/dj/put", "/api/dj/usb-ok"):
+    if path in ("/api/dj/aiff", "/api/dj/details", "/api/dj/put", "/api/dj/usb-ok", "/api/dj/cues"):
         return fix_post(path, body)
     if path == "/api/dj/show":  # a song's file in Finder (for a kind of file the browser can't play)
         p = song_path(body.get("file", ""))
