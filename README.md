@@ -102,7 +102,7 @@ straight into your decks' libraries, with no dragging and no clicks:
   they get everything your own songs get (safety check, tempo, key, genres, every deck library, your USB), each
   playlist keeps its name with whose it was, and a song you already have is never copied twice. Hot cues and beat
   grids set in rekordbox come along (USB to USB). The other USB is only ever read.
-- **Below gig quality:** MP3s and M4As under 320 kbps are marked. On each: **Find a better copy** (it joins the
+- **Below gig quality:** MP3s under 320 kbps and M4As under 256 are marked. On each: **Find a better copy** (it joins the
   Soulseek search at once, and takes the old file's place in its playlists when it lands; the old one goes to the
   Trash) or **Throw away**.
 - **Listen first:** ▶ beside any song plays it on the page; **Show in Finder** opens the file.

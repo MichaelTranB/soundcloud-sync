@@ -69,7 +69,7 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   remembers each copied playlist ("<name> (<whose>)") and each song's tempo, key, cue rows and analysis files
   (`friend-anlz/`), which `rekordbox_usb.py` carries into the USB's library (`repath()` re-addresses an analysis
   file byte for byte; pyrekordbox can't write one that holds cues). The other USB is only read.
-- **Below gig quality (`friend.low`: MP3/M4A under 320 kbps):** "Find a better copy" adds a row to `better.tsv`,
+- **Below gig quality (`friend.low`: MP3 under 320 kbps, AAC under 256):** "Find a better copy" adds a row to `better.tsv`,
   which `soulseek.to_get` reads beside `to-buy.tsv`; when it lands, `dj.better` puts the old file in the Trash
   (and `usb-thrown.tsv`, so it leaves the USB) and its playlists follow the new file. A better copy thrown back
   is looked for again for 30 days. `/play?f=` streams a file from the music folder only (ranges, same-origin).
