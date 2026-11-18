@@ -578,6 +578,19 @@ TRACK = re.compile(rb"https://soundcloud\.com/[\w-]+/[\w-]+")
 OTHER = "you marked the file you had wrong or bad"  # a thrown-back file that wasn't Soulseek's (progress says so)
 
 
+def _wide_links(blob):
+    """Links in tags written in two-byte letters (UTF-16). Dropping the zero bytes can glue the next tag's name
+    onto a link ('.../songTPE1'), so each one is cut back to what really is written in the file."""
+    out, plain = [], TRACK.findall(blob)
+    enc = "utf-16-le" if b"\xff\xfe" in blob or b"\xfe\xff" not in blob else "utf-16-be"  # by the text's byte-order mark
+    for u in TRACK.findall(blob.replace(b"\0", b"")):
+        while len(u) > 30 and u.decode().encode(enc) not in blob:
+            u = u[:-1]
+        if TRACK.fullmatch(u) and u.decode().encode(enc) in blob and u not in plain:
+            out.append(u)
+    return out
+
+
 def links_inside(path):
     """SoundCloud track links written inside a file, the one named most first. The sync writes each artist's own
     file's link into it; a description in there may name other tracks too, so own() checks before it believes one."""
@@ -589,7 +602,7 @@ def links_inside(path):
     except OSError:
         return []
     n = {}
-    for u in TRACK.findall(blob) + TRACK.findall(blob.replace(b"\0", b"")):  # (tags in two-byte letters too)
+    for u in TRACK.findall(blob) + _wide_links(blob):
         n[u.decode()] = n.get(u.decode(), 0) + 1
     return sorted(n, key=lambda u: -n[u])
 

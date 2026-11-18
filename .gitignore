@@ -138,4 +138,9 @@ cues-state.json.tmp
 cues-history.json
 cues-history.json.tmp
 cues-unmapped.txt
+liked.json
+liked-state.json
+.liked-kinds.json
+*.json.tmp
 .waves/
+liked-settings.json

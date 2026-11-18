@@ -28,6 +28,10 @@ The page ticks off each step by itself:
    (Spotify and Apple Music: a public playlist. Spotify shows The Crate its first 100 songs; for the rest, click a
    song in the Spotify app, press ⌘A then ⌘C, and paste into the same box. In the web player, click the first song
    and Shift-click the last instead of ⌘A. Apple Music shows up to 300 songs.)
+   **Your Spotify Liked Songs** (optional, any size): in Spotify open Liked Songs, click the newest song, Shift-click
+   the oldest you still want, press ⌘C and paste into **Spotify Liked Songs**. Each sync looks for the next batch on
+   Soulseek: EDM first, newest first, everything else after. It only takes what fits and always leaves 10 GB free on
+   your Mac (the page says when it's paused for space). No Spotify sign-in, nothing changes in Spotify.
 2. **Turn on Full Disk Access** (SoundCloud playlists only). Why: your browser keeps your SoundCloud sign-in in a
    folder macOS locks, and this switch lets The Crate use it, so you get original files without typing a SoundCloud
    password into it. The sign-in only ever goes to SoundCloud. The button opens System Settings and a Finder window:

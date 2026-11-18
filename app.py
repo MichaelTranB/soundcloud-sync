@@ -6,7 +6,7 @@ in the browser cannot press the buttons.
 """
 import glob, json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, unicodedata, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
-import aiff, club, details, dj, friend, genres, layout, recognise, usb_ask, waveform
+import aiff, club, details, dj, friend, genres, layout, liked, recognise, usb_ask, waveform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -783,16 +783,49 @@ def problem():
     return ""
 
 
-_quality = {}  # path -> (mtime, kbps or 0 for lossless): afinfo runs once per file
+_quality = {}  # path -> (mtime, kbps or 0 for lossless, length in seconds): afinfo runs once per file
+
+
+def _afinfo(p):
+    m = os.path.getmtime(p)
+    if _quality.get(p, (None,))[0] != m:
+        i = audio.info(p)
+        _quality[p] = (m, i["kbps"] if i and not i["lossless"] else 0, round(i["secs"]) if i else 0)
+    return _quality[p]
 
 
 def lossy_kbps(p):
     """Bitrate of a lossy file (0 when lossless or unreadable), so the page can flag anything under 320."""
-    m = os.path.getmtime(p)
-    if _quality.get(p, (None,))[0] != m:
-        i = audio.info(p)
-        _quality[p] = (m, i["kbps"] if i and not i["lossless"] else 0)
-    return _quality[p][1]
+    return _afinfo(p)[1]
+
+
+_names = [None, {}, {}]  # .listing's mtime, then "uploader - title" (folded) -> link, and link -> (name, seconds)
+
+
+def song_of():
+    """Which playlist song each file is, so the page can show the playlist's name beside the file's: Soulseek and
+    free-link files by their record (soulseek.tsv, free.tsv), the artist's own uploads by their name."""
+    try:
+        m = os.path.getmtime(os.path.join(DIR, ".listing"))
+    except OSError:
+        m = 0
+    if _names[0] != m:
+        by_name, by_link = {}, {}
+        for line in read(".listing").splitlines():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(r, dict) and r.get("webpage_url"):
+                name = f"{r.get('uploader')} - {r.get('title')}"
+                by_name[soulseek.norm(name)] = r["webpage_url"]
+                by_link[r["webpage_url"]] = (name, round(r.get("duration") or 0))
+        _names[:] = [m, by_name, by_link]
+    by_path = {}
+    for name in ("soulseek.tsv", "free.tsv"):
+        for link, title, p in soulseek.rows_of(DIR, name, 3):
+            by_path[p] = (link, title)
+    return _names[1], _names[2], by_path
 
 
 def state():
@@ -802,8 +835,15 @@ def state():
     free = {l.split("\t")[2] for l in read("free.tsv").splitlines() if l.count("\t") == 2}
     wrong = soulseek.suspects(DIR)  # Soulseek files that don't look like their playlist song, and why
     slsk = soulseek.ours(DIR, SLSK)
+    by_name, by_link, by_path = song_of()
+    came, spot = soulseek.load_from(DIR), {}
     # (The folder Soulseek files had to themselves is still listed until the next sync moves them in with the rest.)
-    for folder, old in ((OUT, ""), (os.path.join(OUT, soulseek.OLD), soulseek.OLD)):
+    folders = [(OUT, ""), (os.path.join(OUT, soulseek.OLD), soulseek.OLD)]
+    # Liked Songs' own folder, and any folder they went to before the user renamed it
+    for sub in sorted({os.path.relpath(os.path.dirname(g[2]), OUT) for g in soulseek.load_got(DIR)} | {liked.folder(DIR)}):
+        if sub and sub not in (".", soulseek.OLD) and not sub.startswith(".."):
+            folders.append((os.path.join(OUT, sub), sub))
+    for folder, old in folders:
         if os.path.isdir(folder):
             for f in os.listdir(folder):
                 if f.lower().endswith(AUDIO):
@@ -811,11 +851,22 @@ def state():
                     name, ext = os.path.splitext(f)
                     try:
                         mb = round(os.path.getsize(p) / 1e6, 1)
+                        _, kbps, secs = _afinfo(p)
                     except OSError:  # thrown back this instant
                         continue
-                    have.append({"name": name, "kind": ext[1:].upper(), "mb": mb, "kbps": lossy_kbps(p),
-                                 "src": "Soulseek" if old or p in slsk else "Free download" if p in free else "",
-                                 "file": os.path.join(old, f), "wrong": wrong.get(p, "")})
+                    # The song it should be: its playlist name, link and length, to set beside the file's own.
+                    link, title = by_path.get(p) or (by_name.get(soulseek.norm(name)), None)
+                    want = by_link.get(link, (None, 0))[1]
+                    if link and "open.spotify.com/track/" in link:
+                        spot = spot or liked._load(DIR, ".spotify-cache.json", {})
+                        want = round((spot.get(link.rsplit("/", 1)[1]) or {}).get("secs") or 0)
+                    peer = (came.get(p) or ("", ""))[1]
+                    have.append({"name": name, "kind": ext[1:].upper(), "mb": mb, "kbps": kbps,
+                                 "src": "Soulseek" if old == soulseek.OLD or p in slsk else "Free download" if p in free else "",
+                                 "file": os.path.join(old, f), "wrong": wrong.get(p, ""),
+                                 "song": title or by_link.get(link, (None,))[0] or "", "link": link or "",
+                                 "secs": secs, "want": want, "came": re.split(r"[\\/]", peer)[-1] if peer else "",
+                                 "liked": bool(old) and old != soulseek.OLD})
     have.sort(key=lambda t: t["name"].lower())
     got = soulseek.got_links(DIR, SLSK)  # on the Mac from Soulseek, even mid-run: not still to get
     # What a running sync is doing: reading SoundCloud first, then Soulseek (its log is newer than the sync's flag).
@@ -855,6 +906,7 @@ def state():
         reading = None
     watch_login(svc)
     return {
+        "liked": liked.status(DIR), "likedOpts": liked.settings(DIR),
         "playlist": read("playlist.txt"), "service": svc, "capped": capped, "pasted": pasted,
         "missing": info.get("missing", 0), "reading": reading, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)),
@@ -1453,13 +1505,24 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:  # the player moved on (skipped, another song): nothing to do
             pass
 
+    def liked(self, text):
+        """Saves pasted Liked Songs and starts reading them (details, then EDM or not) in the background."""
+        n = liked.paste(DIR, text)
+        if not n:
+            return self.send(400, {"error": "No Spotify song links in that. In Liked Songs, click the newest song, "
+                                            "Shift-click the oldest you want, press ⌘C and paste here."})
+        with open(os.path.join(DIR, "liked.log"), "a") as log:
+            subprocess.Popen([sys.executable, os.path.join(DIR, "liked.py"), "read", DIR], stdout=log, stderr=log,
+                             start_new_session=True)
+        return self.send(200, {**state(), "likedPasted": n})
+
     def do_POST(self):
         origin = self.headers.get("Origin", "")
         if self.headers.get("Host") not in HOSTS or urllib.parse.urlparse(origin).netloc not in HOSTS:
             return self.send(403, {"error": "wrong origin"})
         try:
             # a pasted song list is ~55 bytes a song; the playlists and folders ticked to copy from another USB
-            cap = 600_000 if self.path in ("/api/spotify-songs", "/api/dj/aiff", "/api/dj/details") else \
+            cap = 600_000 if self.path in ("/api/spotify-songs", "/api/liked", "/api/dj/aiff", "/api/dj/details") else \
                 200_000 if self.path in ("/api/dj/copy", "/api/dj/layout") else 4096
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
         except ValueError:
@@ -1485,9 +1548,8 @@ class Handler(BaseHTTPRequestHandler):
             remember(url, title)
         elif self.path == "/api/spotify-songs":
             url = read("playlist.txt")
-            if playlists.service(url) != "spotify":
-                return self.send(400, {"error": "Those are Spotify songs. Add the Spotify playlist link first, then paste "
-                                                "its songs here."})
+            if playlists.service(url) != "spotify":  # no Spotify playlist chosen: these are his Liked Songs
+                return self.liked(str(body.get("text", "")))
             n = playlists.paste(DIR, url, str(body.get("text", "")))
             if not n:
                 return self.send(400, {"error": "No Spotify song links in that. In Spotify, click one song, press "
@@ -1496,6 +1558,14 @@ class Handler(BaseHTTPRequestHandler):
                 subprocess.Popen([os.path.join(DIR, "sync.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                  start_new_session=True)
                 time.sleep(0.4)
+        elif self.path == "/api/liked":
+            return self.liked(str(body.get("text", "")))
+        elif self.path == "/api/liked/forget":
+            liked.forget(DIR)
+        elif self.path == "/api/liked/settings":
+            err = liked.set_settings(DIR, body)
+            if err:
+                return self.send(400, {"error": err})
         elif self.path == "/api/connect":
             m = PROFILE_RE.match(str(body.get("profile", "")).strip())
             browser = str(body.get("browser", ""))
