@@ -95,7 +95,7 @@ straight into your decks' libraries, with no dragging and no clicks:
   write: before a gig on those, export once from rekordbox (drag your playlists onto the USB under *Devices*).
 - **Serato:** the USB also gets Serato crates (*The Crate*, with a crate per playlist inside it), which Serato
   shows when the USB is plugged in. They point at the same files; nothing is copied.
-- **One folder, each song once:** all of The Crate's music sits in one folder on the USB (*SoundCloud Sync*), and
+- **One folder, each song once:** all of The Crate's music sits in The Crate's own folder on the USB (*SoundCloud Sync*), and
   every library above points at those same files. A USB that already had some of the songs (a friend's, or one
   filled by hand) gets no doubles: a file that is another download of a song is swapped for your library's, the
   same song as another kind of file is taken off, and the songs you threw back leave it too. Those go to the
@@ -105,6 +105,15 @@ straight into your decks' libraries, with no dragging and no clicks:
   they get everything your own songs get (safety check, tempo, key, genres, every deck library, your USB), each
   playlist keeps its name with whose it was, and a song you already have is never copied twice. Hot cues and beat
   grids set in rekordbox come along (USB to USB). The other USB is only ever read.
+- **USB folders:** pick how the songs sit inside that folder: **One folder** (as it always was), **EDM and
+  Other**, or **By genre** (*EDM/Dubstep*, *Other/Hip Hop*, and *No genre yet*). A song with any EDM genre counts
+  as EDM and sits under its first EDM genre; which genres aren't EDM is yours to change. The page shows what
+  would move and asks before anything does; after that new songs are filed by themselves, and a song whose genre
+  changes moves at the next update. Playlists and cues follow, each song stays on the USB once, nothing is
+  deleted, and nothing outside The Crate's own folder is touched. **One folder** puts every song back. Only the
+  USB is laid out; the music folder on the Mac stays as it is.
+- **EDM (all) and Other (all):** two playlists that are always there: every song with an EDM genre in one, the
+  rest in the other, beside the playlist for each genre.
 - **Below gig quality:** MP3s under 320 kbps and M4As under 256 are marked. On each: **Find a better copy** (it joins the
   Soulseek search at once, and takes the old file's place in its playlists when it lands; the old one goes to the
   Trash) or **Throw away**.
@@ -112,6 +121,10 @@ straight into your decks' libraries, with no dragging and no clicks:
   same sound (compared sample for sample), with its details and cover. Only once the AIFF is checked does the
   FLAC go to the Trash, so no song is ever there twice, and its playlists and cues follow the new file. FLACs you
   already had, and WAVs, are your pick in the song list. **Undo** brings the original back.
+- **32-bit songs:** no club deck plays a 32-bit file, so its row says so and offers **Make a 24-bit copy**: a
+  24-bit AIFF with no difference you can hear, the original in the Trash, **Undo** to bring it back. It is never
+  done by itself, because the copy isn't bit for bit the same file. A 32-bit FLAC needs `ffmpeg` on the Mac to be
+  read (The Crate doesn't install it); a song above 96 kHz is only pointed out.
 - **Cover and details:** a song missing its cover, title, artist, album, genre or year gets them filled in. Only
   empty fields are filled; nothing already there is changed. It writes by itself only when the song's own
   SoundCloud page says so or two sources agree, and the length matches within 3 seconds; anything less sure is
@@ -127,7 +140,10 @@ straight into your decks' libraries, with no dragging and no clicks:
   **Add cover & details** or **Put on USB**. Songs you added yourself or copied from a friend's USB are in it too.
 - **A "?" beside each part** of both pages opens a few plain lines: how it works, what it never touches, how to
   undo. **How it works** at the top has the rest.
-- **Listen first:** ▶ beside any song plays it on the page; **Show in Finder** opens the file.
+- **Listen first:** ▶ beside any song plays it on the page, with its waveform: tap it to jump, and a file that
+  is very quiet or has a silent stretch in the middle is said. **Open in rekordbox** hands the song to rekordbox
+  and copies its name (paste it into rekordbox's search if the song isn't loaded by itself); **Show in Finder**
+  opens the file.
 - **My SoundCloud playlists:** one playlist with every song from all of your SoundCloud playlists.
 - **Genres:** each song is sorted by what's written on it (the file, SoundCloud's genre and tags). Songs nothing
   describes land in *No genre yet*: tap their genre on the page. Wrong genre? Tap **Edit**. A song can have several
@@ -141,7 +157,7 @@ straight into your decks' libraries, with no dragging and no clicks:
   Remixes, flips and bootlegs are often not in that database; those stay as they are.
 - **Club check:** the page also says whether your USB would work on a club's decks (nearly always Pioneer CDJs):
   how the USB is formatted (FAT32 is read by every club deck, exFAT only by the newest), how many songs are FLAC
-  (older club decks skip those), whether your songs are in the USB's own rekordbox library (the newest decks), and
+  (older club decks skip those), songs no club deck plays at all (32-bit files, or above 96 kHz), whether your songs are in the USB's own rekordbox library (the newest decks), and
   whether they are in rekordbox's older export, which the CDJ-3000, the CDJ-2000NXS2 and the decks before them need
   for playlists, tempo and key (in rekordbox, with the USB in: drag your playlists onto it under *Devices*). It only
   looks; it changes nothing.

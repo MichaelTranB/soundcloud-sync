@@ -23,6 +23,8 @@ library was already in step.
     rekordbox's own export; club.py says where that stands."""
 import json, os, shutil, struct, subprocess, sys, tempfile, time, unicodedata, zlib
 
+import layout
+
 MUSIC, FOLDER, RECORD = "SoundCloud Sync", "The Crate", "dj-rekordbox-usb.json"
 KINDS = {".mp3": 1, ".mp4": 3, ".m4a": 4, ".flac": 5, ".wav": 11, ".aiff": 12, ".aif": 12}  # rekordbox's own codes
 PARTS = ("DAT", "EXT", "2EX")  # the files of one track's analysis
@@ -376,8 +378,9 @@ def write(job, master=None, is_open=running):
     db_file = os.path.join(usb, "PIONEER", "rekordbox", "exportLibrary.db")
     songs = [s for s in job["songs"] if os.path.splitext(s["rel"])[1].lower() in KINDS]
     skipped = len(job["songs"]) - len(songs)
-    songs = [s for s in songs if os.path.isfile(os.path.join(folder, s["rel"]))]
-    at = {s["rel"]: device(s["rel"]) for s in songs}
+    on = lambda s: os.path.join(folder, s.get("at") or s["rel"])  # ("at": the folder it sits in here, layout.py)
+    songs = [s for s in songs if os.path.isfile(on(s))]
+    at = {s["rel"]: device(s.get("at") or s["rel"]) for s in songs}
     known = None
     made = False
     if not os.path.isfile(db_file):
@@ -406,8 +409,11 @@ def write(job, master=None, is_open=running):
             "LEFT JOIN genre g ON g.genre_id = c.genre_id WHERE c.path LIKE :p", p="/" + MUSIC + "/%")}
         # A file that moved inside the folder (dj.py's "was") is the same track at a new place: its row follows.
         moved = []
+        by = layout.rows(own, "/" + MUSIC + "/")
         for s in songs:
             old = device(s["was"]) if s.get("was") else ""
+            if at[s["rel"]] not in own and old not in own:  # filed into another folder on the USB (layout.py)
+                old = layout.old(by, s, at[s["rel"]], lambda p: os.path.isfile(usb + p))
             if old in own and at[s["rel"]] not in own:
                 own[at[s["rel"]]] = own.pop(old)
                 moved.append((at[s["rel"]], s))
@@ -473,11 +479,11 @@ def write(job, master=None, is_open=running):
                 run("UPDATE content SET path = :p, fileName = :f, fileType = :t, fileSize = :n, "
                     "bitrate = CASE WHEN :b > 0 THEN :b ELSE bitrate END WHERE content_id = :i", p=p,
                     f=os.path.basename(p), t=KINDS[os.path.splitext(p)[1].lower()], b=int(s.get("bitrate") or 0),
-                    n=os.path.getsize(os.path.join(folder, s["rel"])), i=own[p]["id"])
+                    n=os.path.getsize(on(s)), i=own[p]["id"])
                 if own[p]["anlz"]:
                     readdress(usb, own[p]["anlz"], p)
             for s in new:
-                k, p, file = known.get(s["rel"], {}), at[s["rel"]], os.path.join(folder, s["rel"])
+                k, p, file = known.get(s["rel"], {}), at[s["rel"]], on(s)
                 year = str(s.get("year") or "")
                 day = time.strftime("%Y-%m-%d", time.localtime(s.get("mtime") or None))
                 anlz = analysis(usb, k["anlz"], p) if k.get("anlz") else ""

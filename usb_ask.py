@@ -113,9 +113,11 @@ def ready(dir, usb):
 
 def what(dir, src, usb):
     """For the page's question: what would change on this USB, in numbers."""
+    import layout
     dest, rels = os.path.join(usb, FOLDER), usb_tidy.checked(dir, src)
-    new = sum(1 for r in rels if usb_tidy.size(os.path.join(dest, r)) < 0)
-    swap = sum(1 for r in rels if 0 <= usb_tidy.size(os.path.join(dest, r)) != usb_tidy.size(os.path.join(src, r)))
+    at = layout.places(dest, rels)  # (a USB laid out in folders has each song in its genre's folder)
+    new = sum(1 for r in rels if usb_tidy.size(os.path.join(dest, at[r])) < 0)
+    swap = sum(1 for r in rels if 0 <= usb_tidy.size(os.path.join(dest, at[r])) != usb_tidy.size(os.path.join(src, r)))
     thrown = sum(1 for p, n in usb_tidy.rows(dir, usb_tidy.THROWN)
                  if n.isdigit() and usb_tidy.inside(src, p) and usb_tidy.size(p) != int(n)
                  and usb_tidy.size(os.path.join(dest, usb_tidy.inside(src, p))) == int(n))

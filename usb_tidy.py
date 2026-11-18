@@ -114,7 +114,14 @@ def doubles(src, dest, rels, changed=()):
     """rels: the library's songs (checked()); changed: the ones whose tags changed since they were copied (their
     copy can be the same size and still the older file). Returns (files swapped for the library's own, doubles taken
     off, ones that couldn't be)."""
+    import layout  # (it uses this module too)
     swapped = off = stuck = 0
+    spots = layout.where(dest)  # where each song sits when the USB is laid out in folders (layout.py)
+    names, stems = {layout.cf(os.path.basename(r)) for r in rels}, {}
+    for found in spots.values():
+        for at, f in found:
+            if at:
+                stems.setdefault(layout.cf(os.path.splitext(f)[0]), []).append((at, f))
     folders = {}  # each folder on the USB, listed once
     def listed(folder):
         if folder not in folders:
@@ -131,7 +138,7 @@ def doubles(src, dest, rels, changed=()):
             folders[folder] = [f for f in found if not f.startswith(".")]
         return folders[folder]
     for rel in rels:
-        mine, p = os.path.join(src, rel), os.path.join(dest, rel)
+        mine, p = os.path.join(src, rel), os.path.join(dest, layout.spot(spots, rel))
         if size(p) >= 0 and size(mine) >= 0 and (size(p) != size(mine) or (
                 rel in changed and not filecmp.cmp(mine, p, shallow=False))):
             if swap(dest, mine, p):
@@ -150,15 +157,24 @@ def doubles(src, dest, rels, changed=()):
                     else:
                         stuck += 1
                     listed(at).remove(f)
+        for at, f in list(stems.get(layout.cf(stem), [])):  # the same, in the layout's folders
+            if not same(f, name) and layout.cf(f) not in names and size(os.path.join(dest, at, f)) >= 0:
+                if trash(dest, os.path.join(dest, at, f)):
+                    off += 1
+                else:
+                    stuck += 1
+                stems[layout.cf(stem)].remove((at, f))
     return swapped, off, stuck
 
 
 def tidy(d, src, dest):
     """Returns (thrown-back songs taken off the USB, songs moved in with the rest, ones that couldn't be moved,
     files swapped for the library's own, doubles taken off)."""
+    import layout  # (it uses this module too)
     off = moved = stuck = 0
     if not os.path.isdir(dest):
         return 0, 0, 0, 0, 0
+    spots = layout.where(dest)
     for was, now in rows(d, MOVED):
         a, b = inside(src, was), inside(src, now)
         if not a or not b or size(os.path.join(dest, a)) < 0:
@@ -180,7 +196,8 @@ def tidy(d, src, dest):
         if not rel or not n.isdigit() or size(path) == int(n):  # (back on the Mac: you brought that file back)
             continue
         base = os.path.basename(rel)
-        for at in dict.fromkeys((rel, base, os.path.join(OLD, base))):  # where it was, or where its folder moved to
+        filed = [os.path.join(f, n) for f, n in spots.get(layout.cf(base), []) if f]  # in one of the layout's folders
+        for at in dict.fromkeys((rel, base, os.path.join(OLD, base), *filed)):  # where it was, or where it moved to
             p = os.path.join(dest, at)
             if size(p) == int(n):
                 if trash(dest, p):

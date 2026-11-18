@@ -4,9 +4,9 @@
 Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so another website open
 in the browser cannot press the buttons.
 """
-import json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, unicodedata, urllib.parse
+import glob, json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, unicodedata, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
-import aiff, club, details, dj, friend, genres, recognise, usb_ask
+import aiff, club, details, dj, friend, genres, layout, recognise, usb_ask, waveform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1028,8 +1028,7 @@ def progress(name):
 def on_usb(at, plugged):
     """The names in The Crate's folder on the chosen USB, however the drive spells them (None: not plugged in)."""
     try:
-        return {unicodedata.normalize("NFC", f).casefold() for f in os.listdir(os.path.join(at, usb_ask.FOLDER))} \
-            if plugged else None
+        return set(layout.where(os.path.join(at, usb_ask.FOLDER))) if plugged else None  # (in any of its folders)
     except OSError:
         return set()
 
@@ -1074,6 +1073,8 @@ def dj_state():
     rec, lacks, det, back, on = aiff.load(DIR), details.have(DIR), details.status(DIR), aiff.undoable(DIR), on_usb(at, plugged)
     for s in songs:
         s.update(fix_song(s["file"], lacks, det, back, rec["skip"], on))
+        if club.deep(os.path.join(OUT, s["file"])):
+            s["deep"] = True  # 32-bit: no club deck plays it; its row offers a 24-bit copy
     last = lambda *words: next((l for l in reversed(log[-40:]) if any(w in l for w in words)), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
             "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged, "usbAsk": usb_asking(),
@@ -1082,7 +1083,8 @@ def dj_state():
                     "lastAiff": last("AIFF: ", "AIFF PROBLEM"), "lastDetails": last("details: ", "DETAILS PROBLEM"),
                     "lastCues": last("cues: ", "cues put back: ", "CUES PROBLEM"),
                     "cuesNote": read("cues-unmapped.txt").splitlines()[:6]},
-            "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb, club.kept(DIR, usb)),
+            "layout": layout.load(DIR), "rbApp": bool(rekordbox_app()),
+            "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb, club.kept(DIR, usb), OUT),
             "lastRecognise": last("song recognition", "RECOGNISE PROBLEM"),
             "engine": plugged and os.path.isfile(os.path.join(at, "Engine Library", "Database2", "m.db")),
             "rekordbox": os.path.isfile(os.path.expanduser("~/Library/Pioneer/rekordbox/master.db")),
@@ -1093,6 +1095,24 @@ def dj_state():
             # another USB with songs on it: the page asks what's on each (/api/dj/usbs) only when this list changes
             "others": friend.volumes(), "copy": friend.progress(DIR), "lastFriend": last("USB copy from", "COPY PROBLEM"),
             "problem": dj_problem(log[-6:])}
+
+
+def layout_plan(mode):
+    """Before a USB layout is picked (layout.py): how many songs each folder would hold, and how many would move on
+    the USB that is plugged in. Nothing is touched."""
+    cfg = layout.load(DIR)
+    cfg["mode"] = mode if mode in layout.MODES else cfg["mode"]
+    usb = read("usb.txt").strip()
+    at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)
+    ready = bool(usb) and os.path.isdir(at) and usb_ask.ready(DIR, at)
+    return layout.plan(os.path.join(at, usb_ask.FOLDER) if ready else "", dj.library(DIR, OUT), cfg)
+
+
+def rekordbox_app():
+    """rekordbox on this Mac ("" when it isn't installed): the newest one, where its installer puts it."""
+    one = os.environ.get("REKORDBOX_APP")  # for tests
+    found = [one] if one else sorted(glob.glob("/Applications/rekordbox*/rekordbox.app"), reverse=True) + ["/Applications/rekordbox.app"]
+    return next((p for p in found if os.path.isdir(p)), "")
 
 
 def kbps_of(s):
@@ -1222,7 +1242,7 @@ def fix_post(path, body):
         except subprocess.TimeoutExpired:
             return "That took too long. Try fewer songs at once."
         return follow()
-    how = ("undo" if back else "pick") if kind == "aiff" else "fill"
+    how = ("undo" if back else "deep" if body.get("deep") is True else "pick") if kind == "aiff" else "fill"
     if not fix_start(kind, how, json.dumps(rels) if kind == "aiff" else "\n".join(rels)):
         return "Still working on the last ones. Try again when it's done."
     return None
@@ -1262,6 +1282,23 @@ def dj_post(path, body):
         return None
     if path in ("/api/dj/aiff", "/api/dj/details", "/api/dj/put", "/api/dj/usb-ok", "/api/dj/cues"):
         return fix_post(path, body)
+    if path == "/api/dj/layout":  # how the songs sit inside The Crate's folder on the USB (layout.py: one folder, or
+        mode, other = body.get("mode"), body.get("other")  # by genre), and which genres aren't EDM. The run files them.
+        if (mode is not None and mode not in layout.MODES) or (other is not None and not isinstance(other, list)):
+            return "That isn't one of the folder layouts."
+        layout.save(DIR, mode, other)
+        dj_run(0)
+        return None
+    if path == "/api/dj/rekordbox":  # the song handed to rekordbox, which comes to the front. Not while the decks'
+        p, rb = song_path(body.get("file", "")), rekordbox_app()  # libraries are written: rekordbox's needs it closed.
+        if not p:
+            return "That file isn't on your Mac any more."
+        if not rb:
+            return "rekordbox isn't on this Mac."
+        if dj.busy(DIR):
+            return "Your decks are being updated right now. Try again in a moment."
+        subprocess.Popen(["open", "-a", rb, p], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return None
     if path == "/api/dj/show":  # a song's file in Finder (for a kind of file the browser can't play)
         p = song_path(body.get("file", ""))
         if not p:
@@ -1360,8 +1397,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, dj_state())
         if self.path == "/api/dj/usbs":  # what each other plugged-in USB offers to copy
             return self.send(200, friend.scan(DIR, OUT))
+        if self.path.split("?")[0] == "/api/dj/layout":  # what a USB layout would do, before it is picked
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            return self.send(200, layout_plan((q.get("mode") or [""])[0]))
         if self.path.split("?")[0] == "/play":
             return self.play()
+        if self.path.split("?")[0] == "/wave":  # a song's waveform, for the player (this page only, as /play)
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            p = song_path((q.get("f") or [""])[0])
+            got = p and self.headers.get("Sec-Fetch-Site", "same-origin") in ("same-origin", "none") and waveform.get(DIR, p)
+            return self.send(200, got) if got else self.send(404, {"error": "no waveform"})
         if self.path.split("?")[0] == "/free":  # the list Claude or Codex works from
             return self.send(200, free_page().encode(), "text/html; charset=utf-8")
         self.send(404, {"error": "not found"})
@@ -1415,7 +1460,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             # a pasted song list is ~55 bytes a song; the playlists and folders ticked to copy from another USB
             cap = 600_000 if self.path in ("/api/spotify-songs", "/api/dj/aiff", "/api/dj/details") else \
-                200_000 if self.path == "/api/dj/copy" else 4096
+                200_000 if self.path in ("/api/dj/copy", "/api/dj/layout") else 4096
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
         except ValueError:
             return self.send(400, {"error": "bad request"})

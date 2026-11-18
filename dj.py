@@ -13,7 +13,7 @@ Standard library only. Tempo and key need the private Python dj-setup.sh sets up
 still reach the decks, which then analyse them on load."""
 import fcntl, json, os, re, subprocess, sys, time, unicodedata
 
-import friend, genres, recognise, usb_ask, usb_tidy
+import friend, genres, layout, recognise, usb_ask, usb_tidy
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 # The private Python with Essentia, Mutagen and pyrekordbox (dj-setup.sh); the second is where the first build kept it.
@@ -22,6 +22,7 @@ PY = next((p for p in map(os.path.expanduser, ("~/.local/share/crate-dj/python/b
           os.path.expanduser("~/.local/share/crate-dj/python/bin/python3"))
 CACHE = "dj-analysis.json"
 SOUNDCLOUD = "My SoundCloud playlists"  # every SoundCloud playlist of yours in one
+EDM_ALL, REST_ALL = "EDM (all)", "Other (all)"  # every EDM song in one, and every song that is none of it
 WRITTEN = "dj-written.json"  # the genre each deck library showed for each track after The Crate last wrote it
 
 
@@ -205,9 +206,10 @@ def library(dir, src):
     return out
 
 
-def playlists(songs, g, came=None):
+def playlists(songs, g, came=None, other=None):
     """The playlists the decks get, in order: [(name, [songs])]. All inside one "The Crate" folder there.
-    came: the playlists copied in from another USB (friend.py's record): {name: {"rels": [...]}}."""
+    came: the playlists copied in from another USB (friend.py's record): {name: {"rels": [...]}}.
+    other: the genres that aren't EDM (layout.py's, unless you changed them)."""
     lists = [("All songs", songs), ("Newest 50", sorted(songs, key=lambda s: -s["mtime"])[:50])]
     mine = list(dict.fromkeys(s["playlist"] for s in songs if s["playlist"]))
     if len(mine) > 1:  # every SoundCloud playlist of yours in one, playlist after playlist
@@ -219,6 +221,11 @@ def playlists(songs, g, came=None):
     by = {s["rel"]: s for s in songs}
     for name, l in (came or {}).items():  # in the order they had on the other USB
         items = [by[r] for r in l.get("rels", []) if r in by]
+        if items:
+            lists.append((name, items))
+    cfg = {"other": layout.OTHER if other is None else other}
+    for name, items in ((EDM_ALL, [s for s in songs if layout.edm(s["genres"], cfg)]),  # then genre by genre
+                        (REST_ALL, [s for s in songs if s["genres"] and not layout.edm(s["genres"], cfg)])):
         if items:
             lists.append((name, items))
     order = {n: i for i, n in enumerate(g["list"])}
@@ -302,6 +309,29 @@ def convert(dir, src):
             log(dir, f"{name} PROBLEM: {(r.stderr.strip().splitlines() or ['it stopped'])[-1]}"[:300])
 
 
+def place(dir, songs, stick, usb="", file=False):
+    """Marks each song with where it sits on the USB ("at"), for the decks' libraries there. file: first every song
+    is filed into the folder the chosen layout gives it (layout.py: one folder, or by genre), inside The Crate's own
+    folder only."""
+    if not stick:
+        return
+    dest = os.path.join(stick, usb_ask.FOLDER)
+    try:
+        if file:
+            cfg = layout.load(dir)
+            moved, stuck, twice, at = layout.arrange(dest, songs, cfg)
+            said = layout.say(moved, stuck, twice, cfg["mode"] == "flat")
+            if said:
+                log(dir, f'USB "{usb}": {said}')
+        else:
+            at = layout.places(dest, [s["rel"] for s in songs])
+    except Exception as e:  # never silent: the page shows the last lines of dj.log
+        log(dir, f'USB PROBLEM on "{usb}": {e}')
+        return
+    for s in songs:
+        s["at"] = at.get(s["rel"], s["rel"])
+
+
 def once(dir, src, volumes):
     usb = read(dir, "usb.txt").strip()
     stick = os.path.join(volumes, usb) if usb and os.path.isdir(os.path.join(volumes, usb)) else ""
@@ -324,10 +354,12 @@ def once(dir, src, volumes):
     convert(dir, src)
     analyse(dir, src)
     songs = library(dir, src)
+    place(dir, songs, stick)  # where each sits on the USB now: its library there is read by that
     there = seen(dir, src, songs, stick)
     if adopt(dir, songs, there):  # a genre you changed on the decks' side is now your pick
         songs = library(dir, src)
-    lists = playlists(songs, genres.load(dir), friend.load(dir)["lists"])
+    place(dir, songs, stick, usb, file=True)  # then each into its folder (a song whose genre changed moves)
+    lists = playlists(songs, genres.load(dir), friend.load(dir)["lists"], layout.load(dir)["other"])
     wrote = False
     if stick:
         import engine

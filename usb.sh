@@ -52,9 +52,12 @@ kill -0 "$(cat "$DIR/.running" 2>/dev/null)" 2>/dev/null || python3 "$DIR/safety
 LIST="$DIR/.usb-list"
 # "./" first: rsync would read a name starting with # or ; as a comment
 cut -f1 "$DIR/safety-ok.tsv" 2>/dev/null | while IFS= read -r p; do [ -f "$SRC/$p" ] && echo "./$p"; done >"$LIST"
-# Tracks not on the USB yet (counted before the copy, for the notice below)
-NEW=$(while IFS= read -r p; do [ -e "$DEST/SoundCloud Sync/$p" ] || echo x; done <"$LIST" | wc -l | tr -d ' ')
 TOTAL=$(wc -l <"$LIST" | tr -d ' ')
+# Only the tracks not on the USB yet are copied, and counted for the notice below. On a USB laid out in folders
+# (layout.py: by genre, picked on the Library Manager page) a song already in its folder counts as on it; a new one
+# lands in the main folder and dj.py files it right after.
+python3 "$DIR/layout.py" missing "$DEST/SoundCloud Sync" <"$LIST" >"$LIST.new" && mv "$LIST.new" "$LIST"
+NEW=$(wc -l <"$LIST" | tr -d ' ')
 echo "$$ copying $NEW" >"$STATE"
 rm -f "$DEST/SoundCloud Sync/To Buy.txt"  # The Crate's own list, put there by older versions: not music
 if rsync -a --ignore-existing --out-format='%n' --files-from="$LIST" "$SRC/" "$DEST/SoundCloud Sync/" \
