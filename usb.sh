@@ -2,8 +2,11 @@
 # Copies the music folder to the chosen USB when it is plugged in. Runs after every sync and whenever
 # any drive is mounted, so tracks downloaded while the USB was away land on it the next time it appears.
 # Only ever ADDS tracks: no track on the USB is deleted or overwritten. Only music goes on it: the to-buy list stays
-# on the Mac (the page shows it), and the list older versions put on the USB is taken off. The one exception is a song
-# you threw back on the page ("Wrong or bad file"): its copy here goes to the USB's own Trash (usb_tidy.py).
+# on the Mac (the page shows it), and the list older versions put on the USB is taken off. A USB that already has things
+# on it is asked about on the page first (usb_ask.py). The one exception is a song
+# you threw back on the page ("Wrong or bad file"): its copy here goes to the USB's own Trash, and on a USB that
+# already held songs, another download of a library song is swapped for the library's file and a double of one is
+# taken off, both to that Trash as well (usb_tidy.py). Songs that aren't from this library are left alone.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 DIR="${0:A:h}"
 SRC="${SRC:-$HOME/Music/SoundCloud Sync}"   # both overridable for tests
@@ -11,6 +14,13 @@ NAME="$(cat "$DIR/usb.txt" 2>/dev/null)"
 [ -z "$NAME" ] && exit 0
 DEST="${VOLUMES:-/Volumes}/$NAME"
 [ -d "$DEST" ] || { echo "$(date '+%F %R')  USB \"$NAME\" not plugged in; will copy when it is" >> "$DIR/usb.log"; exit 0; }
+# A USB that already has things on it is changed only after your OK on the page (usb_ask.py): until then nothing on
+# it is touched. An empty one needs no asking.
+python3 "$DIR/usb_ask.py" check "$DIR" "$DEST" || {
+  tail -1 "$DIR/usb.log" 2>/dev/null | grep -q "waiting for your OK" || \
+    echo "$(date '+%F %R')  USB \"$NAME\" already has things on it: waiting for your OK on the page" >> "$DIR/usb.log"
+  exit 0
+}
 # One copy at a time (a sync, a plugged-in drive and the Copy Now button can all start one). While it runs,
 # .usb-copy says how far it is ("pid stage new-tracks") and .usb-progress lists each file copied: the page shows both.
 STATE="$DIR/.usb-copy"
@@ -27,6 +37,13 @@ fail() {
 }
 [ -w "$DEST" ] || fail "the drive is read-only (locked, or formatted so a Mac can only read it, like NTFS). Use a drive formatted exFAT, FAT32 or Mac."
 mkdir -p "$DEST/SoundCloud Sync" 2>"$DIR/.usb-err" || fail "couldn't make the SoundCloud Sync folder on it ($(tail -1 "$DIR/.usb-err"))."
+# FLACs that arrived since the last time become AIFFs first (aiff.py: the same sound, in a file every deck plays), so
+# the USB gets the AIFF and never both. Not while a sync is still getting songs: that sync does it at its end.
+PY="$HOME/.local/share/crate-dj/python/bin/python3"; [ -x "$PY" ] || PY="$HOME/.local/share/crate-dj/venv/bin/python"
+[ -z "$MID" ] && [ -x "$PY" ] && "$PY" "$DIR/aiff.py" auto "$DIR" "$SRC" 2>>"$DIR/dj.log"
+# Then a new song's missing cover and details are filled in (details.py: only empty fields, each one undoable), so
+# the USB gets the finished file.
+[ -z "$MID" ] && [ -x "$PY" ] && "$PY" "$DIR/details.py" auto "$DIR" "$SRC" 2>>"$DIR/dj.log"
 # First, inside that folder only: a song you threw back on the page goes to the USB's Trash, and Soulseek songs that
 # sat in a folder of their own move in with the rest (so the copy below doesn't put them on it a second time).
 python3 "$DIR/usb_tidy.py" "$DIR" "$SRC" "$DEST/SoundCloud Sync" >>"$DIR/usb.log" 2>&1

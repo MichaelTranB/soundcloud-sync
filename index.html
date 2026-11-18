@@ -83,6 +83,21 @@
   .alert + .strip { margin-top: 14px; }
   .note { color: var(--dim); font-size: 14.5px; margin-top: 10px; min-height: 18px; }
   .note.bad { color: var(--warn); }
+  /* A "?" beside each card's title opens two to four plain lines: how it works, what it never touches, how to undo. */
+  .lab { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; } .lab label { margin: 0; flex: 1; }
+  button.q { background: transparent; border: 1px solid var(--dim); color: var(--dim); width: 24px; height: 24px; padding: 0; font-size: 13px; line-height: 1; flex: none; }
+  button.q[aria-expanded="true"] { background: var(--lib); border-color: var(--lib); color: var(--hot); }
+  .help { border-left: 2px solid var(--hot); padding: 2px 0 2px 14px; margin: 0 0 14px; }
+  .help p { margin: 0 0 6px; color: #c3c1d0; font-size: 14.5px; } .help p:last-child { margin: 0; } .help b { color: var(--text); }
+  /* A USB that already has things on it: nothing on it is changed until you say so here. */
+  .usbask { border: 1px solid var(--hot); border-radius: 16px; background: linear-gradient(180deg, #1f0f15, var(--panel)); padding: 22px 24px 24px; margin-top: 32px; }
+  .usbask[hidden] { display: none; } .usbask + .strip { margin-top: 20px; }
+  .usbask .badge { display: inline-block; font: 700 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #ffffff; background: var(--hot); border-radius: 999px; padding: 4px 11px; }
+  .usbask h2 { display: block; margin: 12px 0 6px; font-size: 24px; letter-spacing: -.02em; }
+  .usbask p { margin: 0 0 14px; color: #c3c1d0; max-width: 700px; }
+  .usbask ul { list-style: none; border: 0; margin: 0 0 18px; padding: 0; display: grid; gap: 6px; }
+  .usbask li { display: block; padding: 0; border: 0; color: #c3c1d0; font-size: 15px; } .usbask li b { color: var(--text); }
+  .usbask .btns { display: flex; gap: 10px; flex-wrap: wrap; }
 
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; }
   h2 { font-size: 18px; font-weight: 700; color: var(--text); margin: 0 0 12px; display: flex; justify-content: space-between; align-items: baseline; }
@@ -140,6 +155,8 @@
   li .why .by { color: var(--dim); }
   li button.bad, .wrongs button.undo { background: none; border: 0; padding: 0; color: var(--dim); font-size: 13px; text-decoration: underline dotted; white-space: nowrap; cursor: pointer; }
   li button.bad:hover, .wrongs button.undo:hover { color: #e0a040; }
+  li button.play { background: none; border: 1px solid var(--line); border-radius: 50%; width: 30px; height: 30px; padding: 0; flex: none; color: var(--text); font-size: 11px; line-height: 1; cursor: pointer; }
+  li button.play.on { background: var(--hot); border-color: var(--hot); color: #fff; }
   .wrongs { padding: 9px 2px 11px; color: #e0a040; font-size: 14px; }
   li .why button.undo { background: none; border: 0; padding: 0; margin-left: 8px; color: var(--dim); font-size: 13.5px; text-decoration: underline dotted; }
   #viewNote .run { display: flex; flex-wrap: wrap; align-items: center; color: var(--text); font-weight: 600; }
@@ -229,8 +246,8 @@
     <div class="acts">
       <button class="ghost" id="startShow" hidden>Setup <span id="startLeft"></span></button>
       <button class="ghost ask" id="faqOpen" aria-haspopup="dialog"><b aria-hidden="true">?</b> How it works</button>
-      <button class="lib" id="djOpen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 4v16M8 8v12M12 6v14M16 6l4 14"/></svg>Library Manager</button>
-      <button class="big" id="sync">Sync Now</button>
+      <button class="lib" id="djOpen" title="Your songs, ready for the decks: genres, AIFF, covers, cues and the club check."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 4v16M8 8v12M12 6v14M16 6l4 14"/></svg>Library Manager</button>
+      <button class="big" id="sync" title="Gets new songs now, then updates your USB and DJ lists. Deletes nothing.">Sync Now</button>
     </div>
   </header>
 
@@ -254,6 +271,12 @@
 
     <h3>Quality</h3>
     <p>Lossless or 320 kbps only, never a recorded stream. Soulseek files must match the track's length, so you get the same mix.</p>
+
+    <h3>Your USB and decks</h3>
+    <p>Songs go into one folder on the USB, <b>SoundCloud Sync</b>, and into a playlist folder called <b>The Crate</b> in Engine DJ, rekordbox and Serato. Your own files, folders and playlists are never moved, renamed or deleted. A USB that already has things on it is asked about first.</p>
+
+    <h3>Ready for a gig</h3>
+    <p>FLAC becomes AIFF (the same sound, in a file every club deck plays), missing covers and details are filled in, and your cues stay in step across decks. See <b>Library Manager</b> for each one and its Undo.</p>
 
     <h3>Is it safe?</h3>
     <p>Every file is checked to be real audio and virus scanned. Anything else is quarantined.</p>
@@ -281,6 +304,7 @@
     <div class="note" id="startNote" role="status"></div>
   </section>
   <div class="alert" id="alert" role="alert" hidden></div>
+  <section class="usbask" id="usbAsk" aria-live="polite" hidden></section>
   <section class="strip" aria-live="polite">
     <div class="stat"><b id="nHave"><i class="skel"></i></b><small>On your Mac</small></div>
     <div class="stat"><b id="nBuy"><i class="skel"></i></b><small>Left to find</small></div>
@@ -290,7 +314,13 @@
 
   <section class="setup">
     <div class="field">
-      <label for="url"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15V6"/><circle cx="18.5" cy="15.5" r="2.5"/><path d="M12 12H3M16 6H3M12 18H3"/></svg>Your playlists</label>
+      <div class="lab"><label for="url"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15V6"/><circle cx="18.5" cy="15.5" r="2.5"/><path d="M12 12H3M16 6H3M12 18H3"/></svg>Your playlists</label>
+        <button class="q" data-help="hLists" aria-expanded="false" aria-label="How your playlists work">?</button></div>
+      <div class="help" id="hLists" hidden>
+        <p>Every sync gets each song in these playlists onto your Mac, in the best quality it finds.</p>
+        <p><b>Never:</b> changes the playlist or your account. It only reads the song list.</p>
+        <p><b>Undo:</b> remove a playlist with its ×. Its files stay on your Mac.</p>
+      </div>
       <div class="row"><input id="url" placeholder="Paste a playlist link" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="act" id="saveUrl">Add</button></div>
       <div class="note" id="urlNote">Works with SoundCloud, Spotify and Apple Music. Tap a saved one to sync it.</div>
       <div class="lists" id="saved"></div>
@@ -308,24 +338,38 @@
       </details>
     </div>
     <div class="field">
-      <label for="liked"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>Spotify Liked Songs</label>
+      <div class="lab"><label for="liked"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>Spotify Liked Songs</label>
+        <button class="q" data-help="hLiked" aria-expanded="false" aria-label="How Liked Songs works">?</button></div>
+      <div class="help" id="hLiked" hidden>
+        <p>Every sync looks for the next batch on Soulseek: <b>EDM first</b>, newest first, then everything else.</p>
+        <p>It only takes what fits: your Mac always keeps <b>10 GB free</b>. <b>Never:</b> signs in to Spotify or changes anything there.</p>
+        <p>Liked more songs? Paste again. <b>Undo:</b> <button class="ghost" id="likedForget" style="padding:4px 10px;font-size:13px">Stop</button> clears the list; songs already here stay.</p>
+      </div>
       <div class="row"><input id="liked" placeholder="Paste your Liked Songs" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="act" id="likedAdd">Add</button></div>
       <div class="note" id="likedNote">In Spotify, open Liked Songs, click the newest song, Shift-click the oldest you want, press ⌘C, paste here.</div>
-      <details><summary>How it works</summary>
-        <p>Every sync looks for the next batch on Soulseek: EDM first, newest first, then everything else.</p>
-        <p>It only takes what fits: your Mac always keeps 10 GB free. No sign-in, nothing changes in Spotify.</p>
-        <p>Liked more songs? Paste again; it picks up where it left off. <button class="ghost" id="likedForget" style="padding:4px 10px;font-size:13px">Stop</button> clears the list (songs already here stay).</p>
-      </details>
+    </div>
     </div>
     <div class="field">
-      <label for="usb"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="7" r="1"/><circle cx="4" cy="20" r="1"/><path d="M4.7 19.3 19 5M21 3l-3 1 2 2Z"/><path d="M9.26 7.68 5 12l2 5M10 14l5 2 3.5-3.5"/><path d="m18 12 1-1 1 1-1 1Z"/></svg>USB drive</label>
-      <div class="row"><select id="usb"></select><button class="act" id="copy">Copy Now</button></div>
+      <div class="lab"><label for="usb"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="7" r="1"/><circle cx="4" cy="20" r="1"/><path d="M4.7 19.3 19 5M21 3l-3 1 2 2Z"/><path d="M9.26 7.68 5 12l2 5M10 14l5 2 3.5-3.5"/><path d="m18 12 1-1 1 1-1 1Z"/></svg>USB drive</label>
+        <button class="q" data-help="hUsb" aria-expanded="false" aria-label="How the USB copy works">?</button></div>
+      <div class="help" id="hUsb" hidden>
+        <p>New songs go into one folder on it, <b>SoundCloud Sync</b>, after every sync and whenever you plug it in. Its DJ lists get a playlist folder called <b>The Crate</b>.</p>
+        <p><b>Never:</b> moves, renames or deletes your own files, folders or playlists. A USB that already has things on it is asked about first.</p>
+        <p><b>Undo:</b> each DJ list is copied to dj-backups before it's changed.</p>
+      </div>
+      <div class="row"><select id="usb"></select><button class="act" id="copy" title="Copies new songs to your USB and updates its DJ lists now. Only adds.">Copy Now</button></div>
       <div class="usbprog" id="usbProg" hidden><span id="usbIcon"></span><progress id="usbBar" max="1" value="0"></progress><span id="usbPct"></span></div>
       <div class="note" id="usbNote" role="status" aria-live="polite"></div>
       <label class="note"><input type="checkbox" id="eject"> Eject the USB once a sync has put its new tracks on it, so you can just pull it out (never mid-sync)</label>
     </div>
     <div class="field">
-      <label for="slskUser"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/></svg>Soulseek</label>
+      <div class="lab"><label for="slskUser"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/></svg>Soulseek</label>
+        <button class="q" data-help="hSlsk" aria-expanded="false" aria-label="How Soulseek is used">?</button></div>
+      <div class="help" id="hSlsk" hidden>
+        <p>Every sync looks here for the songs SoundCloud won't give, lossless or 320 kbps only.</p>
+        <p><b>Never:</b> shares your files. It only downloads.</p>
+        <p>Your password stays in your Mac's Keychain. <b>Change</b> signs in as someone else.</p>
+      </div>
       <div id="slskOk" hidden><span class="dot ok"></span>Signed in as <b id="slskName"></b>
         <button class="ghost" id="slskChange" style="margin-left:10px;padding:7px 14px;font-size:14px">Change</button>
         <div class="note">Every sync looks here for what SoundCloud won't give.</div></div>
@@ -337,7 +381,13 @@
       </div>
     </div>
     <div class="field">
-      <label for="syncTime"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Auto sync</label>
+      <div class="lab"><label for="syncTime"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Auto sync</label>
+        <button class="q" data-help="hTime" aria-expanded="false" aria-label="How Auto sync works">?</button></div>
+      <div class="help" id="hTime" hidden>
+        <p>A full sync at this time every day: new songs to your Mac, then to your USB and DJ lists if it's plugged in.</p>
+        <p>Mac asleep? It runs when it wakes. <b>Sync Now</b> does the same at once.</p>
+        <p><b>Never:</b> deletes anything.</p>
+      </div>
       <div class="row"><span class="every">Every day at</span><input id="syncTime" type="time" step="300" required></div>
       <div class="note" id="timeNote">Keep your Mac on and plugged in at this time. If it's asleep, it syncs when it wakes.</div>
     </div>
@@ -401,7 +451,36 @@ addEventListener('focus', () => { if (last && last.playlist && !last.service && 
 addEventListener('focus', () => { if (last && (last.watching || []).length) call('/api/watch', {}).catch(() => {}); });
 
 let copyAsked = 0;  // when Copy Now was clicked: the button shows it at once, before the copy reports in
+// A USB that already has things on it: nothing on it is changed until you say so here (usb_ask.py).
+let askWas = '';
+function paintAsk(u) {
+  const box = $('usbAsk'), key = JSON.stringify(u || 0);
+  if (key === askWas) return;  // unchanged: leave the buttons be (a tap mid-redraw would be lost)
+  askWas = key; box.hidden = !u || u.state === 'ok'; box.textContent = '';
+  if (box.hidden) return;
+  const answer = yes => call('/api/usb/ok', { yes }).catch(e => say('usbNote', e.message, true));
+  if (u.state === 'no') {
+    const go = el('button', { textContent: 'Allow' }); go.onclick = () => answer(true);
+    return box.append(el('span', { className: 'badge', textContent: 'Paused' }), el('h2', { textContent: '"' + u.name + '" is left alone' }),
+      el('p', { textContent: 'You said not now, so nothing on it is changed: no songs, no playlists.' }), el('div', { className: 'btns' }, go));
+  }
+  const yes = el('button', { textContent: 'Go ahead' }), no = el('button', { className: 'ghost', textContent: 'Not now' });
+  yes.onclick = () => answer(true); no.onclick = () => answer(false);
+  const n = u.songs ? u.songs.toLocaleString() + (u.songs === 1 ? ' song' : ' songs') : 'New songs';
+  const ul = el('ul', {},
+    el('li', {}, el('b', { textContent: 'Adds: ' }), n + ' into The Crate\'s own folder (SoundCloud Sync), and a playlist folder called The Crate'
+      + (u.lists && u.lists.length ? ' beside the playlists already in ' + u.lists.join(', ') : ' in the DJ apps\' lists') + '.'),
+    el('li', {}, el('b', { textContent: 'Cues: ' }), 'on The Crate\'s own songs only, kept in step with your other decks. None is deleted.'),
+    el('li', {}, el('b', { textContent: 'Never: ' }), 'moves, renames or deletes your files, folders or playlists.'),
+    el('li', {}, el('b', { textContent: 'Undo: ' }), 'each list is copied to dj-backups first, and you can stop any time.'));
+  if (u.trash) ul.append(el('li', {}, el('b', { textContent: 'To its Trash: ' }), u.trash.toLocaleString() + ' older '
+    + (u.trash === 1 ? 'copy' : 'copies') + ' of The Crate\'s own songs, swapped for the library\'s file.'));
+  box.append(el('span', { className: 'badge', textContent: 'Your OK needed' }), el('h2', { textContent: 'Let The Crate add to "' + u.name + '"?' }),
+    el('p', { textContent: 'This USB already has things on it, so nothing is touched until you say so.' }), ul, el('div', { className: 'btns' }, yes, no));
+}
+
 function render(s) {
+  paintAsk(s.usbAsk);
   $('alert').hidden = !s.problem;
   likedLine(s.liked);
   // A sign-in problem gets its fix right there: the SoundCloud sign-in link, or the Full Disk Access setting.
@@ -484,6 +563,9 @@ function openStep(what) {
 const setHidden = h => { startHidden = h; try { localStorage.setItem('crate-start-hidden', h ? '1' : '0'); } catch (e) {} if (last) paintStart(last); };
 $('startHide').onclick = () => setHidden(true);
 $('faqOpen').onclick = () => $('faq').showModal();
+document.querySelectorAll('button.q').forEach(b => b.onclick = () => {
+  const h = $(b.dataset.help); h.hidden = !h.hidden; b.setAttribute('aria-expanded', !h.hidden);
+});
 $('faqClose').onclick = () => $('faq').close();
 $('faq').onclick = e => { if (e.target === $('faq')) $('faq').close(); };  // a click on the dark backdrop closes it
 // Claude or Codex, step by step: it opens The Crate's list of free links in the friend's own Chrome, clicks each and
@@ -663,6 +745,8 @@ function draw() {
           doubted.map(t => `${t.name}: ${t.wrong}`).slice(0, 12).join('\n') + (doubted.length > 12 ? '\n…' : '') +
           '\n\nThey go to the Trash, are never taken again, and The Crate starts looking for the right ones right away.' + offUsb(true)) }))] : []),
     ...(have.length ? have.map(t => el('li', {},
+    el('button', { className: 'play' + (playing === t.file ? ' on' : ''), textContent: playing === t.file ? '❚❚' : '▶',
+      title: playing === t.file ? 'Stop' : 'Listen', ariaLabel: (playing === t.file ? 'Stop ' : 'Listen to ') + t.name, onclick: () => listen(t.file) }),
     el('span', { className: 'n', textContent: t.name }),
     ...(t.wrong ? [el('span', { className: 'tag low', title: 'Probably not the playlist\'s song: ' + t.wrong, textContent: 'Looks wrong' })] : []),
     el('span', { className: 'tag' + (LOSSLESS.includes(t.kind) ? ' lossless' : ''), textContent: t.kind }),
@@ -790,6 +874,8 @@ function paintSetup(s) {
   if (document.activeElement !== $('syncTime') && !$('syncTime').dataset.dirty) $('syncTime').value = s.syncTime;
   say('usbNote', cp ? (cp.stage === 'copying' && cp.total ? 'Copying ' + cp.done + ' of ' + cp.total + ' new tracks to ' + s.usb + '. Keep it plugged in.'
       : cp.stage === 'copying' ? 'Updating ' + s.usb + '…' : 'Getting ready: checking the files before they go on ' + s.usb + '…')
+    : s.usbAsk && s.usbAsk.state === 'ask' ? 'Waiting for your OK at the top of the page. Nothing on ' + s.usb + ' is changed yet.'
+    : s.usbAsk && s.usbAsk.state === 'no' ? 'Paused: you said not now, so ' + s.usb + ' is left alone.'
     : res && !res.ok ? res.text
     : res ? res.text
     : !s.usb ? 'Pick your USB once. After that it fills by itself.'
@@ -814,6 +900,28 @@ function paintSetup(s) {
 }
 
 $('djOpen').onclick = () => { location.href = '/dj'; };  // genres, tempo and key, and what your decks have
+
+// Hearing a downloaded song: one at a time, straight from the music folder (app.py's /play).
+const player = new Audio(); let playing = '';
+function marks() {
+  for (const b of document.querySelectorAll('#have button.play')) { b.classList.remove('on'); b.textContent = '▶'; }
+}
+function listen(file) {
+  const same = playing === file;
+  player.pause(); playing = ''; marks();
+  if (same) return;
+  playing = file; player.src = '/play?f=' + encodeURIComponent(file);
+  player.play().catch(() => { /* the error handler says why */ });
+  if (last) render(last);
+}
+player.onended = () => { playing = ''; marks(); };
+player.onerror = () => {
+  if (!playing) return;
+  const file = playing; playing = ''; marks();
+  // a kind of file the browser can't play (AIFF outside Safari): shown in Finder instead, where the space bar plays it
+  fetch('/api/dj/show', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file }) }).catch(() => {});
+  alert("Your browser can't play this kind of file here. It is shown in Finder instead: press the space bar there to hear it.");
+};
 
 async function call(path, body) {
   const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});

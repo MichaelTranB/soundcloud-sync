@@ -25,6 +25,7 @@ import json, os, shutil, subprocess, sys, time, unicodedata
 
 FOLDER = "The Crate"
 KINDS = (".mp3", ".m4a", ".mp4", ".flac", ".wav", ".aiff")  # what rekordbox plays and pyrekordbox can add
+TYPES = {".mp3": 1, ".mp4": 3, ".m4a": 4, ".flac": 5, ".wav": 11, ".aiff": 12}  # rekordbox's own codes
 
 
 def nfc(s):
@@ -160,7 +161,7 @@ def sync(db, job, models, running, db_file):
         old, now = nfc(os.path.join(src, s["was"])) if s.get("was") else "", nfc(path[s["rel"]])
         if old in have and now not in have:
             have[now] = have.pop(old)
-            moved.append((now, have[now]))
+            moved.append((now, have[now], s))
 
     def genre_of(c):
         return c.Genre.Name if c.Genre is not None else ""
@@ -220,8 +221,13 @@ def sync(db, job, models, running, db_file):
             keys[name] = k.ID
         return keys[name]
     try:
-        for now, c in moved:
+        for now, c, s in moved:
             c.FolderPath = now
+            if os.path.splitext(now)[1].lower() != os.path.splitext(c.FileNameL or now)[1].lower():
+                # another kind of file with the same sound (a FLAC that is now an AIFF, aiff.py)
+                c.FileType = TYPES.get(os.path.splitext(now)[1].lower(), c.FileType)
+                c.FileSize, c.BitRate = os.path.getsize(now), int(s.get("bitrate") or 0) or c.BitRate
+            c.FileNameL = os.path.basename(now)
         for s in new:
             year = str(s.get("year") or "")
             c = db.add_content(

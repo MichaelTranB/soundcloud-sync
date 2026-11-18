@@ -13,7 +13,7 @@ Standard library only. Tempo and key need the private Python dj-setup.sh sets up
 still reach the decks, which then analyse them on load."""
 import fcntl, json, os, re, subprocess, sys, time, unicodedata
 
-import genres, recognise, usb_tidy
+import friend, genres, recognise, usb_ask, usb_tidy
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 # The private Python with Essentia, Mutagen and pyrekordbox (dj-setup.sh); the second is where the first build kept it.
@@ -21,6 +21,7 @@ PY = next((p for p in map(os.path.expanduser, ("~/.local/share/crate-dj/python/b
                                                "~/.local/share/crate-dj/venv/bin/python")) if os.path.exists(p)),
           os.path.expanduser("~/.local/share/crate-dj/python/bin/python3"))
 CACHE = "dj-analysis.json"
+SOUNDCLOUD = "My SoundCloud playlists"  # every SoundCloud playlist of yours in one
 WRITTEN = "dj-written.json"  # the genre each deck library showed for each track after The Crate last wrote it
 
 
@@ -65,6 +66,13 @@ def follow(dir, src):
         old, _, new = line.partition("\t")
         if old and new:
             was[os.path.relpath(new, src)] = os.path.relpath(old, src)
+    turned = {}  # a FLAC that is now an AIFF (aiff.py), or back again: the same song under another name
+    for line in read(dir, "dj-converted.tsv").splitlines():
+        old, new = (line.split("\t") + [""])[:2]
+        if old and new:
+            turned[new] = old
+    was.update({new: old for new, old in turned.items()
+                if os.path.isfile(os.path.join(src, new)) and not os.path.lexists(os.path.join(src, old))})
     if not was:
         return was
 
@@ -160,6 +168,10 @@ def library(dir, src):
     known = recognise.load(dir)  # what each track sounds like, when recognise.py has asked
     g = genres.load(dir)
     table = genres.lookup(g["list"])
+    came, lists_of = friend.load(dir), {}  # what was copied in from another USB (friend.py)
+    for n, l in came["lists"].items():
+        for r in l.get("rels", []):
+            lists_of.setdefault(r, []).append(n)
     out = []
     for rel in rels:
         a, row = cache.get(rel, {}), pairs.get(rel)
@@ -178,6 +190,9 @@ def library(dir, src):
                 "sc_tags": (row or {}).get("tags", []), "url": (row or {}).get("url", ""),
                 "playlist": (row or {}).get("playlist", ""), "index": (row or {}).get("index", 0),
                 "was": was.get(rel, "")}  # where this file sat before it was moved: the decks' libraries follow
+        f = came["songs"].get(rel) or {}  # from another USB: its name, the playlists it was in there, and what that
+        song.update(friend=f.get("from", ""), lists=lists_of.get(rel, []), anlz=f.get("anlz", ""),  # USB's rekordbox
+                    friend_bpm=f.get("bpm", 0), friend_key=f.get("key", ""), cues=f.get("cues") or [])  # knew of it
         try:
             st = os.stat(os.path.join(src, rel))
             song["size"], song["mtime"] = st.st_size, int(st.st_mtime)
@@ -190,11 +205,22 @@ def library(dir, src):
     return out
 
 
-def playlists(songs, g):
-    """The playlists the decks get, in order: [(name, [songs])]. All inside one "The Crate" folder there."""
+def playlists(songs, g, came=None):
+    """The playlists the decks get, in order: [(name, [songs])]. All inside one "The Crate" folder there.
+    came: the playlists copied in from another USB (friend.py's record): {name: {"rels": [...]}}."""
     lists = [("All songs", songs), ("Newest 50", sorted(songs, key=lambda s: -s["mtime"])[:50])]
-    for name in dict.fromkeys(s["playlist"] for s in songs if s["playlist"]):
+    mine = list(dict.fromkeys(s["playlist"] for s in songs if s["playlist"]))
+    if len(mine) > 1:  # every SoundCloud playlist of yours in one, playlist after playlist
+        spot = {n: i for i, n in enumerate(mine)}
+        lists.append((SOUNDCLOUD, sorted((s for s in songs if s["playlist"]),
+                                         key=lambda s: (spot[s["playlist"]], s["index"]))))
+    for name in mine:
         lists.append((name, sorted((s for s in songs if s["playlist"] == name), key=lambda s: s["index"])))
+    by = {s["rel"]: s for s in songs}
+    for name, l in (came or {}).items():  # in the order they had on the other USB
+        items = [by[r] for r in l.get("rels", []) if r in by]
+        if items:
+            lists.append((name, items))
     order = {n: i for i, n in enumerate(g["list"])}
     used = sorted({x for s in songs for x in s["genres"]}, key=lambda n: (order.get(n, 999), n.lower()))
     for name in used:
@@ -257,9 +283,32 @@ def busy(dir):
         return isinstance(e, BlockingIOError)
 
 
+def convert(dir, src):
+    """FLACs that arrived since last time become AIFFs (aiff.py): the same sound, in a file every deck plays. Not while
+    a sync is still getting songs, except as that sync's own last step."""
+    try:
+        pid = int(read(dir, ".running").strip() or 0)
+        os.kill(pid, 0) if pid else None
+    except (ValueError, ProcessLookupError):
+        pid = 0
+    except OSError:
+        pass
+    if (pid and not os.environ.get("CRATE_FINAL") and os.getppid() != pid) or not os.path.exists(PY):
+        return
+    here = os.path.dirname(os.path.abspath(__file__))
+    for job, name in (("aiff.py", "AIFF"), ("details.py", "DETAILS")):  # then their missing cover and details
+        r = subprocess.run([PY, os.path.join(here, job), "auto", dir, src], capture_output=True, text=True)
+        if r.returncode:
+            log(dir, f"{name} PROBLEM: {(r.stderr.strip().splitlines() or ['it stopped'])[-1]}"[:300])
+
+
 def once(dir, src, volumes):
     usb = read(dir, "usb.txt").strip()
     stick = os.path.join(volumes, usb) if usb and os.path.isdir(os.path.join(volumes, usb)) else ""
+    if stick and not usb_ask.ready(dir, stick):  # it has things on it already: nothing there changes before your OK
+        if "waiting for your OK" not in (read(dir, "dj.log").splitlines() or [""])[-1]:
+            log(dir, f'USB "{usb}" already has things on it: waiting for your OK on the page')
+        stick = ""
     if stick:  # first, so it's right away: a song you threw back leaves the USB too (usb.sh does this as well)
         try:
             said = usb_tidy.say(*usb_tidy.tidy(dir, src, os.path.join(stick, "SoundCloud Sync")))
@@ -267,12 +316,18 @@ def once(dir, src, volumes):
                 log(dir, f'USB "{usb}": {said}')
         except Exception as e:  # never silent: the page shows the last lines of dj.log
             log(dir, f'USB PROBLEM on "{usb}": {e}')
+    for step in (better, friend.prune):
+        try:
+            step(dir, src)
+        except Exception as e:  # never silent: the page shows the last lines of dj.log
+            log(dir, f"COPY PROBLEM: {e!r}"[:300])
+    convert(dir, src)
     analyse(dir, src)
     songs = library(dir, src)
     there = seen(dir, src, songs, stick)
     if adopt(dir, songs, there):  # a genre you changed on the decks' side is now your pick
         songs = library(dir, src)
-    lists = playlists(songs, genres.load(dir))
+    lists = playlists(songs, genres.load(dir), friend.load(dir)["lists"])
     wrote = False
     if stick:
         import engine
@@ -284,12 +339,70 @@ def once(dir, src, volumes):
         except Exception as e:  # never silent: the page shows the last lines of dj.log
             wrote = True
             log(dir, f'ENGINE PROBLEM on "{usb}": {e}')
+    if stick:  # Serato's crates on the USB: small files of its own, beside the songs
+        import serato
+        try:
+            said = serato.write(stick, songs, lists)
+            if said:
+                log(dir, f'Serato on "{usb}": {said}')
+        except Exception as e:
+            log(dir, f'SERATO PROBLEM on "{usb}": {e}')
     wrote = rekordbox(dir, src, songs, lists) or wrote
+    if stick:  # after the Mac's library: a track rekordbox knows takes its beat grid and waveform along
+        rekordbox_usb(dir, src, songs, lists, stick, usb)
+        cues(dir, src, stick, usb, [s["rel"] for s in songs])  # last: every library has its songs by now
     remember(dir, seen(dir, src, songs, stick) if wrote else there)
     if recognise.key(dir) and os.path.exists(PY):  # on its own: it asks the internet, and comes back here when it learns something
         subprocess.Popen([PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "recognise.py"), dir, src],
                          start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=open(os.path.join(dir, "dj.log"), "a"))
+
+
+def fresh(day, days=30):
+    """A better copy that was thrown back is looked for again this long (day: when it was thrown back)."""
+    try:
+        return time.time() - time.mktime(time.strptime(day, "%Y-%m-%d")) < days * 86400
+    except ValueError:
+        return False
+
+
+def better(dir, src):
+    """A better copy you asked for on the page (friend.BETTER) has come in from Soulseek: only now does the file it
+    replaces go to the Trash (and off the USB, the next time it's in), and its playlists and your genre pick pass
+    to the new one. Until then you keep the old file to play."""
+    if not friend.wanted(dir):
+        return
+    import soulseek
+    with soulseek.locked(dir):  # with the page's "Find a better copy" and the Soulseek search: one writer at a time
+        got = {g[0]: g[2] for g in soulseek.load_got(dir)}
+        left, g, changed = [], genres.load(dir), False
+        for row in friend.wanted(dir):
+            name, link, old = row[0], row[1], row[6]
+            new, was = got.get(link, ""), os.path.join(src, old) if old else ""
+            if not new or not os.path.isfile(new):
+                # still looked for: the file is there to be replaced, or the better copy that came was thrown back
+                # (row[7]). A file you threw away meanwhile is looked for no more.
+                if os.path.isfile(was) or fresh(row[7]):
+                    left.append(row)
+                continue
+            if os.path.isfile(was) and not os.path.samefile(was, new):
+                size = os.path.getsize(was)
+                if not soulseek.trash(dir, was):
+                    left.append(row)  # (couldn't be moved: tried again next time)
+                    continue
+                with open(os.path.join(dir, soulseek.USB_THROWN), "a") as f:
+                    f.write(f"{was}\t{size}\n")
+            now = os.path.relpath(new, src)
+            friend.moved(dir, old, now)
+            a, b = ("file:" + os.path.splitext(os.path.basename(x))[0] for x in (old, now))
+            if a in g["songs"] and b not in g["songs"]:
+                g["songs"][b] = g["songs"].pop(a)
+                changed = True
+            log(dir, f"a better copy of {name} came in from Soulseek ({os.path.splitext(now)[1][1:].upper()}); "
+                     "the one it replaces is in the Trash")
+        if changed:
+            genres.save(dir, g)
+        friend.save_wanted(dir, left)
 
 
 def rekordbox(dir, src, songs, lists):
@@ -311,6 +424,61 @@ def rekordbox(dir, src, songs, lists):
     elif r.stdout.strip():
         log(dir, "rekordbox: " + r.stdout.strip().splitlines()[-1])
     return bool(r.returncode or r.stdout.strip())
+
+
+def rekordbox_usb(dir, src, songs, lists, stick, usb):
+    """The USB's own rekordbox library (rekordbox_usb.py, through the private Python): what rekordbox shows under
+    the USB itself and the newest club decks read. Quietly nothing when the private Python isn't there."""
+    if not os.path.exists(PY):
+        return
+    here = os.path.dirname(os.path.abspath(__file__))
+    job = {"usb": stick, "src": src, "dir": dir, "backups": os.path.join(dir, "dj-backups"), "songs": songs,
+           "lists": [[n, [s["rel"] for s in items]] for n, items in lists]}
+    try:
+        r = subprocess.run([PY, os.path.join(here, "rekordbox_usb.py")], input=json.dumps(job), capture_output=True,
+                           text=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        log(dir, f'REKORDBOX USB PROBLEM on "{usb}": took over 15 minutes and was stopped')
+        return
+    if r.returncode:
+        log(dir, f'REKORDBOX USB PROBLEM on "{usb}": ' + (r.stderr.strip().splitlines() or ["stopped"])[-1][:300])
+    elif r.stdout.strip():
+        said = f'rekordbox on "{usb}": ' + r.stdout.strip().splitlines()[-1]
+        last = [l for l in read(dir, "dj.log").splitlines()[-40:] if 'rekordbox on "' in l or "REKORDBOX USB" in l]
+        if not (last and last[-1].endswith(said)):  # (a USB that is left alone says so once, not at every run)
+            log(dir, said)
+
+
+def cues(dir, src, stick, usb, rels=None, undo=False):
+    """Cue points in step (cues.py, through the private Python): hot cues, memory cues and loops set on the Prime 4,
+    in rekordbox on this Mac or on a club's decks reach the other two. Nothing is ever deleted; undo puts the last
+    run's replaced ones back. Quietly nothing when the private Python isn't there."""
+    if not os.path.exists(PY):
+        return "The DJ tools aren't set up on this Mac yet." if undo else None
+    job = {"dir": dir, "src": src, "usb": stick, **({"undo": True} if undo else {"rels": rels})}
+    try:
+        r = subprocess.run([PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "cues.py")],
+                           input=json.dumps(job), capture_output=True, text=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        log(dir, f'CUES PROBLEM on "{usb}": took over 15 minutes and was stopped')
+        return "That took too long."
+    if r.returncode:
+        log(dir, f'CUES PROBLEM on "{usb}": ' + (r.stderr.strip().splitlines() or ["stopped"])[-1][:300])
+        return "The cues couldn't be read. Nothing was changed."
+    if r.stdout.strip():
+        log(dir, ("cues put back: " if undo else "cues: ") + r.stdout.strip().splitlines()[-1][:300])
+    return None
+
+
+def cues_back(dir, src, volumes):
+    """The page's Undo for cues: the last run's replaced cues go back. Waits for a run in flight to finish first."""
+    usb = read(dir, "usb.txt").strip()
+    stick = os.path.join(volumes, usb) if usb and os.path.isdir(os.path.join(volumes, usb)) else ""
+    if stick and not usb_ask.ready(dir, stick):
+        stick = ""
+    with open(os.path.join(dir, ".dj.lock"), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return cues(dir, src, stick, usb, undo=True)
 
 
 def seen(dir, src, songs, stick):
@@ -397,5 +565,7 @@ if __name__ == "__main__":
     d, s = sys.argv[1], sys.argv[2]
     if "--list" in sys.argv:
         json.dump(library(d, s), sys.stdout, ensure_ascii=False)
+    elif "--cues-back" in sys.argv:
+        sys.exit(cues_back(d, s, os.environ.get("VOLUMES") or "/Volumes"))
     else:
         run(d, s, os.environ.get("VOLUMES") or "/Volumes", "--wait" in sys.argv)
