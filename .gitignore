@@ -32,6 +32,9 @@ safety-ok.tsv.tmp
 .safety.lock
 .virusdb
 .usb-list
+.usb-list.new
+usb-layout.json
+usb-layout.json.tmp
 .originals
 .archive-have
 blocked-originals.txt
@@ -139,3 +142,4 @@ liked.json
 liked-state.json
 .liked-kinds.json
 *.json.tmp
+.waves/

@@ -57,13 +57,14 @@ def safe(name):
 def write(usb, songs, lists):
     """Returns what it did, or "" when the crates were already in step."""
     path = lambda rel: MUSIC + "/" + unicodedata.normalize("NFC", rel).replace(os.sep, "/")
+    at = {s["rel"]: s.get("at") or s["rel"] for s in songs}  # the folder each sits in on this USB (layout.py)
     there = {s["rel"] for s in songs if s["rel"].lower().endswith(KINDS)
-             and os.path.isfile(os.path.join(usb, MUSIC, s["rel"]))}
+             and os.path.isfile(os.path.join(usb, MUSIC, at[s["rel"]]))}
     folder = os.path.join(usb, "_Serato_", "Subcrates")
-    want = {FOLDER + ".crate": [path(s["rel"]) for s in songs if s["rel"] in there]} if there else {}
+    want = {FOLDER + ".crate": [path(at[s["rel"]]) for s in songs if s["rel"] in there]} if there else {}
     for name, items in lists if there else []:
         rels = [s["rel"] if isinstance(s, dict) else s for s in items]
-        want[f"{FOLDER}%%{safe(name)}.crate"] = [path(r) for r in rels if r in there]
+        want[f"{FOLDER}%%{safe(name)}.crate"] = [path(at[r]) for r in rels if r in there]
     try:
         mine = [f for f in os.listdir(folder) if f == FOLDER + ".crate" or f.startswith(FOLDER + "%%")]
     except OSError:
