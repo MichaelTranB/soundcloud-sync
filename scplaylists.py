@@ -112,7 +112,9 @@ def _seconds(path, lens):
 def split_name(file):
     """Artist and title from a file name like "01 Artist - Title (Extended Mix).mp3"."""
     s = os.path.splitext(os.path.basename(file))[0]
-    s = re.sub(r"^\d{1,3}\s*[-._)]?\s+", "", s).replace("_", " ").strip()
+    # a track number only when it looks like one ("01 ", "3. ", "12 - "): "50 Cent" and "808 State" keep theirs
+    cut = re.sub(r"^(?:0\d{1,2}\s*[-._)]?\s*|\d{1,3}\s*[-._)]\s+)", "", s)
+    s = (cut if " - " in cut or " - " not in s else s).replace("_", " ").strip()  # "112 - Cupid": 112 is the artist
     if " - " in s:
         a, t = s.split(" - ", 1)
         return a.strip(), t.strip()
