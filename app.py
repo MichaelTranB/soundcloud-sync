@@ -1073,6 +1073,8 @@ def dj_state():
     rec, lacks, det, back, on = aiff.load(DIR), details.have(DIR), details.status(DIR), aiff.undoable(DIR), on_usb(at, plugged)
     for s in songs:
         s.update(fix_song(s["file"], lacks, det, back, rec["skip"], on))
+        if club.deep(os.path.join(OUT, s["file"])):
+            s["deep"] = True  # 32-bit: no club deck plays it; its row offers a 24-bit copy
     last = lambda *words: next((l for l in reversed(log[-40:]) if any(w in l for w in words)), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
             "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged, "usbAsk": usb_asking(),
@@ -1240,7 +1242,7 @@ def fix_post(path, body):
         except subprocess.TimeoutExpired:
             return "That took too long. Try fewer songs at once."
         return follow()
-    how = ("undo" if back else "pick") if kind == "aiff" else "fill"
+    how = ("undo" if back else "deep" if body.get("deep") is True else "pick") if kind == "aiff" else "fill"
     if not fix_start(kind, how, json.dumps(rels) if kind == "aiff" else "\n".join(rels)):
         return "Still working on the last ones. Try again when it's done."
     return None

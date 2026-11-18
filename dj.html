@@ -657,7 +657,10 @@ function row(song) {
   }
   if (song.back) li.append(el('div', { className: 'fix' }, 'Now an AIFF. The original is in the Trash.',
     link('Undo', () => post('/api/dj/aiff', { undo: [song.file] }))));
-  if (song.left) li.append(el('div', { className: 'fix' }, 'Not converted: ' + song.left));
+  if (song.deep) li.append(el('div', { className: 'fix' }, '32-bit: no club deck plays it.',
+    link('Make a 24-bit copy', () => post('/api/dj/aiff', { files: [song.file], deep: true }).then(ok => ok &&
+      say('Making a 24-bit copy: no difference you can hear. The original goes to the Trash; Undo brings it back.')))));
+  else if (song.left) li.append(el('div', { className: 'fix' }, 'Not converted: ' + song.left));
   if (song.filled) li.append(el('div', { className: 'fix' }, 'Added ' + song.filled.join(', ') + '.',
     link('Undo', () => post('/api/dj/details', { undo: song.file }))));
   if (song.ask) {
@@ -841,12 +844,13 @@ function drawDoit(rows, songs) {
   const f = S.fix || {}, on = rows.filter(s => picks.has(s.file));
   const all = $('all'); all.checked = !!rows.length && on.length === rows.length; all.indeterminate = !!on.length && on.length < rows.length;
   $('allSay').textContent = on.length ? num(on.length) + ' ticked' : 'Select all ' + num(rows.length);
-  const toAiff = on.filter(s => s.kind === 'FLAC' || s.kind === 'WAV'), toFill = on.filter(s => s.lacks), off = songs.filter(s => s.usb === false).length;
+  const toAiff = on.filter(s => (s.kind === 'FLAC' || s.kind === 'WAV') && !s.deep), toFill = on.filter(s => s.lacks), off = songs.filter(s => s.usb === false).length;
   const set = (id, label, n, ok, why) => { const b = $(id); b.textContent = label + (n ? ' (' + num(n) + ')' : ''); b.disabled = !ok; b.title = ok ? '' : why; };
   set('doAiff', 'Convert to AIFF', toAiff.length, toAiff.length && !f.aiff && S.analyser, f.aiff ? 'Still converting the last ones.' : 'Tick FLAC or WAV songs first.');
   set('doFill', 'Add cover & details', toFill.length, toFill.length && !f.details && S.analyser, f.details ? 'Still looking up the last ones.' : 'Tick songs that are missing a cover or details first.');
   set('doUsb', 'Put on USB', off, off && S.usbIn, !S.usbIn ? 'Plug in your USB first.' : 'Every song is already on it.');
-  $('doAiff').onclick = () => { say('Converting ' + num(toAiff.length) + (toAiff.length === 1 ? ' song' : ' songs') + '. Each original goes to the Trash once its AIFF is checked.'); post('/api/dj/aiff', { files: toAiff.map(s => s.file) }); picks.clear(); };
+  $('doAiff').onclick = () => { post('/api/dj/aiff', { files: toAiff.map(s => s.file) }).then(ok => ok &&
+    say('Converting ' + num(toAiff.length) + (toAiff.length === 1 ? ' song' : ' songs') + '. Each original goes to the Trash once its AIFF is checked.')); picks.clear(); };
   $('doFill').onclick = () => { say('Looking up ' + num(toFill.length) + (toFill.length === 1 ? ' song' : ' songs') + ': a few seconds each.'); post('/api/dj/details', { files: toFill.map(s => s.file) }); picks.clear(); };
   const d = $('doing'); d.textContent = ''; d.hidden = !f.aiff && !f.details;
   if (f.aiff) d.append(el('span', { className: 'spin' }), 'Converting to AIFF: ' + num(f.aiff[0]) + ' of ' + num(f.aiff[1]) + '. ');

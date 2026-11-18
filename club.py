@@ -34,7 +34,7 @@ ONE_DECKS = "CDJ-3000X, XDJ-AZ, OPUS-QUAD, OMNIS-DUO"  # the decks that read the
 EVERY = {"MP3", "WAV", "AIFF", "AIF", "M4A"}  # what every club deck plays
 _seen = {}  # the export on the USB, read once per change of it
 _cut = {}   # path -> (size, changed, (rate, bits)): a file's first bytes are read once per change of it
-READ = {".flac": aiff.flac_info, ".wav": aiff.wav_info, ".aiff": aiff.aiff_info, ".aif": aiff.aiff_info}
+READ = {".flac": aiff.flac_info, ".wav": lambda p: aiff.wav_info(p, True), ".aiff": aiff.aiff_info, ".aif": aiff.aiff_info}
 
 
 def cut(path):
@@ -50,6 +50,12 @@ def cut(path):
         return _cut[path][2]
     except Exception:  # a broken file: the safety check and the decks' update say so, not this
         return 0, 0
+
+
+def deep(path):
+    """A 32-bit FLAC or WAV the song list can make a 24-bit copy of (aiff.py). Above 96 kHz it would still not play."""
+    rate, bits = cut(path)
+    return bits > 24 and rate <= 96000 and path.lower().endswith(aiff.KINDS)
 
 
 def some(rels, most=3):
@@ -192,8 +198,13 @@ def check(rels, usb="", plugged=False, name="", in_library=None, src=""):
         k = len(none)
         why = " or ".join(w for w, on in (("32-bit", any(cuts[r][1] > 24 for r in none)),
                                           ("above 96 kHz", any(cuts[r][0] > 96000 for r in none))) if on)
+        can = [r for r in none if deep(os.path.join(src, r))]
+        rest = [r for r in none if r not in can]
+        do = ([f'"Make a 24-bit copy" on {"its row" if len(can) == 1 else "their rows"} in the song list fixes that: '
+               f"{some(can)}."] if can else []) + \
+             ([f"{'It needs' if len(rest) == 1 else 'They need'} a 24-bit, 48 kHz copy before a gig: {some(rest)}."] if rest else [])
         out.append({"ok": False, "say": f"{k} song{s(k)} {'is' if k == 1 else 'are'} {why}: no club deck plays that.",
-                    "do": f"{'It needs' if k == 1 else 'They need'} a 24-bit, 48 kHz copy before a gig: {some(none)}."})
+                    "do": " ".join(do)})
     if high:
         k = len(high)
         out.append({"ok": None, "say": f"{k} song{s(k)} {'is' if k == 1 else 'are'} above 48 kHz: fine on the "

@@ -11,10 +11,15 @@ FLAC). Unlike WAV, an AIFF keeps the song's details and cover.
            USB the old file goes to the USB's own Trash and the AIFF takes its place (usb_tidy.py, usb.sh);
   when     FLACs that arrive from now on are converted by themselves at each deck update (dj.py). The ones already
            there the first time wait for your pick on the page, and so do WAVs (they play everywhere; an AIFF only
-           adds details and cover).
+           adds details and cover);
+  32-bit   no club deck plays a 32-bit file (24-bit is the most), so one is never converted by itself: "Make a
+           24-bit copy" on its row writes a 24-bit AIFF (each sample's lowest 8 bits are dropped: far below
+           anything you can hear), checked against the original, which goes to the Trash like any other. A 32-bit
+           FLAC is beyond macOS's own reader: that one needs ffmpeg on the Mac.
 
   aiff.py auto DIR SRC     the new FLACs (dj.py runs this)
   aiff.py pick DIR SRC     the songs named on stdin (a JSON list of names inside the music folder), then the decks
+  aiff.py deep DIR SRC     the same, and a 32-bit song among them gets its 24-bit copy
   aiff.py undo DIR SRC     the same, back: the original returns from the Trash and the AIFF goes there
 
 The details need mutagen (the DJ tools' own Python, dj-setup.sh); everything else is the standard library."""
@@ -89,7 +94,8 @@ def flac_info(path):
             "frames": x & ((1 << 36) - 1), "md5": b[26:42].hex()}
 
 
-def wav_info(path):
+def wav_info(path, loose=False):
+    """loose: a floating-point WAV is read too (its "pcm" is False, "float" True) instead of being a Problem."""
     out, notes, size = None, {}, os.path.getsize(path)
     with open(path, "rb") as f:
         head = f.read(12)
@@ -105,7 +111,7 @@ def wav_info(path):
                 kind, channels, rate, _, _, bits = struct.unpack("<HHIIHH", d[:16])
                 if kind == 0xFFFE and len(d) >= 26:  # the long form: the real kind and bit count sit further on
                     kind = struct.unpack("<H", d[24:26])[0] if struct.unpack("<H", d[18:20])[0] == bits else 0
-                out = {"rate": rate, "channels": channels, "bits": bits, "pcm": kind == 1}
+                out = {"rate": rate, "channels": channels, "bits": bits, "pcm": kind == 1, "float": kind == 3}
             elif name == b"data":
                 start = f.tell()
                 n = min(n, size - start)  # some writers leave the size open
@@ -123,7 +129,7 @@ def wav_info(path):
                 f.seek(n + (n & 1), 1)
     if not out or "start" not in out:
         raise Problem("it has no sound inside", True)
-    if not out["pcm"]:
+    if not out["pcm"] and not (loose and out["float"]):
         raise Problem("it is a floating-point or packed WAV: left as it is", True)
     return {**out, "info": notes}
 
@@ -234,12 +240,113 @@ def details(src, out, info):
     a.save(v2_version=3)  # the older spelling: every deck and DJ program reads it
 
 
-def convert(path, out, tmp):
-    """Writes path's AIFF at out. Raises Problem, leaving nothing behind, unless the sound in it is the very same."""
+def ffmpeg():
+    """ffmpeg, when this Mac has it (The Crate doesn't bring its own): the one reader of a 32-bit FLAC."""
+    return shutil.which("ffmpeg") or next((p for p in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg",
+                                                       os.path.expanduser("~/.local/bin/ffmpeg")) if os.path.exists(p)), "")
+
+
+def deep(info):
+    """Finer than any club deck plays (above 24-bit, or floating-point): it needs a 24-bit copy, not the same sound."""
+    return info["bits"] > 24 or info.get("float", False)
+
+
+def read32(path, info):
+    """The song's samples at 32 bits each (low byte first), a piece at a time."""
+    if info.get("pcm") and info["bits"] == 32:  # a plain 32-bit WAV: its samples as they sit in the file
+        left = info["frames"] * info["channels"] * 4
+        with open(path, "rb") as f:
+            f.seek(info["start"])
+            while left > 0:
+                b = f.read(min(1 << 20, left))
+                if not b:
+                    break
+                left -= len(b)
+                yield b
+        return
+    ff = ffmpeg()
+    if not ff:
+        raise Problem("this Mac needs ffmpeg to read it (a 32-bit FLAC is beyond macOS's own reader)")
+    p = subprocess.Popen([ff, "-v", "error", "-nostdin", "-i", path, "-map", "0:a:0", "-f", "s32le", "-c:a", "pcm_s32le", "-"],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        while True:
+            b = p.stdout.read(1 << 20)
+            if not b:
+                break
+            yield b
+        if p.wait():
+            raise Problem("ffmpeg couldn't read it to its end: the original stays")
+    finally:
+        p.stdout.close()
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+
+
+def narrow(path, info, out=None):
+    """The song at 24-bit: the top 24 bits of each 32-bit sample, written as an AIFF at out (only read, without out).
+    Returns (frames, the checksum of those 24-bit samples as sound() counts them, the checksum of the 32-bit ones)."""
+    full, cut, n, f = hashlib.md5(), hashlib.md5(), 0, open(out, "wb") if out else None
+    try:
+        if f:
+            f.write(b"\0" * 54)  # the head, filled in once the length is known
+        for b in read32(path, info):
+            b = b[:len(b) - len(b) % 4]
+            k = len(b) // 4
+            full.update(b)
+            low = bytearray(3 * k)  # low byte first, as a FLAC counts its checksum
+            low[0::3], low[1::3], low[2::3] = b[1::4], b[2::4], b[3::4]
+            cut.update(low)
+            if f:
+                low[0::3], low[2::3] = b[3::4], b[1::4]  # high byte first, as an AIFF holds them
+                f.write(low)
+            n += k
+        if f:
+            size, rate = 3 * n, int(info["rate"])
+            if size + 54 >= 1 << 32:
+                raise Problem("it is too long for an AIFF", True)
+            f.write(b"\0" * (size & 1))
+            f.seek(0)
+            f.write(b"FORM" + struct.pack(">I", 46 + size + (size & 1)) + b"AIFFCOMM"
+                    + struct.pack(">IhLh", 18, info["channels"], n // info["channels"], 24)
+                    + struct.pack(">HQ", 16383 + rate.bit_length() - 1, rate << (64 - rate.bit_length()))
+                    + b"SSND" + struct.pack(">III", size + 8, 0, 0))
+    finally:
+        if f:
+            f.close()
+    return n // info["channels"], cut.hexdigest(), full.hexdigest()
+
+
+def convert(path, out, tmp, cut=False):
+    """Writes path's AIFF at out. Raises Problem, leaving nothing behind, unless the sound in it is the very same
+    (cut: a 32-bit song's is its top 24 bits, checked as closely). True when it was cut to 24-bit."""
     ext = os.path.splitext(path)[1].lower()
-    info = flac_info(path) if ext == ".flac" else wav_info(path)
-    if info["bits"] not in (16, 24) or info["channels"] > 2:
-        raise Problem(f"{info['bits']}-bit, {info['channels']} channels: not a kind decks play as AIFF", True)
+    info = flac_info(path) if ext == ".flac" else wav_info(path, cut)
+    if info["channels"] > 2 or not info["rate"]:
+        raise Problem(f"{info['channels']} channels: not a kind decks play as AIFF", True)
+    if deep(info):
+        if info["rate"] > 96000:  # a 24-bit copy at that rate still plays on no deck: left as it is
+            raise Problem("32-bit and above 96 kHz: no club deck plays it", True)
+        if not cut:
+            raise Problem('32-bit: no club deck plays it. "Make a 24-bit copy" on its row does it', True)
+        try:
+            frames, small, full = narrow(path, info, out)
+            if not frames or (info.get("frames") and frames != info["frames"]) or \
+                    (info.get("md5", "").strip("0") and full != info["md5"]):
+                raise Problem("it didn't read back as the file says it should: the original stays")
+            details(path, out, info)
+            if sound(out) != (info["rate"], info["channels"], 24, frames, small):
+                raise Problem("the 24-bit copy didn't come out right: the original stays")
+            st = os.stat(path)
+            os.utime(out, (st.st_atime, st.st_mtime))
+        except BaseException:
+            if os.path.exists(out):
+                os.remove(out)
+            raise
+        return True
+    if info["bits"] not in (16, 24):
+        raise Problem(f"{info['bits']}-bit: not a kind decks play as AIFF", True)
     try:
         r = subprocess.run(["/usr/bin/afconvert", "-f", "AIFF", "-d", f"BEI{info['bits']}", path, out],
                            capture_output=True, text=True)
@@ -338,9 +445,22 @@ def note(dir, done, rels):
     os.replace(os.path.join(dir, PROGRESS + ".tmp"), os.path.join(dir, PROGRESS))
 
 
-def run(dir, src, rels, back=False, show=False):
+def own(path, out, cut):
+    """Is the AIFF at out this very song's (made on a run that was cut short)?"""
+    b = sound(out)
+    if cut is not None:
+        info = flac_info(path) if path.lower().endswith(".flac") else wav_info(path, True)
+        if deep(info):
+            frames, small, _ = narrow(path, info)
+            return b == (info["rate"], info["channels"], 24, frames, small)
+    a = sound(path)
+    return bool(a[4]) and a[4] == b[4] and a[:3] == b[:3]
+
+
+def run(dir, src, rels, back=False, show=False, cut=None):
     """Converts each named song (back: undoes it). Returns (names done, {name: why not}); None when another run is
-    at it."""
+    at it. cut: a list (then a 32-bit song gets its 24-bit copy, and its new name is added to the list); without
+    one, a 32-bit song is left as it is."""
     done, why, ready = [], {}, []
     tmp = os.path.join(dir, TMP)
     os.makedirs(tmp, exist_ok=True)
@@ -369,8 +489,7 @@ def run(dir, src, rels, back=False, show=False):
                 if not rel.lower().endswith(KINDS) or not os.path.isfile(path):
                     continue
                 if os.path.lexists(out):  # made on an earlier run that was cut short, or another song by that name
-                    a, b = sound(path), sound(out)
-                    if not a[4] or a[4] != b[4] or a[:3] != b[:3]:
+                    if not own(path, out, cut):
                         raise Problem("another file by that name is already an AIFF", True)
                 else:
                     free = shutil.disk_usage(src).free
@@ -378,7 +497,8 @@ def run(dir, src, rels, back=False, show=False):
                         why[rel] = f"not enough room on this Mac ({free / 1e9:.0f} GB free): empty the Trash, then again"
                         break
                     made = os.path.join(tmp, f"{os.getpid()}-{n}.aiff")
-                    convert(path, made, tmp)
+                    if convert(path, made, tmp, cut is not None):
+                        cut.append(new)
                     shutil.move(made, out)
                 ready.append((rel, new))
             except Problem as e:
@@ -404,6 +524,9 @@ def run(dir, src, rels, back=False, show=False):
                     with open(os.path.join(dir, DONE), "a", encoding="utf-8") as f:  # noted first: undo needs it
                         f.write(f"{rel}\t{new}\t{to}\t{day}\n")
                     done.append(new)
+                    rec = load(dir)
+                    if rec["skip"].pop(rel, None) is not None:  # left before (a 32-bit one), done now
+                        save(dir, rec)
                     try:
                         follow(dir, src, rel, new)
                     except Exception as e:  # the song itself is fine; said, never silent
@@ -434,13 +557,16 @@ def waiting(dir, src):
     return [r for r in flacs if r not in kept]
 
 
-def say(done, why, back=False):
-    """One line for dj.log; "" when nothing happened."""
-    bits = []
-    if done:
-        n = len(done)
-        bits.append(f"{n} song{'s' if n != 1 else ''} back as {'it was' if n == 1 else 'they were'} (the AIFF is in the Trash)" if back
-                    else f"{n} song{'s' if n != 1 else ''} now AIFF: the same sound, the original{'s' if n != 1 else ''} in the Trash")
+def say(done, why, back=False, cut=()):
+    """One line for dj.log; "" when nothing happened. cut: the ones among done that are 24-bit copies."""
+    bits, s = [], lambda n: "s" if n != 1 else ""
+    k = len([d for d in done if d in cut])
+    n = len(done) - k
+    if n:
+        bits.append(f"{n} song{s(n)} back as {'it was' if n == 1 else 'they were'} (the AIFF is in the Trash)" if back
+                    else f"{n} song{s(n)} now AIFF: the same sound, the original{s(n)} in the Trash")
+    if k:
+        bits.append(f"{k} song{s(k)} now 24-bit AIFF (from 32-bit, which no club deck plays), the original{s(k)} in the Trash")
     if why:
         first = next(iter(why))
         bits.append(f"{len(why)} left as {'it is' if len(why) == 1 else 'they are'} ({os.path.splitext(first)[0][:60]}: {why[first]})")
@@ -470,7 +596,7 @@ def log(dir, text):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4 or sys.argv[1] not in ("auto", "pick", "undo"):
+    if len(sys.argv) != 4 or sys.argv[1] not in ("auto", "pick", "deep", "undo"):
         sys.exit(__doc__)
     how, dir, src = sys.argv[1:]
     if how == "auto":
@@ -480,8 +606,9 @@ if __name__ == "__main__":
             log(dir, say(*got))
     else:
         names = [r for r in json.load(sys.stdin) if isinstance(r, str) and not os.path.isabs(r) and ".." not in r.split(os.sep)]
-        got = run(dir, src, names, back=how == "undo", show=True)
+        cut = [] if how == "deep" else None
+        got = run(dir, src, names, back=how == "undo", show=True, cut=cut)
         if got:
-            log(dir, say(*got, back=how == "undo"))
+            log(dir, say(*got, back=how == "undo", cut=cut or ()))
         if got and got[0]:
             decks(dir, src)
