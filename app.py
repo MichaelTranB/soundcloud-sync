@@ -6,7 +6,7 @@ in the browser cannot press the buttons.
 """
 import json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
-import club, dj, genres, recognise
+import club, dj, genres, liked, recognise
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -855,6 +855,7 @@ def state():
         reading = None
     watch_login(svc)
     return {
+        "liked": liked.status(DIR),
         "playlist": read("playlist.txt"), "service": svc, "capped": capped, "pasted": pasted,
         "missing": info.get("missing", 0), "reading": reading, "usb": usb, "unread": unread, "volumes": volumes(),
         "usbPlugged": bool(usb) and os.path.isdir(os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)),
@@ -1086,12 +1087,23 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, free_page().encode(), "text/html; charset=utf-8")
         self.send(404, {"error": "not found"})
 
+    def liked(self, text):
+        """Saves pasted Liked Songs and starts reading them (details, then EDM or not) in the background."""
+        n = liked.paste(DIR, text)
+        if not n:
+            return self.send(400, {"error": "No Spotify song links in that. In Liked Songs, click the newest song, "
+                                            "Shift-click the oldest you want, press ⌘C and paste here."})
+        with open(os.path.join(DIR, "liked.log"), "a") as log:
+            subprocess.Popen([sys.executable, os.path.join(DIR, "liked.py"), "read", DIR], stdout=log, stderr=log,
+                             start_new_session=True)
+        return self.send(200, {**state(), "likedPasted": n})
+
     def do_POST(self):
         origin = self.headers.get("Origin", "")
         if self.headers.get("Host") not in HOSTS or urllib.parse.urlparse(origin).netloc not in HOSTS:
             return self.send(403, {"error": "wrong origin"})
         try:
-            cap = 600_000 if self.path == "/api/spotify-songs" else 4096  # a pasted song list: ~55 bytes a song
+            cap = 600_000 if self.path in ("/api/spotify-songs", "/api/liked") else 4096  # a pasted song list: ~55 bytes a song
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
         except ValueError:
             return self.send(400, {"error": "bad request"})
@@ -1116,9 +1128,8 @@ class Handler(BaseHTTPRequestHandler):
             remember(url, title)
         elif self.path == "/api/spotify-songs":
             url = read("playlist.txt")
-            if playlists.service(url) != "spotify":
-                return self.send(400, {"error": "Those are Spotify songs. Add the Spotify playlist link first, then paste "
-                                                "its songs here."})
+            if playlists.service(url) != "spotify":  # no Spotify playlist chosen: these are his Liked Songs
+                return self.liked(str(body.get("text", "")))
             n = playlists.paste(DIR, url, str(body.get("text", "")))
             if not n:
                 return self.send(400, {"error": "No Spotify song links in that. In Spotify, click one song, press "
@@ -1127,6 +1138,10 @@ class Handler(BaseHTTPRequestHandler):
                 subprocess.Popen([os.path.join(DIR, "sync.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                  start_new_session=True)
                 time.sleep(0.4)
+        elif self.path == "/api/liked":
+            return self.liked(str(body.get("text", "")))
+        elif self.path == "/api/liked/forget":
+            liked.forget(DIR)
         elif self.path == "/api/connect":
             m = PROFILE_RE.match(str(body.get("profile", "")).strip())
             browser = str(body.get("browser", ""))

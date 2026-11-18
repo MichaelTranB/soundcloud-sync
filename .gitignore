@@ -96,3 +96,7 @@ soulseek-moved.tsv
 soulseek-moved.tsv.tmp
 usb-thrown.tsv
 usb-thrown.tsv.tmp
+liked.json
+liked-state.json
+.liked-kinds.json
+*.json.tmp

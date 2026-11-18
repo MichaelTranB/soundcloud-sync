@@ -308,6 +308,16 @@
       </details>
     </div>
     <div class="field">
+      <label for="liked"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>Spotify Liked Songs</label>
+      <div class="row"><input id="liked" placeholder="Paste your Liked Songs" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="act" id="likedAdd">Add</button></div>
+      <div class="note" id="likedNote">In Spotify, open Liked Songs, click the newest song, Shift-click the oldest you want, press ⌘C, paste here.</div>
+      <details><summary>How it works</summary>
+        <p>Every sync looks for the next batch on Soulseek: EDM first, newest first, then everything else.</p>
+        <p>It only takes what fits: your Mac always keeps 10 GB free. No sign-in, nothing changes in Spotify.</p>
+        <p>Liked more songs? Paste again; it picks up where it left off. <button class="ghost" id="likedForget" style="padding:4px 10px;font-size:13px">Stop</button> clears the list (songs already here stay).</p>
+      </details>
+    </div>
+    <div class="field">
       <label for="usb"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="7" r="1"/><circle cx="4" cy="20" r="1"/><path d="M4.7 19.3 19 5M21 3l-3 1 2 2Z"/><path d="M9.26 7.68 5 12l2 5M10 14l5 2 3.5-3.5"/><path d="m18 12 1-1 1 1-1 1Z"/></svg>USB drive</label>
       <div class="row"><select id="usb"></select><button class="act" id="copy">Copy Now</button></div>
       <div class="usbprog" id="usbProg" hidden><span id="usbIcon"></span><progress id="usbBar" max="1" value="0"></progress><span id="usbPct"></span></div>
@@ -393,6 +403,7 @@ addEventListener('focus', () => { if (last && (last.watching || []).length) call
 let copyAsked = 0;  // when Copy Now was clicked: the button shows it at once, before the copy reports in
 function render(s) {
   $('alert').hidden = !s.problem;
+  likedLine(s.liked);
   // A sign-in problem gets its fix right there: the SoundCloud sign-in link, or the Full Disk Access setting.
   if ($('alert').dataset.p !== s.problem) $('alert').dataset.p = s.problem, $('alert').replaceChildren(s.problem,
     ...(/signed in to SoundCloud|sign-in in .* has run out/.test(s.problem) ? [el('br'), scLink('Sign in to SoundCloud ↗', 'btn fix')]
@@ -825,7 +836,8 @@ const SONGS = /open\.spotify\.com\/(intl-[a-z-]+\/)?track\/|spotify:track:/;
 function addSongs(text) {
   busyBtn($('saveUrl'), true, 'Adding'); say('urlNote', 'Saving the songs…');
   call('/api/spotify-songs', { text })
-    .then(s => { $('url').value = ''; say('urlNote', `Got all ${s.pasted} songs. Reading them now (see Getting now).`); })
+    .then(s => { $('url').value = ''; say('urlNote', s.likedPasted ? `Saved as your Liked Songs: ${s.likedPasted} songs, EDM first (see Spotify Liked Songs).`
+      : `Got all ${s.pasted} songs. Reading them now (see Getting now).`); })
     .catch(e => say('urlNote', e.message, true)).finally(() => busyBtn($('saveUrl'), false, 'Add'));
 }
 $('url').onpaste = e => {  // a pasted song list keeps its line breaks this way (the box itself is one line)
@@ -841,6 +853,26 @@ $('saveUrl').onclick = () => {
       (s.service === 'apple' ? ' Apple Music reads up to 300 songs a playlist.' : '')); })
     .catch(e => say('urlNote', e.message, true)).finally(() => { clearTimeout(slow); busyBtn($('saveUrl'), false, 'Add'); });
 };
+function addLiked(text) {
+  busyBtn($('likedAdd'), true, 'Adding'); say('likedNote', 'Saving the songs…');
+  call('/api/liked', { text })
+    .then(s => { $('liked').value = ''; render(s); likedSaid = Date.now(); say('likedNote', `Got ${s.likedPasted} songs. Sorting EDM from the rest now; the next sync starts on them.`); })
+    .catch(e => say('likedNote', e.message, true)).finally(() => busyBtn($('likedAdd'), false, 'Add'));
+}
+$('liked').onpaste = e => { const t = e.clipboardData.getData('text'); if (SONGS.test(t)) { e.preventDefault(); addLiked(t); } };
+$('likedAdd').onclick = () => addLiked($('liked').value);
+$('likedForget').onclick = () => call('/api/liked/forget', {}).then(s => { render(s); likedSaid = Date.now(); say('likedNote', 'Cleared. Songs already on your Mac stay.'); });
+var likedSaid = 0, LIKED_HOW = $('likedNote').textContent;
+function likedLine(l) {
+  if (Date.now() - likedSaid < 12000) return;
+  if (!l) return say('likedNote', LIKED_HOW);
+  const n = x => (x || 0).toLocaleString();
+  const parts = [`${n(l.total)} songs`, l.edm != null ? `${n(l.edm)} EDM` : '', l.other ? `${n(l.other)} other` : '', l.have ? `${n(l.have)} on your Mac` : ''].filter(Boolean);
+  const next = l.reading ? l.reading
+    : l.paused ? `Paused: only ${l.freeGb} GB free on your Mac. Free up space and it carries on.`
+    : l.queued ? `${n(l.queued)} being looked for now.` : 'The next sync starts on them.';
+  say('likedNote', parts.join(' · ') + '. ' + next, !!l.paused);
+}
 let slskEdit = false;
 $('slskChange').onclick = () => { slskEdit = true; tick(); };
 $('slskSave').onclick = () => {
