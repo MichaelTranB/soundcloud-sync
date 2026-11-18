@@ -43,7 +43,7 @@ get() {
   local BAN=(${(f)"$(python3 "$DIR/soulseek.py" banned "$DIR" "$SLSK" 2>>"$LOG")"})
   "$SOCKSEEK" "$DIR/soulseek.csv" --input-type csv --config "$CONF" \
     -o "$SLSK" --index-path "$SLSK/.index.sldl" --name-format '{sartist( - )stitle|slsk-filename}' \
-    --strict-title --length-tol 5 --desperate --artist-maybe-wrong --no-skip-existing --no-progress "${BAN[@]}" "$@" >"$DIR/soulseek-pass.log" 2>&1
+    --strict-title --length-tol 5 "${LOOSE[@]}" --no-skip-existing --no-progress "${BAN[@]}" "$@" >"$DIR/soulseek-pass.log" 2>&1
   cat "$DIR/soulseek-pass.log" >>"$DIR/soulseek-run.log"
   # Before anything counts as got: a file that isn't real audio (or that the virus scan flags) goes to Quarantine.
   python3 "$DIR/safety.py" check "$DIR" "$SLSK" 2>>"$DIR/safety.log"
@@ -55,28 +55,46 @@ get() {
   local back=$(print -r -- "$said" | grep -c '^thrown back')
   # sockseek writes one "SongJob: succeeded" line per track it got (a failed try on one peer is only a [warn]).
   local n=$(( $(wc -l < "$DIR/soulseek.csv") - 1 ))
-  if grep -q 'Job List: ' "$DIR/soulseek-pass.log"; then
-    local got=$(( $(grep -c '\] SongJob: succeeded:' "$DIR/soulseek-pass.log") - back ))
+  local got=$(( $(grep -c '\] SongJob: succeeded:' "$DIR/soulseek-pass.log") - back ))
+  if grep -q -i 'unhandled exception' "$DIR/soulseek-pass.log"; then
+    echo "FAILED (sockseek crashed after getting $(( got > 0 ? got : 0 )) of $n), see soulseek-run.log"
+  elif grep -q 'Job List: ' "$DIR/soulseek-pass.log"; then
     echo "got $(( got > 0 ? got : 0 )) of $n$( [ "$back" -gt 0 ] && echo " ($back thrown back: not the playlist's song)")"
   else
     echo "FAILED, see soulseek-run.log"
   fi
 }
 rows() { echo $(( $(wc -l < "$DIR/soulseek.csv") - 1 )); }
+LOOSE=(--desperate --artist-maybe-wrong)
+pass() {
+  # A pass that crashed is run once more with only the exact searches: a one-word title searched alone ("Sugar")
+  # can bring back more results than sockseek can hold, and it then stops with nothing after that track searched.
+  local r="$(get "$@")"
+  case "$r" in "FAILED (sockseek crashed"*)
+    prep
+    [ "$(rows)" -gt 0 ] || { echo "$r"; return; }
+    LOOSE=()
+    local again="$(get "$@")"
+    case "$again" in FAILED*) echo "$r; again with exact searches only: $again" ;; *) echo "$again (exact searches only: the looser ones crashed sockseek)" ;; esac ;;
+  *) echo "$r" ;;
+  esac
+}
 : >"$DIR/soulseek-run.log"
 prep
 if [ "$(rows)" -gt 0 ]; then
-  RESULT="lossless pass: $(get --format flac,wav,aiff,aif,alac --pref-format flac,wav,aiff,aif)"
+  RESULT="lossless pass: $(pass --format flac,wav,aiff,aif,alac --pref-format flac,wav,aiff,aif)"
   prep
   if [ "$(rows)" -gt 0 ]; then
-    RESULT="$RESULT; 320 MP3 pass: $(get --format mp3 --min-bitrate 320 --strict-conditions)"
+    RESULT="$RESULT; 320 MP3 pass: $(pass --format mp3 --min-bitrate 320 --strict-conditions)"
   fi
   # Tracks no pass found at all are searched again after a wait (soulseek.py: 1, 2, 4, then 7 days).
   # (Only when every pass ran: a pass that crashed searched nothing, so it proves nothing.)
   case "$RESULT" in *FAILED*) ;; *) python3 "$DIR/soulseek.py" missed "$DIR" "$SLSK" >>"$LOG" 2>&1 ;; esac
   say "Soulseek: ${RESULT}"
-  # Only a sign-in or crash is a problem; a peer that doesn't answer is normal (the next one is tried).
-  BAD='login.*(fail|reject|denied)|invalid ?pass|wrong password|unhandled exception'
+  # Only a sign-in or a crash that the second try didn't get past is a problem; a peer that doesn't answer is
+  # normal (the next one is tried).
+  BAD='login.*(fail|reject|denied)|invalid ?pass|wrong password'
+  case "$RESULT" in *FAILED*) BAD="$BAD|unhandled exception" ;; esac
   grep -q -i -E "$BAD" "$DIR/soulseek-run.log" && say "Soulseek PROBLEM, see soulseek-run.log: $(grep -i -E "$BAD" "$DIR/soulseek-run.log" | tail -1)"
 else
   say "Soulseek: nothing new to look for"
