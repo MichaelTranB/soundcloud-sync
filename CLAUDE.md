@@ -64,6 +64,20 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   his pick: `dj-written.json` remembers what each library showed after the last write, and a difference is his
   edit (not when emptied, not when it's just the file's own tag). `app.py` runs `dj.py` when rekordbox closes.
   Problems land in `dj.log` with the word PROBLEM and show on the page.
+- **USB folders (`layout.py`, `usb-layout.json`, the card on `/dj`):** `flat` (the default), `group` (`EDM/`,
+  `Other/`, `No genre yet/`) or `genre` (`EDM/<genre>/`, `Other/<genre>/`), inside `<USB>/SoundCloud Sync/` only.
+  A song with any EDM genre is EDM, filed under its first EDM genre, the same rule as the always-there playlists
+  "EDM (all)" and "Other (all)"; the non-EDM genres are `other` in the file. Only the USB is laid out, only
+  library songs move (never copied twice, never deleted), and the USB itself is the record (`layout.where`).
+  `usb.sh` copies a new song flat (`layout.py missing` skips ones already in a folder) and `dj.once()` files it
+  (`layout.arrange`, only on a stick past the ask-first gate); every deck library keeps the song's row and is
+  re-pointed, so cues and analysis stay. The page previews (`GET /api/dj/layout?mode=`, nothing touched) and
+  switches only on "Use this" (`POST /api/dj/layout`). Not yet tried on a real stick or deck.
+- **Waveform and Open in rekordbox (`waveform.py`, the player on `/dj`):** `afconvert` reads the file at 8 kHz
+  mono into 600 slices (loudest point and average), kept in `.waves/`; `/wave?f=` serves it, music folder only.
+  `POST /api/dj/rekordbox` runs `open -a <rekordbox.app> <file>` (not while the libraries are being written);
+  rekordbox has no documented way to load a track from outside, so the page also copies the song's name. Tests
+  set `REKORDBOX_APP` to a stand-in and never open the real app.
 - **Ask first (`usb_ask.py`):** a USB that already has files, folders or a DJ library is changed only after his
   "Go ahead" on the page (`/` and `/dj`: what is added, what is never touched, how to undo). `usb.sh` and
   `dj.once()` both stop at this gate; the yes is kept per stick (`.thecrate` in The Crate's folder on it,

@@ -24,6 +24,8 @@ Runs on the private Python (pyrekordbox, for rekordbox's locked libraries). From
 ({"dir", "src", "usb", "rels"?, "undo"?}), one line out."""
 import calendar, json, os, shutil, sqlite3, struct, sys, time, unicodedata, uuid, zlib
 
+import layout
+
 MUSIC = "SoundCloud Sync"
 LETTERS = "ABCDEFGH"
 NOT_ENGINE = (".mp3", ".m4a", ".mp4", ".aac")  # their time starts differently in Engine and rekordbox
@@ -238,7 +240,8 @@ def engine_read(usb, rels):
         info = con.execute("SELECT schemaVersionMajor FROM Information").fetchone()
         if not info or info[0] != 3:
             raise RuntimeError(f"Engine library version {info[0] if info else '?'}; this knows version 3")
-        want = {nfc(f"../{MUSIC}/{r}"): r for r in rels}
+        at = layout.places(os.path.join(usb, MUSIC), rels)  # the folder each song sits in on this USB
+        want = {nfc(f"../{MUSIC}/{at[r]}"): r for r in rels}
         out, waiting = {}, []
         for tid, path, done, edited, td, qc, lp in con.execute(
                 "SELECT t.id, t.path, t.isAnalyzed, t.lastEditTime, p.trackData, p.quickCues, p.loops FROM Track t "
@@ -433,11 +436,11 @@ def usb_db(usb):
     return os.path.join(usb, "PIONEER", "rekordbox", "exportLibrary.db")
 
 
-def usbdb_read(lib, rels):
+def usbdb_read(lib, rels, at=None):
     """{rel: {"id", "anlz", "cues", "rows"}} for the Crate songs in the USB's library."""
     from sqlalchemy import text
     q = lambda sql, **p: lib.session.execute(text(sql), p).fetchall()
-    want = {"/" + MUSIC + "/" + nfc(r).replace(os.sep, "/"): r for r in rels}
+    want = {"/" + MUSIC + "/" + nfc((at or {}).get(r) or r).replace(os.sep, "/"): r for r in rels}
     out = {}
     for cid, path, anlz in q("SELECT content_id, path, analysisDataFilePath FROM content WHERE path LIKE :p",
                              p="/" + MUSIC + "/%"):
@@ -702,7 +705,7 @@ def gather(src, usb, rels, mac_db, is_open, problems):
                 import rekordbox_usb
                 lib = rekordbox_usb.opened(usb_db(usb))
                 closers.append(lib.close)
-                have = usbdb_read(lib, rels)
+                have = usbdb_read(lib, rels, layout.places(os.path.join(usb, MUSIC), rels))
                 places.append(Place("usbdb@" + label, "usbdb", have, shut))
                 places[-1].lib = lib
                 places.append(Place("usbanlz@" + label, "usbanlz", anlz_read(usb, have), shut))

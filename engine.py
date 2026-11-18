@@ -12,6 +12,8 @@ Never deletes a track, never touches the music files. Before any change the libr
 with a line in the log. Standard library only."""
 import os, shutil, sqlite3, time, unicodedata
 
+import layout
+
 FOLDER = "The Crate"
 MUSIC = "SoundCloud Sync"  # usb.sh's folder on the USB
 # Engine's numbers for the 24 keys.
@@ -52,7 +54,7 @@ def row(song, usb_file):
         "length": int(round(song.get("length") or 0)) or None,
         "bpm": int(round(bpm)) or None, "bpmAnalyzed": bpm or None,
         "year": int(year) if year.isdigit() else None,
-        "path": nfc(f"../{MUSIC}/{song['rel']}"), "filename": nfc(name),
+        "path": nfc(f"../{MUSIC}/{song.get('at') or song['rel']}"), "filename": nfc(name),
         "bitrate": int(song.get("bitrate") or 0) or None,
         "fileBytes": os.path.getsize(usb_file),
         "title": song.get("title") or "", "artist": song.get("artist") or "", "album": song.get("album") or "",
@@ -76,7 +78,7 @@ def genres_there(usb, songs):
         con.close()
     out = {}
     for s in songs:
-        p = nfc(f"../{MUSIC}/{s['rel']}")
+        p = nfc(f"../{MUSIC}/{s.get('at') or s['rel']}")  # ("at": the folder it sits in on this USB, layout.py)
         if p in have:
             out[s["rel"]] = have[p]
     return out
@@ -93,7 +95,7 @@ def write(usb, songs, lists, backups):
     db = db_path(usb)
     if not os.path.isfile(db):
         return ""
-    on_usb = [(s, os.path.join(usb, MUSIC, s["rel"])) for s in songs]
+    on_usb = [(s, os.path.join(usb, MUSIC, s.get("at") or s["rel"])) for s in songs]
     on_usb = [(s, p) for s, p in on_usb if os.path.isfile(p)]
     label = os.path.basename(usb.rstrip("/"))
     saved = backup(db, backups, label)
@@ -110,9 +112,13 @@ def write(usb, songs, lists, backups):
         now = int(time.time())
         have = {nfc(p): (i, a) for i, p, a in con.execute("SELECT id, path, isAnalyzed FROM Track") if p}
         ids, added, analysed = {}, 0, 0
+        by = layout.rows(have, f"../{MUSIC}/")
+        there = lambda p: os.path.isfile(os.path.join(usb, p[3:]))
         for s, usb_file in on_usb:
             r = row(s, usb_file)
             old = nfc(f"../{MUSIC}/{s['was']}") if s.get("was") else ""
+            if r["path"] not in have and old not in have:  # filed into another folder on the USB (layout.py)
+                old = layout.old(by, s, r["path"], there)
             if old in have and r["path"] not in have:  # the file moved: the same track, cues and all, at its new place
                 # (or became another kind of file with the same sound: a FLAC that is now an AIFF, aiff.py)
                 con.execute("UPDATE Track SET path=?, filename=?, fileType=?, fileBytes=?, bitrate=COALESCE(?, bitrate) "
