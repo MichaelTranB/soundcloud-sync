@@ -187,19 +187,25 @@ def follow(d, slsk):
         pa, pb = os.path.join(slsk, a), os.path.join(slsk, b)
         if all(os.path.realpath(p).startswith(base + os.sep) for p in (pa, pb)):
             to[os.path.normpath(pa)] = os.path.normpath(pb)
+
+    def where(p):  # the file's place now, following moves made one after another; None when it's gone
+        p, seen = os.path.normpath(p), set()
+        while p in to and not os.path.exists(p) and p not in seen:
+            seen.add(p)
+            p = to[p]
+        return p if os.path.isfile(p) else None
+
     n = 0
     with locked(d):
         got = load_got(d)
         for row in got:
-            new = to.get(os.path.normpath(row[2]))
-            while new in to and not os.path.exists(new):  # moved twice
-                new = to[new]
-            if new and not os.path.exists(row[2]) and os.path.isfile(new):
+            new = None if os.path.exists(row[2]) else where(row[2])
+            if new:
                 row[2], n = new, n + 1
         if n:
             came = load_from(d)
             save_got(d, got)
-            save_from(d, {(to.get(os.path.normpath(p), p) if not os.path.exists(p) else p): v for p, v in came.items()})
+            save_from(d, {(p if os.path.exists(p) else where(p) or p): v for p, v in came.items()})
     return n
 
 
