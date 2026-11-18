@@ -193,10 +193,19 @@ def start(d, vol, ids):
         raise ValueError("Tick at least one folder or playlist.")
     lens = load(d).get("lens") or {}
     opts = settings(d)
+    path = {i: offered[i].split(": ", 1)[-1].split(" / ") for i in ids}
+    last = [p[-1] for p in path.values()]
+
+    def own(i):  # a playlist per folder, named after it; two folders called "House" become "House (2025)" and so on
+        p = path[i]
+        if last.count(p[-1]) < 2 or len(p) < 2:
+            return p[-1]
+        return f"{p[-1]} ({' / '.join(p[:-1])})"
+
     groups = []  # (playlist name, songs)
     for i in ids:
         songs = songs_of(d, vol, i, lens)
-        name = offered[i].split(": ", 1)[-1].split(" / ")[-1] if opts["mode"] == "each" else opts["name"]
+        name = own(i) if opts["mode"] == "each" else opts["name"]
         g = next((g for g in groups if g[0] == name), None)
         if g:
             g[1].extend(songs)
