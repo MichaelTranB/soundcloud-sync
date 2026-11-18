@@ -6,7 +6,7 @@ in the browser cannot press the buttons.
 """
 import glob, json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, unicodedata, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
-import aiff, club, details, dj, friend, genres, layout, liked, recognise, usb_ask, waveform
+import aiff, club, details, dj, friend, genres, layout, liked, recognise, scplaylists, usb_ask, waveform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -60,11 +60,12 @@ def chrome_app():
                  if os.path.isdir(p)), "")
 
 
-def open_chrome():
-    """Opens Chrome on The Crate's list of free links before the assistant starts, so its Chrome add-on is already
-    connected when it looks (a just-started Chrome takes a few seconds). True when Chrome had to be started."""
+def open_chrome(page="/free"):
+    """Opens Chrome on The Crate's list (free links, or songs for SoundCloud playlists) before the assistant starts,
+    so its Chrome add-on is already connected when it looks (a just-started Chrome takes a few seconds). True when
+    Chrome had to be started."""
     cold = subprocess.run(["pgrep", "-xq", CHROME]).returncode != 0
-    subprocess.run(["open", "-a", CHROME, f"http://localhost:{PORT}/free"], check=False)
+    subprocess.run(["open", "-a", CHROME, f"http://localhost:{PORT}{page}"], check=False)
     return cold
 
 
@@ -177,7 +178,7 @@ def helper_run():
     except ValueError:
         return None
     now = time.time()
-    if not run or now - run.get("at", 0) > 3 * 3600:
+    if not run or now - run.get("at", 0) > 3 * 3600 or run.get("job") == "scpl":
         return None
     live = run.get("who") == "claude" and subprocess.run(["pgrep", "-fq", "agent-settings.json"]).returncode == 0
     recent = now - max(run.get("at", 0), cur.get("at", 0)) < 15 * 60
@@ -919,7 +920,7 @@ def state():
         "signIn": sign_in_status(browser()),
         "profile": acct.get("profile", ""), "browser": browser(),
         "playlists": acct.get("playlists", []), "saved": saved(), "problem": problem(),
-        "have": have, "buy": buy, "watching": watching(), "helperRun": helper_run(),
+        "have": have, "buy": buy, "watching": watching(), "helperRun": helper_run(), "scpl": scplaylists.counts(DIR),
         "agents": [w for w in ("claude", "codex") if agent_app(w)], "claudeInChrome": in_chrome("claude"), "codexInChrome": in_chrome("codex"), "chrome": bool(chrome_app()), "agentUses": agent_uses(),
         "inboxWhy": {k: v.get("text", "") for k, v in freedl.load_json(DIR, freedl.WHY).items() if isinstance(v, dict)},
         "inboxFile": {k: os.path.basename(v["file"]) for k, v in freedl.load_json(DIR, freedl.WHY).items()
@@ -1459,6 +1460,11 @@ class Handler(BaseHTTPRequestHandler):
             p = song_path((q.get("f") or [""])[0])
             got = p and self.headers.get("Sec-Fetch-Site", "same-origin") in ("same-origin", "none") and waveform.get(DIR, p)
             return self.send(200, got) if got else self.send(404, {"error": "no waveform"})
+        if self.path.split("?")[0] == "/to-soundcloud":  # the songs for SoundCloud playlists, for Claude, Codex or you
+            return self.send(200, scplaylists.page(DIR).encode(), "text/html; charset=utf-8")
+        if self.path == "/api/scpl":  # what each plugged-in USB offers for SoundCloud playlists, and the Options
+            return self.send(200, {"usbs": scplaylists.sources(DIR), "settings": scplaylists.settings(DIR),
+                                   "run": scplaylists.counts(DIR)})
         if self.path.split("?")[0] == "/free":  # the list Claude or Codex works from
             return self.send(200, free_page().encode(), "text/html; charset=utf-8")
         self.send(404, {"error": "not found"})
@@ -1523,7 +1529,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             # a pasted song list is ~55 bytes a song; the playlists and folders ticked to copy from another USB
             cap = 600_000 if self.path in ("/api/spotify-songs", "/api/liked", "/api/dj/aiff", "/api/dj/details") else \
-                200_000 if self.path in ("/api/dj/copy", "/api/dj/layout") else 4096
+                200_000 if self.path in ("/api/dj/copy", "/api/dj/layout", "/api/scpl/start") else 4096
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
         except ValueError:
             return self.send(400, {"error": "bad request"})
@@ -1624,18 +1630,26 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(400, {"error": "That assistant isn't on this Mac."})
             if not chrome_app():
                 return self.send(400, {"error": "Get Google Chrome first: both assistants work in it."})
-            task, n = agent_task(who)
-            if not n:
-                return self.send(400, {"error": "No free links to get right now."})
+            job = "scpl" if body.get("job") == "scpl" else "free"
+            if job == "scpl":  # USB songs into private SoundCloud playlists
+                task, n = scplaylists.brief(DIR, who, f"http://localhost:{PORT}/to-soundcloud")
+                if not n:
+                    return self.send(400, {"error": "No songs left to add: pick a USB's folders first."})
+            else:
+                task, n = agent_task(who)
+                if not n:
+                    return self.send(400, {"error": "No free links to get right now."})
             with open(os.path.join(DIR, ".agent-run.json"), "w") as f:  # the page shows its progress
-                json.dump({"who": who, "at": time.time(), "n": n, "links": [t for _, t, _ in free_rows()]}, f)
+                json.dump({"who": who, "job": job, "at": time.time(), "n": n,
+                           "links": [t for _, t, _ in free_rows()] if job == "free" else []}, f)
+            page = "/to-soundcloud" if job == "scpl" else "/free"
             if who == "claude":
                 # A Terminal window the friend watches and answers in: Claude with its Chrome connection, started
                 # in Downloads (where it renames the files), with the list as its first message.
                 brief = os.path.join(DIR, "agent-task.md")
                 with open(brief, "w") as f:
                     f.write(task)
-                wait = "echo 'Waiting a moment for Chrome to start...'; sleep 12\n" if open_chrome() else ""
+                wait = "echo 'Waiting a moment for Chrome to start...'; sleep 12\n" if open_chrome(page) else ""
                 # A check that runs each time Claude goes to stop: while free links are left, it's sent back to
                 # the list once (agent_stop.py), so a sign-in or a question mid-list doesn't end the run.
                 hook = f"{shlex.quote(sys.executable)} {shlex.quote(os.path.join(DIR, 'agent_stop.py'))}"
@@ -1644,14 +1658,16 @@ class Handler(BaseHTTPRequestHandler):
                 in_terminal("agent-run.command", f"cd {shlex.quote(os.path.expanduser('~/Downloads'))} || exit 1\n"
                             f"{wait}exec {shlex.quote(app)} --chrome --settings "
                             f"{shlex.quote(os.path.join(DIR, 'agent-settings.json'))} \"$(cat {shlex.quote(brief)})\"\n")
-                msg = (f"Claude is opening in Terminal with your {n} free links. It asks you once what it may do "
+                msg = (f"Claude is opening in Terminal with your {n} songs for SoundCloud. It works in Chrome and "
+                       "marks each one on the list as it goes." if job == "scpl" else
+                       f"Claude is opening in Terminal with your {n} free links. It asks you once what it may do "
                        "(follow, repost...), then works in Chrome. Files come in here by themselves.")
             else:
                 subprocess.run(["pbcopy"], input=task.encode(), check=False)
-                open_chrome()
+                open_chrome(page)
                 subprocess.Popen(["open", app])
-                msg = (f"Codex is opening, and the request for your {n} free links is copied: in a new Codex chat "
-                       "type @Chrome, pick it, then paste (⌘V). Files come in here by themselves.")
+                msg = (f"Codex is opening, and the request for your {n} " + ("songs for SoundCloud" if job == "scpl"
+                       else "free links") + " is copied: in a new Codex chat type @Chrome, pick it, then paste (⌘V).")
             return self.send(200, dict(state(), agentMsg=msg))
         elif self.path == "/api/synctime":
             t = str(body.get("time", ""))
@@ -1697,6 +1713,22 @@ class Handler(BaseHTTPRequestHandler):
                     with open(os.path.join(DIR, ".agent-current.json"), "w") as f:
                         json.dump({"link": link, "at": time.time()}, f)
             _watch.set()
+        elif self.path in ("/api/scpl/settings", "/api/scpl/start", "/api/scpl/mark", "/api/scpl/made",
+                           "/api/scpl/forget"):  # USB songs into private SoundCloud playlists
+            try:
+                if self.path == "/api/scpl/settings":
+                    scplaylists.set_settings(DIR, body)
+                elif self.path == "/api/scpl/start":
+                    scplaylists.start(DIR, str(body.get("usb", "")), [str(i) for i in body.get("ids") or []][:400])
+                elif self.path == "/api/scpl/mark":
+                    scplaylists.mark(DIR, str(body.get("k", "")), str(body.get("status", "")), str(body.get("url", "")),
+                                     str(body.get("note", "")), helper_name() if body.get("from") == "helper" else "you")
+                elif self.path == "/api/scpl/made":
+                    scplaylists.made(DIR, str(body.get("name", "")), str(body.get("url", "")))
+                else:
+                    scplaylists.forget(DIR)
+            except ValueError as e:
+                return self.send(400, {"error": str(e)})
         elif self.path == "/api/needs":  # what a free link needs: paid, members only, gone, skipped (or cleared)
             link, kind = str(body.get("link", "")), str(body.get("kind", ""))
             row = next((p for p in (l.split("\t") for l in read("to-buy.tsv").splitlines()) if p[1:2] == [link]), None)
