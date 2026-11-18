@@ -630,7 +630,10 @@ function bestAgent(s) {
   return score('codex') > score('claude') ? 'codex' : 'claude';
 }
 const agentName = w => el('span', { className: 'ag ' + w, textContent: AGENT[w] });
-function openHelper(job) { helperJob = job === 'scpl' ? 'scpl' : 'free'; helperMsg = ''; paintHelper(true); $('helper').showModal(); }
+function openHelper(job) {
+  job = job === 'scpl' ? 'scpl' : 'free';
+  if (job !== helperJob) { delete helperDone.claude; delete helperDone.codex; }  // started or copied for the other job, not this one
+  helperJob = job; helperMsg = ''; paintHelper(true); $('helper').showModal(); }
 $('helperClose').onclick = () => $('helper').close();
 $('helper').onclick = e => { if (e.target === $('helper')) $('helper').close(); };
 const kbd = t => el('kbd', { textContent: t });
