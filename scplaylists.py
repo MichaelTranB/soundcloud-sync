@@ -82,6 +82,10 @@ def sources(d):
                 n = sum(1 for c in lib["members"].get(i, []) if c in lib["tracks"])
                 if n:
                     got.append(("rb:" + i, "rekordbox: " + name, n))
+        elif os.path.isdir(os.path.join(base, "Contents")):  # library unreadable: its songs as one source, as pick() does
+            n = len(friend.tree(base, "Contents"))
+            if n:
+                got.append(("tree:Contents", "Everything rekordbox put on it", n))
         for rel, songs in friend.folders(base, False, not lib and not os.path.isdir(os.path.join(base, "Contents"))):
             if rel:
                 got.append(("dir:" + rel, rel.replace(os.sep, " / "), len(songs)))
@@ -136,6 +140,8 @@ def songs_of(d, vol, sid, lens):
             return []
         files = ["/" + os.path.join(rel, n) for n in sorted(os.listdir(full), key=str.lower)
                  if not n.startswith(".") and n.lower().endswith(friend.TAKEN)]
+    elif sid == "tree:Contents" and not lib["tracks"]:
+        files = ["/" + p for p in friend.tree(base, "Contents")]
     else:
         return []
     out = []
