@@ -9,7 +9,9 @@ Per page ("home" = The Crate, "dj" = the Library Manager), status() is one of:
   "offer" an install that was working before the tour existed, on a page it never used: a one-line offer only
   "seen"  finished or skipped, or an existing install: nothing shows by itself
 """
-import json, os, time
+import json, os, tempfile, threading, time
+
+_lock = threading.RLock()  # the server answers each request on its own thread: one read-modify-write at a time
 
 PAGES = ("home", "dj")
 FILE = "tour.json"
@@ -29,14 +31,26 @@ def _load(d):
 
 
 def _save(d, data):
-    tmp = _path(d) + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=1)
-    os.replace(tmp, _path(d))
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=FILE + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=1)
+        os.replace(tmp, _path(d))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def state(d, existing, dj_used):
     """{'home': status, 'dj': status}. `existing`: a playlist is set up; `dj_used`: the DJ library has been written."""
+    with _lock:
+        return _state(d, existing, dj_used)
+
+
+def _state(d, existing, dj_used):
     data = _load(d)
     if data is None:  # first ask: remember what this install was
         data = {"existing": bool(existing), "djUsed": bool(dj_used), "seen": {}}
@@ -61,8 +75,9 @@ def mark(d, page, existing=False, dj_used=False):
     """The tour on `page` was finished, skipped or its offer dismissed."""
     if page not in PAGES:
         return False
-    state(d, existing, dj_used)  # makes the file, with the first-ask facts, if it isn't there yet
-    data = _load(d) or {"existing": bool(existing), "djUsed": bool(dj_used), "seen": {}}
-    data["seen"][page] = time.strftime("%Y-%m-%d")
-    _save(d, data)
+    with _lock:
+        _state(d, existing, dj_used)  # makes the file, with the first-ask facts, if it isn't there yet
+        data = _load(d) or {"existing": bool(existing), "djUsed": bool(dj_used), "seen": {}}
+        data["seen"][page] = time.strftime("%Y-%m-%d")
+        _save(d, data)
     return True
