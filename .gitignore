@@ -143,3 +143,4 @@ liked-state.json
 .liked-kinds.json
 *.json.tmp
 .waves/
+liked-settings.json

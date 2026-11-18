@@ -117,6 +117,7 @@ echo "$(date '+%F %R')  have: $HAVE  to buy: $(wc -l < "$DIR/to-buy.tsv" | tr -d
 python3 "$DIR/liked.py" add "$DIR" "$OUT" >>"$DIR/liked.log" 2>&1 || echo "$(date '+%F %R')  Liked Songs FAILED: see the lines above" >>"$DIR/liked.log"
 # Last fallback for whatever is still to get: Soulseek, through sockseek (download-only).
 "$DIR/soulseek.sh"
+python3 "$DIR/liked.py" file "$DIR" "$OUT" >>"$DIR/liked.log" 2>&1 || echo "$(date '+%F %R')  Liked Songs FAILED to file away: see the lines above" >>"$DIR/liked.log"
 # The list for the USB, after every source had its turn (a track on the Mac is never on it).
 awk -F'\t' '{ print $1 "  " ($3 != "" ? "FREE: " $3 : $2) }' "$DIR/to-buy.tsv" > "$OUT/To Buy.txt"
 # Every new file must be real audio (and pass the virus scan) before it stays or reaches the USB.

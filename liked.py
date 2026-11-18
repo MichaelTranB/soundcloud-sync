@@ -11,11 +11,12 @@ artist, length within 5 s) and its album's genre. Dance or Electro counts as EDM
 the EDM songs, and the rest (Hip Hop, Pop...) comes last.
 
 Every sync adds the next batch to the to-get list (to-buy.tsv), so Soulseek looks for them like any playlist song.
-A batch is at most BATCH songs and only what fits: the Mac keeps FLOOR_GB free, and a batch that can't start says
+A batch is at most BATCH songs and only what fits: the Mac keeps the chosen GB free (10 to start), and a batch that can't start says
 so on the page (liked-state.json) and in liked.log.
 
 Usage: liked.py read DIR       read details and kinds of every pasted song (the page starts it after a paste)
        liked.py add DIR OUT    the sync's step: add the next batch to DIR/to-buy.tsv
+       liked.py file DIR OUT   the step after Soulseek: the songs it got go into the Liked Songs folder
 """
 import json, os, re, shutil, sys, time, unicodedata, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -25,9 +26,11 @@ import genres, playlists, soulseek
 FILE = "liked.json"  # {"ids": [...newest first], "at": when pasted}
 KINDS = ".liked-kinds.json"  # song id -> "EDM" | "Other" | "" (Deezer had no match)
 STATE = "liked-state.json"  # what the page shows
+OPTS = "liked-settings.json"  # the user's choices (the page's Options): see DEFAULTS
+DEFAULTS = {"folder": "Spotify Liked Songs", "order": "edm", "floorGb": 10}
+ORDERS = ("edm", "newest")  # EDM first then the rest, or simply newest first
 LIKED = "https://open.spotify.com/collection/tracks"  # Spotify's own address for Liked Songs
 BATCH = 150  # songs a sync adds at most (Soulseek allows only so many searches a minute)
-FLOOR_GB = 10  # always left free on the Mac
 SONG_MB = 50  # a lossless song, roughly (AIFF ~60, FLAC ~35, MP3 320 ~12)
 EDM_IDS = {106, 113}  # Deezer: Electro, Dance
 UA = "TheCrate (+https://github.com/MichaelTranB/soundcloud-sync)"
@@ -49,6 +52,36 @@ def _save(d, name, obj):
     os.replace(p + ".tmp", p)
 
 
+def settings(d):
+    """The user's choices over the defaults: folder ('' = in with the playlist songs), order, GB kept free."""
+    return {**DEFAULTS, **{k: v for k, v in _load(d, OPTS, {}).items() if k in DEFAULTS}}
+
+
+def set_settings(d, body):
+    """Saves the page's Options. Returns an error to show, or None."""
+    new = settings(d)
+    if "folder" in body:
+        f = re.sub(r"\s+", " ", str(body["folder"] or "")).strip()
+        if len(f) > 60 or "/" in f or ":" in f or f.startswith(".") or f in (soulseek.OLD, "Quarantine"):
+            return "Pick a plain folder name (no / or :), or leave it empty to keep them with your playlist songs."
+        new["folder"] = f
+    if "order" in body:
+        if body["order"] not in ORDERS:
+            return "That isn't one of the orders."
+        new["order"] = body["order"]
+    if "floorGb" in body:
+        try:
+            new["floorGb"] = max(1, min(500, int(body["floorGb"])))
+        except (TypeError, ValueError):
+            return "Keep free: a number of GB."
+    _save(d, OPTS, new)
+    return None
+
+
+def folder(d):
+    return settings(d)["folder"]
+
+
 def ids(d):
     return _load(d, FILE, {}).get("ids", [])
 
@@ -59,6 +92,34 @@ def paste(d, text):
     if got:
         _save(d, FILE, {"ids": got, "at": time.time()})
     return len(got)
+
+
+def file_away(d, out, say=print):
+    """The sync's step right after Soulseek: each Liked Song it got moves into the Liked Songs folder (the user's
+    choice; none = stays with the playlist songs), with every record of where it is. Songs already in a folder stay."""
+    name = folder(d)
+    if not name:
+        return 0
+    to_dir, moved = os.path.join(out, name), {}
+    liked_links = {f"https://open.spotify.com/track/{i}" for i in ids(d)}
+    with soulseek.locked(d):  # one writer of soulseek.tsv at a time (the page's "Wrong or bad file" too)
+        got = soulseek.load_got(d)
+        for row in got:
+            p = row[2]
+            if row[0] in liked_links and os.path.dirname(p) == os.path.normpath(out) and os.path.isfile(p):
+                to = os.path.join(to_dir, os.path.basename(p))
+                if os.path.lexists(to):
+                    continue
+                os.makedirs(to_dir, exist_ok=True)
+                os.rename(p, to)
+                moved[p] = row[2] = to
+        if moved:
+            soulseek.save_got(d, got)
+            came = soulseek.load_from(d)
+            soulseek.save_from(d, {moved.get(p, p): v for p, v in came.items()})
+    if moved:
+        say(f"Liked Songs: {len(moved)} moved into the folder {name}")
+    return len(moved)
 
 
 def forget(d):
@@ -191,8 +252,11 @@ def status(d):
 
 
 def order(d):
-    """Song ids in the order they're fetched: EDM newest first, then not sure, then the rest."""
+    """Song ids in the order they're fetched: EDM newest first, then not sure, then the rest (or, as the user may
+    choose, simply newest first)."""
     all_ids, kinds = ids(d), _load(d, KINDS, {})
+    if settings(d)["order"] == "newest":
+        return all_ids
     rank = {"EDM": 0, "": 1, None: 1, "Other": 2}
     return sorted(all_ids, key=lambda i: rank.get(kinds.get(i), 1))  # stable: newest first within each
 
@@ -212,11 +276,13 @@ def add(d, out, say=print):
     listed = {r.split("\t")[1] for r in rows if r.count("\t") >= 1}
     have, miss, now = playlists.got(d), soulseek.load_missed(d), time.time()
     gb = free_gb(out if os.path.isdir(out) else os.path.expanduser("~"))
-    room = max(0, int((gb - FLOOR_GB) * 1000 / SONG_MB))
+    floor = settings(d)["floorGb"]
+    room = max(0, int((gb - floor) * 1000 / SONG_MB))
     clean = lambda v: re.sub(r"[\t\n]+", " ", str(v)).strip()
     name = lambda s: clean(f"{s['artist']} - " + re.sub(r"^(.+?)\s+-\s+(.+)$", r"\1 (\2)", s["title"]))
     try:  # a song already on the Mac under the same name (from SoundCloud, say) isn't fetched twice
-        on_mac = {soulseek.norm(os.path.splitext(f)[0]) for f in os.listdir(out)}
+        sub = os.path.join(out, folder(d))
+        on_mac = {soulseek.norm(os.path.splitext(f)[0]) for f in os.listdir(out) + (os.listdir(sub) if folder(d) and os.path.isdir(sub) else [])}
     except OSError:
         on_mac = set()
     fresh, waiting = [], []
@@ -238,7 +304,7 @@ def add(d, out, say=print):
     _state(d, queued=len(fresh), paused=paused, freeGb=round(gb, 1))
     msg = f"Liked Songs: {len(fresh)} added to look for" + (f", {len(waiting)} waiting" if waiting else "")
     if paused:
-        msg = f"Liked Songs PAUSED: only {gb:.0f} GB free on the Mac (keeps {FLOOR_GB} GB free); {left} songs wait"
+        msg = f"Liked Songs PAUSED: only {gb:.0f} GB free on the Mac (keeps {floor} GB free); {left} songs wait"
     say(msg)
     return len(fresh)
 
@@ -249,5 +315,7 @@ if __name__ == "__main__":
         read_all(sys.argv[2], log)
     elif sys.argv[1:2] == ["add"] and len(sys.argv) == 4:
         add(sys.argv[2], sys.argv[3], log)
+    elif sys.argv[1:2] == ["file"] and len(sys.argv) == 4:
+        file_away(sys.argv[2], sys.argv[3], log)
     else:
         sys.exit(__doc__)

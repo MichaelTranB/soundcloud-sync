@@ -158,6 +158,15 @@
   li button.play { background: none; border: 1px solid var(--line); border-radius: 50%; width: 30px; height: 30px; padding: 0; flex: none; color: var(--text); font-size: 11px; line-height: 1; cursor: pointer; }
   li button.play.on { background: var(--hot); border-color: var(--hot); color: #fff; }
   .wrongs { padding: 9px 2px 11px; color: #e0a040; font-size: 14px; }
+  li button.ghost { padding: 5px 11px; font-size: 13.5px; }
+  li .n small { display: block; color: var(--dim); font-size: 13.5px; margin-top: 3px; }
+  li .n a.song { color: var(--text); font-size: inherit; border: 0; white-space: normal; }
+  li.grp { color: var(--dim); font-size: 14px; font-weight: 600; padding: 22px 0 8px; }
+  .checks { padding: 9px 2px 11px; color: var(--dim); font-size: 14px; }
+  .opts { display: grid; gap: 10px; margin-top: 10px; }
+  .opts label { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0; font-size: 14.5px; font-weight: 500; color: var(--dim); }
+  .opts input, .opts select { flex: 1 1 160px; min-width: 0; }
+  .opts input[type=number] { flex: 0 0 90px; }
   li .why button.undo { background: none; border: 0; padding: 0; margin-left: 8px; color: var(--dim); font-size: 13.5px; text-decoration: underline dotted; }
   #viewNote .run { display: flex; flex-wrap: wrap; align-items: center; color: var(--text); font-weight: 600; }
   #viewNote .run .bar { flex: 1 1 100%; height: 4px; margin-top: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
@@ -341,12 +350,19 @@
       <div class="lab"><label for="liked"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>Spotify Liked Songs</label>
         <button class="q" data-help="hLiked" aria-expanded="false" aria-label="How Liked Songs works">?</button></div>
       <div class="help" id="hLiked" hidden>
-        <p>Every sync looks for the next batch on Soulseek: <b>EDM first</b>, newest first, then everything else.</p>
-        <p>It only takes what fits: your Mac always keeps <b>10 GB free</b>. <b>Never:</b> signs in to Spotify or changes anything there.</p>
+        <p>Every sync looks for the next batch on Soulseek, <b>EDM first</b> (newest first), into their own folder, so you can sort them into your playlists yourself.</p>
+        <p>It only takes what fits: your Mac always keeps some space free (<b>10 GB</b> to start). Change the folder, order or space under <b>Options</b>. <b>Never:</b> signs in to Spotify or changes anything there.</p>
         <p>Liked more songs? Paste again. <b>Undo:</b> <button class="ghost" id="likedForget" style="padding:4px 10px;font-size:13px">Stop</button> clears the list; songs already here stay.</p>
       </div>
       <div class="row"><input id="liked" placeholder="Paste your Liked Songs" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="act" id="likedAdd">Add</button></div>
       <div class="note" id="likedNote">In Spotify, open Liked Songs, click the newest song, Shift-click the oldest you want, press ⌘C, paste here.</div>
+      <details id="likedOpts"><summary>Options</summary>
+        <div class="opts">
+          <label>Folder <input id="loFolder" placeholder="None: with your playlist songs" spellcheck="false" autocomplete="off"></label>
+          <label>Order <select id="loOrder"><option value="edm">EDM first, then the rest</option><option value="newest">Newest first, any kind</option></select></label>
+          <label>Keep free on your Mac <input id="loFloor" type="number" min="1" max="500" step="1"> GB</label>
+        </div>
+      </details>
     </div>
     </div>
     <div class="field">
@@ -483,6 +499,10 @@ function render(s) {
   paintAsk(s.usbAsk);
   $('alert').hidden = !s.problem;
   likedLine(s.liked);
+  const lo = s.likedOpts || {};  // the Options, unless being typed in
+  if (document.activeElement !== $('loFolder')) $('loFolder').value = lo.folder || '';
+  if (document.activeElement !== $('loFloor')) $('loFloor').value = lo.floorGb || 10;
+  $('loOrder').value = lo.order || 'edm';
   // A sign-in problem gets its fix right there: the SoundCloud sign-in link, or the Full Disk Access setting.
   if ($('alert').dataset.p !== s.problem) $('alert').dataset.p = s.problem, $('alert').replaceChildren(s.problem,
     ...(/signed in to SoundCloud|sign-in in .* has run out/.test(s.problem) ? [el('br'), scLink('Sign in to SoundCloud ↗', 'btn fix')]
@@ -698,10 +718,44 @@ const searched = t => /^https?:\/\//.test(t.free) || !!t.why;
 const waiting = t => !live(t) && (t.state === 'queued' || !searched(t));
 
 let last = null;
+// A song on the Mac, with what lets you be sure it's the right one: the playlist's name for it (a link to the song),
+// the file's own name and where it came from, both lengths, a quick listen, and rekordbox for the waveform.
+const mmss = n => Math.floor(n / 60) + ':' + String(Math.round(n % 60)).padStart(2, '0');
+const lengthOff = t => t.want > 0 && t.secs > 0 && Math.abs(t.secs - t.want) > 5;
+let onlyOff = false;
+function haveRow(t) {
+  const s = last, ext = t.file.split('.').pop();
+  const where = t.link.includes('spotify.com') ? 'Spotify' : t.link.includes('soundcloud.com') ? 'SoundCloud' : '';
+  const offUsb = !s.usb ? '' : `\n\nIt also comes off your USB "${s.usb}" ` + (s.usbPlugged ? 'right now' : 'the next time you plug it in') + ", into the USB's own Trash.";
+  const facts = ['File: ' + t.name + '.' + ext, t.came && t.came !== t.name + '.' + ext ? 'came as ' + t.came : '',
+    t.secs ? mmss(t.secs) + (t.want ? (lengthOff(t) ? ' (' : ', same as ') + where + ' ' + mmss(t.want) + (lengthOff(t) ? ')' : '') : '') : ''].filter(Boolean);
+  return el('li', {},
+    el('button', { className: 'play' + (playing === t.file ? ' on' : ''), textContent: playing === t.file ? '❚❚' : '▶',
+      title: playing === t.file ? 'Stop' : 'Listen', ariaLabel: (playing === t.file ? 'Stop ' : 'Listen to ') + t.name, onclick: () => listen(t.file) }),
+    el('span', { className: 'n' },
+      t.link ? el('a', { className: 'song', href: t.link, target: '_blank', rel: 'noopener', title: 'The song on ' + where }, t.song || t.name) : t.song || t.name,
+      el('small', { textContent: facts.join(' · ') })),
+    ...(lengthOff(t) ? [el('span', { className: 'tag low', title: "The file's length differs from the song's by over 5 seconds: listen to check", textContent: 'Length differs' })] : []),
+    ...(t.wrong ? [el('span', { className: 'tag low', title: 'Probably not the playlist\'s song: ' + t.wrong, textContent: 'Looks wrong' })] : []),
+    el('span', { className: 'tag' + (LOSSLESS.includes(t.kind) ? ' lossless' : ''), textContent: t.kind }),
+    ...(t.kbps && t.kbps < 318 ? [el('span', { className: 'tag low', title: 'Below 320 kbps: the file the artist uploaded is low quality. Buy the lossless one from a shop.', textContent: t.kbps + ' kbps' })] : []),
+    el('span', { className: 'tag', textContent: t.mb + ' MB' }),
+    ...((s.justGot || []).includes(t.name) ? [el('span', { className: 'tag new', title: 'Just picked up from your Downloads folder', textContent: 'New' })] : []),
+    ...(t.src ? [el('span', { className: 'tag', title: t.src === 'Soulseek' ? 'Found on Soulseek; replaced by the artist\'s own file when it comes' : 'Fetched from the artist\'s own free-download link', textContent: t.src })] : []),
+    el('button', { className: 'ghost', title: 'Opens this file in rekordbox on your Mac, to see its waveform and try it on your deck', textContent: 'Open in rekordbox',
+      onclick: () => call('/api/dj/rekordbox', { file: t.file }).then(() => {}, e => alert(e.message)) }),
+    el('button', { className: 'undo bad', title: 'Wrong song or a bad copy? It goes to the Trash, is never taken again, comes off your USB too, and another copy is looked for right away.',
+      textContent: 'Wrong or bad file', onclick: async () => {
+        if (!confirm(`Throw back "${t.name}"?\n\n${t.wrong ? 'It looks wrong: ' + t.wrong + '.\n\n' : ''}It goes to the Trash, this file is never taken again, and The Crate starts looking for another copy right away.` + offUsb)) return;
+        try { await call('/api/soulseek-bad', { file: t.file }); } catch (e) { alert(e.message); }
+      } }));
+}
 function draw() {
   const s = last; if (!s) return;
   const w = words(), q = w.length > 0;
-  const have = s.have.filter(t => hit(t.name, w));
+  const have = s.have.filter(t => hit(t.name + ' ' + (t.song || ''), w)).sort((x, y) => x.liked - y.liked);
+  const off = have.filter(lengthOff), shown = onlyOff && off.length ? off : have;
+  const checked = have.filter(t => t.want > 0 && t.secs > 0).length;
   const nowAll = s.buy.filter(live), waitAll = s.buy.filter(waiting);
   // The tabs never overlap: with Getting now they add up to "Left to find" up top.
   // free links that turned out paid, members only or gone go last
@@ -744,18 +798,12 @@ function draw() {
         onclick: throwBack({ all: true }, `Throw back ${doubted.length === 1 ? 'this file' : `these ${doubted.length} files`}?\n\n` +
           doubted.map(t => `${t.name}: ${t.wrong}`).slice(0, 12).join('\n') + (doubted.length > 12 ? '\n…' : '') +
           '\n\nThey go to the Trash, are never taken again, and The Crate starts looking for the right ones right away.' + offUsb(true)) }))] : []),
-    ...(have.length ? have.map(t => el('li', {},
-    el('button', { className: 'play' + (playing === t.file ? ' on' : ''), textContent: playing === t.file ? '❚❚' : '▶',
-      title: playing === t.file ? 'Stop' : 'Listen', ariaLabel: (playing === t.file ? 'Stop ' : 'Listen to ') + t.name, onclick: () => listen(t.file) }),
-    el('span', { className: 'n', textContent: t.name }),
-    ...(t.wrong ? [el('span', { className: 'tag low', title: 'Probably not the playlist\'s song: ' + t.wrong, textContent: 'Looks wrong' })] : []),
-    el('span', { className: 'tag' + (LOSSLESS.includes(t.kind) ? ' lossless' : ''), textContent: t.kind }),
-    ...(t.kbps && t.kbps < 318 ? [el('span', { className: 'tag low', title: 'Below 320 kbps: the file the artist uploaded is low quality. Buy the lossless one from a shop.', textContent: t.kbps + ' kbps' })] : []),
-    el('span', { className: 'tag', textContent: t.mb + ' MB' }),
-    ...((s.justGot || []).includes(t.name) ? [el('span', { className: 'tag new', title: 'Just picked up from your Downloads folder', textContent: 'New' })] : []),
-    ...(t.src ? [el('span', { className: 'tag', title: t.src === 'Soulseek' ? 'Found on Soulseek; replaced by the artist\'s own file when it comes' : 'Fetched from the artist\'s own free-download link', textContent: t.src })] : []),
-    el('button', { className: 'undo bad', title: 'Wrong song or a bad copy? It goes to the Trash, is never taken again, comes off your USB too, and another copy is looked for right away.',
-      textContent: 'Wrong or bad file', onclick: throwBack({ file: t.file }, `Throw back "${t.name}"?\n\n${t.wrong ? 'It looks wrong: ' + t.wrong + '.\n\n' : ''}It goes to the Trash, this file is never taken again, and The Crate starts looking for another copy right away.` + offUsb(false)) })))
+    ...(off.length && !q ? [el('div', { className: 'checks' },
+      `${checked - off.length} of ${checked} match their song's length. ${off.length} ${off.length === 1 ? 'is' : 'are'} off by over 5 seconds: often an extended mix, sometimes the wrong song. `,
+      el('button', { className: 'undo', textContent: onlyOff ? 'Show all' : 'Show ' + (off.length === 1 ? 'it' : 'them'), onclick: () => { onlyOff = !onlyOff; draw(); } }))] : []),
+    ...(shown.length ? shown.flatMap((t, i) => [
+      ...(t.liked && !(shown[i - 1] || {}).liked ? [el('li', { className: 'grp' }, t.file.split('/')[0])] : []),
+      haveRow(t)])
     : [el('div', { className: 'empty', textContent: q ? 'No match.' : 'Nothing yet. Tracks whose artists allow downloads land here in their original quality.' })]));
 
   for (const x of document.querySelectorAll('.tabs button')) x.setAttribute('aria-selected', x.dataset.v === view);
@@ -971,6 +1019,11 @@ $('liked').onpaste = e => { const t = e.clipboardData.getData('text'); if (SONGS
 $('likedAdd').onclick = () => addLiked($('liked').value);
 $('likedForget').onclick = () => call('/api/liked/forget', {}).then(s => { render(s); likedSaid = Date.now(); say('likedNote', 'Cleared. Songs already on your Mac stay.'); });
 var likedSaid = 0, LIKED_HOW = $('likedNote').textContent;
+// Liked Songs' Options save as soon as one changes; songs already on the Mac stay where they are.
+const likedOpt = body => call('/api/liked/settings', body).then(s => { render(s); likedSaid = Date.now(); say('likedNote', 'Saved. Applies to the next songs.'); }, e => alert(e.message));
+$('loFolder').onchange = () => likedOpt({ folder: $('loFolder').value });
+$('loOrder').onchange = () => likedOpt({ order: $('loOrder').value });
+$('loFloor').onchange = () => likedOpt({ floorGb: $('loFloor').value });
 function likedLine(l) {
   if (Date.now() - likedSaid < 12000) return;
   if (!l) return say('likedNote', LIKED_HOW);
