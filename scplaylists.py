@@ -87,8 +87,7 @@ def sources(d):
             if n:
                 got.append(("tree:Contents", "Everything rekordbox put on it", n))
         for rel, songs in friend.folders(base, False, not lib and not os.path.isdir(os.path.join(base, "Contents"))):
-            if rel:
-                got.append(("dir:" + rel, rel.replace(os.sep, " / "), len(songs)))
+            got.append(("dir:" + rel, rel.replace(os.sep, " / ") or vol, len(songs)))  # songs at its top: named after the USB
         if got:
             out[vol] = got
     return out
@@ -135,7 +134,7 @@ def songs_of(d, vol, sid, lens):
         files = [t["path"] for t in items]
     elif sid.startswith("dir:"):
         rel = sid[4:]
-        full = friend.within(base, rel) if rel else ""
+        full = friend.within(base, rel) if rel else base
         if not full or not os.path.isdir(full):
             return []
         files = ["/" + os.path.join(rel, n) for n in sorted(os.listdir(full), key=str.lower)
