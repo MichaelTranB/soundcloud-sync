@@ -172,8 +172,40 @@ def flatten(d, music):
     return moved
 
 
+def follow(d, slsk):
+    """A got song whose file moved inside the music folder (the Library Manager notes each move in dj-moved.tsv:
+    where it was, where it is, both inside the folder) keeps its record: it isn't fetched again, and Wrong or bad
+    file still finds it. Returns how many records followed."""
+    try:
+        with open(os.path.join(d, "dj-moved.tsv"), errors="replace") as f:
+            moves = [p for p in (l.rstrip("\n").split("\t") for l in f) if len(p) == 2 and all(p)]
+    except OSError:
+        return 0
+    base = os.path.realpath(slsk)
+    to = {}
+    for a, b in moves:
+        pa, pb = os.path.join(slsk, a), os.path.join(slsk, b)
+        if all(os.path.realpath(p).startswith(base + os.sep) for p in (pa, pb)):
+            to[os.path.normpath(pa)] = os.path.normpath(pb)
+    n = 0
+    with locked(d):
+        got = load_got(d)
+        for row in got:
+            new = to.get(os.path.normpath(row[2]))
+            while new in to and not os.path.exists(new):  # moved twice
+                new = to[new]
+            if new and not os.path.exists(row[2]) and os.path.isfile(new):
+                row[2], n = new, n + 1
+        if n:
+            came = load_from(d)
+            save_got(d, got)
+            save_from(d, {(to.get(os.path.normpath(p), p) if not os.path.exists(p) else p): v for p, v in came.items()})
+    return n
+
+
 def prepare(d, slsk):
     flatten(d, slsk)  # files from the time Soulseek had a folder of its own join the rest, once
+    follow(d, slsk)  # a got song the Library Manager moved (into the Liked Songs folder, say) keeps its record
     record(d, slsk)  # a track sockseek got in a run that stopped early counts before anything is searched again
     rows = to_get(d)
     wanted = {link for link, *_ in rows}
