@@ -9,7 +9,7 @@ the same by hand from that page. Songs it isn't sure of are left for a look, nev
 What was done is kept in sc-playlists.json, so a run can stop and pick up again without adding a song twice.
 Never uploads a file, never makes anything public, never changes the USB.
 """
-import json, os, re, subprocess, time, unicodedata
+import contextlib, fcntl, json, os, re, subprocess, threading, time, unicodedata
 
 import friend
 
@@ -30,9 +30,23 @@ def load(d):
 
 def _save(d, s):
     p = os.path.join(d, FILE)
-    with open(p + ".tmp", "w") as f:
+    tmp = f"{p}.{os.getpid()}.{threading.get_ident()}.tmp"
+    with open(tmp, "w") as f:
         json.dump(s, f)
-    os.replace(p + ".tmp", p)
+    os.replace(tmp, p)
+
+
+_mine = threading.Lock()
+
+
+@contextlib.contextmanager
+def _edit(d):
+    """One change at a time (two tabs marking songs at once both count): yields the state; saved on the way out."""
+    with _mine, open(os.path.join(d, ".sc-playlists.lock"), "a") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        s = load(d)
+        yield s
+        _save(d, s)
 
 
 def settings(d):
@@ -41,7 +55,6 @@ def settings(d):
 
 
 def set_settings(d, body):
-    s = load(d)
     now = settings(d)
     if body.get("mode") in ("each", "one"):
         now["mode"] = body["mode"]
@@ -50,8 +63,8 @@ def set_settings(d, body):
         if not name:
             raise ValueError("Give the playlist a name.")
         now["name"] = name
-    s["settings"] = now
-    _save(d, s)
+    with _edit(d) as s:
+        s["settings"] = now
     return now
 
 
@@ -136,8 +149,9 @@ def songs_of(d, vol, sid, lens):
 
 def key(list_name, song):
     # the whole "artist - title" (no file ending to drop: "Song (feat. Alice)" and "(feat. Bob)" stay two songs)
+    # letters of every alphabet count (봄날 and 쩔어 stay two songs); accents, spaces and punctuation don't
     s = unicodedata.normalize("NFKD", (song["artist"] + " - " + song["title"]) if song["artist"] else song["title"])
-    return list_name + "\n" + (re.sub(r"[^a-z0-9]+", "", s.lower()) or s.lower())
+    return list_name + "\n" + (re.sub(r"[\W_]+", "", s.lower()) or s.lower())
 
 
 def parts(name, songs, before):
@@ -171,8 +185,7 @@ def start(d, vol, ids):
     ids = [i for i in ids if i in offered]
     if not ids:
         raise ValueError("Tick at least one folder or playlist.")
-    s = load(d)
-    lens = s.get("lens") or {}
+    lens = load(d).get("lens") or {}
     opts = settings(d)
     groups = []  # (playlist name, songs)
     for i in ids:
@@ -183,34 +196,33 @@ def start(d, vol, ids):
             g[1].extend(songs)
         else:
             groups.append((name, songs))
-    lists = []
-    for name, songs in groups:
-        seen, uniq = set(), []
-        for x in songs:
-            k = key(name, x)
-            if k not in seen:
-                seen.add(k)
-                uniq.append(dict(x, k=k))
-        lists.extend(parts(name, uniq, (s.get("run") or {}).get("lists") or []))
-    s.update(lens=lens, run={"usb": vol, "ids": ids, "at": time.time(), "lists": lists})
-    _save(d, s)
+    with _edit(d) as s:
+        lists = []
+        for name, songs in groups:
+            seen, uniq = set(), []
+            for x in songs:
+                k = key(name, x)
+                if k not in seen:
+                    seen.add(k)
+                    uniq.append(dict(x, k=k))
+            lists.extend(parts(name, uniq, (s.get("run") or {}).get("lists") or []))
+        s.update(lens={**(s.get("lens") or {}), **lens}, run={"usb": vol, "ids": ids, "at": time.time(), "lists": lists})
     return counts(d)
 
 
 def mark(d, k, status, url="", note="", by="you"):
-    s = load(d)
     if status and status not in STATUS:
         raise ValueError("Pick Added, Not sure or Not on SoundCloud.")
     url = url.strip()
     if url and not re.match(r"https://(on\.|m\.|www\.)?soundcloud\.com/\S+$", url):
         raise ValueError("That isn't a SoundCloud link.")
-    done = s.setdefault("songs", {})
-    if status:
-        done[k] = {"status": status, "url": url, "note": re.sub(r"\s+", " ", note).strip()[:140], "by": by,
-                   "at": time.time()}
-    else:
-        done.pop(k, None)
-    _save(d, s)
+    with _edit(d) as s:
+        done = s.setdefault("songs", {})
+        if status:
+            done[k] = {"status": status, "url": url, "note": re.sub(r"\s+", " ", note).strip()[:140], "by": by,
+                       "at": time.time()}
+        else:
+            done.pop(k, None)
 
 
 def made(d, name, url):
@@ -218,15 +230,13 @@ def made(d, name, url):
     url = url.strip()
     if url and not re.match(r"https://(on\.|m\.|www\.)?soundcloud\.com/[^/\s]+/sets/\S+$", url):
         raise ValueError("Paste the playlist's own link (it has /sets/ in it).")
-    s = load(d)
-    s.setdefault("made", {})[name] = url
-    _save(d, s)
+    with _edit(d) as s:
+        s.setdefault("made", {})[name] = url
 
 
 def forget(d):
-    s = load(d)
-    s.pop("run", None)
-    _save(d, s)
+    with _edit(d) as s:
+        s.pop("run", None)
 
 
 def counts(d):

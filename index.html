@@ -632,7 +632,7 @@ function bestAgent(s) {
 const agentName = w => el('span', { className: 'ag ' + w, textContent: AGENT[w] });
 function openHelper(job) {
   job = job === 'scpl' ? 'scpl' : 'free';
-  if (job !== helperJob) { delete helperDone.claude; delete helperDone.codex; }  // started or copied for the other job, not this one
+  delete helperDone.claude; delete helperDone.codex;  // each opening is a fresh go: a new run, carrying on, or the other job
   helperJob = job; helperMsg = ''; paintHelper(true); $('helper').showModal(); }
 $('helperClose').onclick = () => $('helper').close();
 $('helper').onclick = e => { if (e.target === $('helper')) $('helper').close(); };

@@ -144,3 +144,6 @@ liked-state.json
 *.json.tmp
 .waves/
 liked-settings.json
+sc-playlists.json
+sc-playlists.json.*.tmp
+.sc-playlists.lock
