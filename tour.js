@@ -38,6 +38,7 @@
         text: 'Open this and type your SoundCloud name to list every playlist you have. It uses the sign-in already in your browser.' },
       { target: field('#liked'), title: 'Spotify Liked Songs', text: 'Paste them once. Each sync fetches the next batch, EDM first, and always leaves space free on your Mac.' },
       { target: field('#usb'), title: 'Your DJ USB', text: 'Pick it and new songs copy over after every sync and whenever you plug it in. It only adds, never deletes.' },
+      { target: field('#scplUsb'), title: 'USB to SoundCloud', text: 'Turns the folders on a USB into private SoundCloud playlists. It never uploads files or changes the USB.' },
       { target: field('#slskUser'), title: 'Soulseek', text: 'Finds what SoundCloud won\'t give you, lossless or 320 kbps only. Sign in once; it only ever downloads.' },
       { target: field('#syncTime'), title: 'Daily sync', text: 'Pick the time. Keep your Mac on then; if it\'s asleep, it syncs when it wakes.' },
       { target: () => q('#sync'), title: 'Sync Now', text: 'Gets new songs right away, then updates your USB and DJ lists. The first one takes a while.' },
@@ -67,7 +68,7 @@
 
   // ---- helpers ------------------------------------------------------------------------------------------------
   // A closed <details> keeps its box but paints nothing inside it, so what sits in one (below its summary) is not on screen.
-  const folded = e => { const d = e.closest('details:not([open])'); return !!d && !(e.closest('summary') && e.closest('summary').parentElement === d); };
+  const folded = e => { const d = e.closest('details:not([open])'); return !!d && e !== d && !(e.closest('summary') && e.closest('summary').parentElement === d); };
   const shown = e => !!e && e.getClientRects().length > 0 && e.getBoundingClientRect().width > 0 && !folded(e);
   const asList = v => (Array.isArray(v) ? v : [v]).filter(Boolean);
   function union(els) {
