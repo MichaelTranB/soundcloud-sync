@@ -84,6 +84,7 @@ def genres_there(usb, songs):
 
 FILL = ("length", "bpm", "bpmAnalyzed", "year", "bitrate", "title", "artist", "album", "comment", "label", "remixer",
         "key")  # kept up to date only until the deck has analysed the track
+EMPTY = ("title", "artist", "album", "year")  # after that, only where the library holds nothing
 
 
 def write(usb, songs, lists, backups):
@@ -113,16 +114,21 @@ def write(usb, songs, lists, backups):
             r = row(s, usb_file)
             old = nfc(f"../{MUSIC}/{s['was']}") if s.get("was") else ""
             if old in have and r["path"] not in have:  # the file moved: the same track, cues and all, at its new place
-                con.execute("UPDATE Track SET path=?, filename=? WHERE id=?", (r["path"], r["filename"], have[old][0]))
+                # (or became another kind of file with the same sound: a FLAC that is now an AIFF, aiff.py)
+                con.execute("UPDATE Track SET path=?, filename=?, fileType=?, fileBytes=?, bitrate=COALESCE(?, bitrate) "
+                            "WHERE id=?", (r["path"], r["filename"], r["fileType"], r["fileBytes"], r["bitrate"], have[old][0]))
                 have[r["path"]] = have.pop(old)
             if r["path"] in have:
                 tid, done = have[r["path"]]
                 ids[s["rel"]] = tid
                 analysed += 1 if done else 0
-                cols = ["genre"] if done else ["genre", *FILL]
+                # a song the deck has analysed keeps what the deck holds: only its genre follows, and a name, artist,
+                # album or year the library had none of (filled in since: details.py)
+                cols = ["genre", *EMPTY] if done else ["genre", *FILL]
                 old = con.execute(f"SELECT {', '.join(cols)} FROM Track WHERE id=?", (tid,)).fetchone()
                 diff = {c: r[c] for c, o in zip(cols, old) if r[c] != o and not (r[c] in (None, "") and o in (None, ""))
-                        and not (c != "genre" and r[c] in (None, ""))}
+                        and not (c != "genre" and r[c] in (None, ""))
+                        and not (done and c in EMPTY and o not in (None, "", 0))}
                 if diff:
                     con.execute(f"UPDATE Track SET {', '.join(c + '=?' for c in diff)} WHERE id=?", (*diff.values(), tid))
                 continue

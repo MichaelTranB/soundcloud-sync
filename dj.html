@@ -159,7 +159,7 @@
   button.play { background: transparent; border: 1px solid var(--line); color: var(--text); width: 36px; height: 36px; padding: 0; flex: none; font-size: 12px; line-height: 1; }
   button.play.on { background: var(--hot); border-color: var(--hot); }
   .tag.low { color: var(--warn); border-color: #6b5a1a; }
-  .fix { margin: 8px 0 0 48px; color: var(--dim); font-size: 14.5px; display: flex; gap: 4px 14px; flex-wrap: wrap; align-items: baseline; }
+  .fix { margin: 8px 0 0 78px; color: var(--dim); font-size: 14.5px; display: flex; gap: 4px 14px; flex-wrap: wrap; align-items: baseline; }
   .fix button { background: none; border: 0; border-bottom: 1px dotted var(--dim); border-radius: 0; padding: 0; color: var(--text); font-weight: 600; font-size: 14.5px; }
   #player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--panel); border-top: 1px solid var(--line); padding: 10px 20px; display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
   #player[hidden] { display: none; }
@@ -169,6 +169,42 @@
   #player audio[hidden], #player .cant[hidden] { display: none; }
   #player .cant { flex: 1 1 280px; color: var(--warn); font-size: 14.5px; }
   #player button { padding: 8px 14px; font-size: 14px; }
+  /* A section's name with one plain line, and a "?" that opens its note. */
+  .hd { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; margin: 0 0 10px; }
+  .hd b { font-size: 17px; }
+  .hd small { color: var(--dim); font-size: 14.5px; flex: 1 1 240px; }
+  button.q { background: transparent; border: 1px solid var(--dim); color: var(--dim); width: 24px; height: 24px; padding: 0; font-size: 13px; line-height: 1; flex: none; align-self: center; }
+  button.mini { padding: 3px 12px; font-size: 13.5px; }
+  .club h2 button.q, .other .hd button.q { margin-left: auto; }
+  .other .hd { margin: 0; padding: 4px 0 8px; }
+  button.q[aria-expanded="true"] { background: var(--lib); border-color: var(--lib); color: var(--hot); }
+  .help { border-left: 2px solid var(--hot); padding: 2px 0 2px 14px; margin: 0 0 16px; max-width: 720px; }
+  .help[hidden] { display: none; }
+  .help p { margin: 0 0 6px; color: #c3c1d0; font-size: 14.5px; }
+  .help p:last-child { margin: 0; }
+  .help b { color: var(--text); }
+  .help button, .cands > button { background: none; border: 0; border-bottom: 1px dotted var(--dim); border-radius: 0; padding: 0; color: var(--text); font-weight: 600; font-size: 14.5px; }
+  .gap { margin-top: 36px; }
+  /* The question before a USB that already has things on it is changed. */
+  .setup .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .setup ul { border: 0; margin: 0 0 18px; display: grid; gap: 6px; }
+  .setup ul li { display: block; color: #c3c1d0; font-size: 15px; }
+  .setup ul li::before { content: none; }
+  .setup ul li b { color: var(--text); }
+  /* The song list's tick boxes, and what to do with the ticked songs. */
+  input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--hot); flex: none; padding: 0; }
+  .doit { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding: 4px 0 14px; }
+  .doit label { display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: var(--dim); cursor: pointer; margin-right: auto; padding: 6px 0; }
+  .doit button { padding: 9px 16px; font-size: 14.5px; }
+  .doit .state { flex-basis: 100%; color: var(--dim); font-size: 14.5px; }
+  .doit .state[hidden] { display: none; }
+  .cands { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0 0 78px; }
+  .cand { display: flex; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 10px 12px; flex: 1 1 280px; max-width: 440px; min-width: 0; }
+  .cand img, .cand .noart { width: 64px; height: 64px; border-radius: 6px; object-fit: cover; flex: none; background: #09090e; }
+  .cand div { flex: 1; min-width: 0; font-size: 14.5px; overflow-wrap: anywhere; }
+  .cand small { display: block; color: var(--dim); font-size: 13.5px; }
+  .cand button { padding: 8px 14px; font-size: 14px; }
+  @media (max-width: 820px) { .fix, .cands { margin-left: 0; } .doit label { flex-basis: 100%; } }
   @media (max-width: 820px) { main { padding: 32px 16px 72px; } .strip { grid-template-columns: 1fr 1fr; } h1 { font-size: 40px; } .brand img { width: 44px; height: 44px; } .bar { flex-wrap: wrap; } .decks, .setup { padding-left: 18px; padding-right: 18px; } .decks .row { grid-template-columns: 17px 1fr; } .decks .row .say, .decks .row time { grid-column: 2; } .setup li small { padding-left: 0; } }
 </style>
 </head>
@@ -225,8 +261,25 @@
     <h3>Listening and quality</h3>
     <p>Press <b>&#9654;</b> on a song to hear it. <b>Below gig quality</b> means an MP3 under 320 kbps (or an AAC under 256): fine at home, thin on a club system. <b>Find a better copy</b> asks Soulseek, and you keep your file until the better one lands.</p>
 
+    <h3>AIFF for club decks</h3>
+    <p>Older club decks skip FLAC. So a new FLAC becomes an AIFF by itself: the same sound, bit for bit, with its cover, tags, playlists and cues. The FLAC goes to the Trash only once the AIFF is checked. <b>Undo</b> is on the song's row.</p>
+
+    <h3>Cover and details</h3>
+    <p>Fills only what is empty: cover, title, artist, album, genre, year. It looks at the song's own SoundCloud page, then Apple Music and MusicBrainz, and writes only when the sources agree. If they don't, you pick from two or three. <b>Undo</b> is on the song's row.</p>
+
+    <h3>Cues</h3>
+    <p>Hot cues, memory cues and loops you set anywhere reach everywhere: the Prime 4, rekordbox on this Mac, and your USB for club decks. So you set a cue once.</p>
+    <ol>
+      <li>Runs at every update. The newest edit wins, and nothing is ever deleted.</li>
+      <li><b>Undo</b> on the Cues line puts the last change back.</li>
+      <li>Not carried: MP3 cues to or from the Prime 4, memory cues to the Prime 4, and beat grids. Each app keeps its own grid.</li>
+    </ol>
+
+    <h3>Your USB is asked first</h3>
+    <p>A USB that already has things on it is not touched until you press <b>Go ahead</b>. After that, songs go only into The Crate's own folder and playlists into its own <b>The Crate</b> folder. Your files, folders and playlists are never moved, renamed or deleted. You can stop any time.</p>
+
     <h3>Is my library safe?</h3>
-    <p>It only touches its own songs and its own <b>The Crate</b> folder. Your other playlists, cues and grids are left alone. Each library is backed up before a change, and rekordbox's is never written while rekordbox is open: it catches up when you close it.</p>
+    <p>It only touches its own songs and its own <b>The Crate</b> folder. Your other playlists and grids are left alone. Each library is backed up before a change, and rekordbox's is never written while rekordbox is open: it catches up when you close it.</p>
 
     <h3>What it uses</h3>
     <p>Free, open-source tools on your Mac: <b>Essentia</b> (tempo and key), <b>Mutagen</b> (song details), <b>pyrekordbox</b> (rekordbox's libraries), <b>Chromaprint</b>, <b>AcoustID</b> and <b>MusicBrainz</b> (song recognition). No AI, no account besides the AcoustID key.</p>
@@ -250,11 +303,29 @@
         <button id="recGo">Turn it on</button></li>
     </ol>
   </section>
+  <section class="setup" id="usbAsk" hidden aria-live="polite"></section>
+  <div class="hd"><b>Your decks</b><small>Where your songs stand in each DJ app. Updates by itself after every sync and when you plug in your USB.</small>
+    <button class="q" data-help="hDecks" aria-expanded="false" aria-label="How your decks are updated">?</button></div>
+  <div class="help" id="hDecks" hidden>
+    <p><b>Update decks now</b> sends new songs, genres, tempo and key to your USB and rekordbox right away. rekordbox is written only while it's closed; it catches up when you close it.</p>
+    <p><b>Cues</b> you set on the Prime 4, in rekordbox or on a club's decks reach the others. Newest wins, none is deleted, and <b>Undo</b> puts the last change back.</p>
+    <p><b>Never:</b> moves or deletes your own playlists, folders or files.</p>
+    <p><b>Undo:</b> every library is copied to <b>dj-backups</b> first.</p>
+    <p id="cuesNote" hidden></p>
+    <p id="usbOk" hidden></p>
+  </div>
   <div class="decks" id="decks"></div>
   <section class="other" id="other" hidden aria-label="Copy from another USB"></section>
 
   <div class="club" id="club" hidden></div>
 
+  <div class="hd"><b>Genres</b><small>Each genre is a playlist on your decks. Tap one to see its songs.</small>
+    <button class="q" data-help="hGenres" aria-expanded="false" aria-label="How genres work">?</button></div>
+  <div class="help" id="hGenres" hidden>
+    <p>A song's genre comes from the file, from SoundCloud, or from its sound. Your own pick always wins: press <b>Edit</b> on a song.</p>
+    <p>The amber ones are to-do lists: songs with no genre, no cover, still a FLAC, and so on.</p>
+    <p>Removing a genre only takes it off the list. No song is deleted, and a change reaches your decks in a few seconds.</p>
+  </div>
   <div class="pills" id="pills"></div>
   <div class="addrow" id="addRow" hidden>
     <input id="addName" maxlength="40" placeholder="A new genre, like Melodic Bass" aria-label="New genre name">
@@ -262,13 +333,28 @@
   </div>
   <div class="note" id="note" role="status"></div>
 
+  <div class="hd gap"><b>Songs</b><small>Tick songs, then choose what to do with them.</small>
+    <button class="q" data-help="hSongs" aria-expanded="false" aria-label="How the song list's buttons work">?</button></div>
+  <div class="help" id="hSongs" hidden>
+    <p><b>Convert to AIFF</b>: the same sound, in a file every club deck plays. The original goes to the Trash once the AIFF is checked; playlists and cues follow. <span id="autoSay"></span></p>
+    <p><b>Add cover &amp; details</b>: fills only what is empty, and only when it's sure; otherwise you choose. <span id="autoFill"></span></p>
+    <p><b>Put on USB</b>: copies songs not on your USB yet into The Crate's own folder. Nothing else on it is moved or deleted.</p>
+    <p>Each one shows <b>Undo</b> on the song's row.</p>
+  </div>
   <div class="bar">
-    <input id="q" type="search" placeholder="Search a song or artist" aria-label="Search">
+    <input id="q" type="search" placeholder="Search song, artist, genre, key or format" aria-label="Search">
     <select id="sort" aria-label="Sort by">
       <option value="artist">Artist A to Z</option>
       <option value="bpm">Tempo, slow to fast</option>
       <option value="key">Key (mixing wheel)</option>
     </select>
+  </div>
+  <div class="doit">
+    <label><input type="checkbox" id="all"><span id="allSay">Select all</span></label>
+    <button class="ghost" id="doAiff" disabled>Convert to AIFF</button>
+    <button class="ghost" id="doFill" disabled>Add cover &amp; details</button>
+    <button class="ghost" id="doUsb" disabled>Put on USB</button>
+    <div class="state" id="doing" role="status" hidden></div>
   </div>
   <ul id="songs"></ul>
   <button class="ghost" id="more" hidden></button>
@@ -305,6 +391,16 @@ let usbs = null, usbKey = null;  // what each other plugged-in USB offers to cop
 let openUsb = '', ticked = new Set(), allLists = false;  // the USB opened to copy from, and what is ticked on it
 let copying = false;          // a copy was running at the last look
 let playing = '';             // the file in the player
+let picks = new Set();        // the songs ticked in the list (their files)
+let look = new Set();         // songs whose "which one is it?" candidates are open
+let inList = [];              // the songs in the list right now (what "Select all" ticks)
+let jobs = { aiff: false, details: false };  // which of the list's jobs was running at the last look
+// The to-do lists among the pills: each shows only while it has songs.
+const TODO = [[' low', 'Below gig quality', s => s.low, 'Every song is gig quality.'],
+  [' aiff', 'Needs AIFF', s => s.kind === 'FLAC', 'No FLACs left: every deck plays what you have.'],
+  [' cover', 'No cover', s => (s.lacks || []).includes('cover'), 'Every song has its cover.'],
+  [' details', 'Missing details', s => (s.lacks || []).some(f => f !== 'cover'), 'No song is missing details.'],
+  [' usb', 'Not on USB', s => s.usb === false, 'Every song is on your USB.']];
 
 function say(text, bad) { const n = $('note'); n.textContent = text || ''; n.className = 'note' + (bad ? ' bad' : ''); }
 
@@ -331,6 +427,11 @@ async function lookUsbs() {
 }
 const num = n => n.toLocaleString();
 const size = mb => mb >= 1000 ? (Math.round(mb / 100) / 10) + ' GB' : mb + ' MB';
+// a "?" beside a card that is drawn again at every look: what is open stays open
+const openHelp = new Set();
+const ask = (id, label) => { const b = el('button', { className: 'q', textContent: '?' }); b.setAttribute('aria-label', label); b.setAttribute('aria-expanded', openHelp.has(id));
+  b.onclick = () => { openHelp.has(id) ? openHelp.delete(id) : openHelp.add(id); draw(); }; return b; };
+const notes2 = (id, lines) => { const h = el('div', { className: 'help' }, ...lines.map(t => el('p', { textContent: t }))); h.hidden = !openHelp.has(id); return h; };
 const link = (text, go) => { const b = el('button', { textContent: text }); b.onclick = go; return b; };
 
 // The player: one song at a time, in a bar at the foot of the page.
@@ -423,7 +524,11 @@ function row(song) {
   const play = el('button', { className: 'play' + (on ? ' on' : ''), textContent: on ? '❚❚' : '▶', title: on ? 'Stop' : 'Listen' });
   play.setAttribute('aria-label', (on ? 'Stop ' : 'Listen to ') + song.title);
   play.onclick = () => listen(song);
-  const top = el('div', { className: 'top' }, play, name, gs,
+  const box = el('input', { type: 'checkbox', checked: picks.has(song.file) });
+  box.setAttribute('aria-label', 'Tick ' + song.title);
+  box.onchange = () => { box.checked ? picks.add(song.file) : picks.delete(song.file); draw(); };
+  if ((view === ' cover' || view === ' details') && song.lacks) name.lastChild.textContent += ' · missing ' + song.lacks.join(', ') + (song.none ? ' (nothing found yet)' : '');
+  const top = el('div', { className: 'top' }, box, play, name, gs,
     el('span', { className: 'tag bpm', textContent: song.bpm ? String(Math.round(song.bpm * 10) / 10) : '—', title: 'Tempo (beats a minute)' }),
     el('span', { className: 'tag', textContent: song.tone ? song.tone + (WHEEL[song.tone] ? ' · ' + WHEEL[song.tone] : '') : '—', title: 'Key, and its number on the mixing wheel' }),
     el('span', { className: 'tag' + (song.low ? ' low' : ''), textContent: song.low ? song.kind + ' ' + song.kbps : song.kind,
@@ -440,19 +545,42 @@ function row(song) {
     if (own) fix.append(link('Throw away', () => throwAway(song, 'Throw "' + song.title + '" away?\n\nIt goes to the Trash, leaves your decks and your USB, and is never copied in again.', 'In the Trash. It leaves your decks and your USB too.')));
     li.append(fix);
   }
+  if (song.back) li.append(el('div', { className: 'fix' }, 'Now an AIFF. The original is in the Trash.',
+    link('Undo', () => post('/api/dj/aiff', { undo: [song.file] }))));
+  if (song.left) li.append(el('div', { className: 'fix' }, 'Not converted: ' + song.left));
+  if (song.filled) li.append(el('div', { className: 'fix' }, 'Added ' + song.filled.join(', ') + '.',
+    link('Undo', () => post('/api/dj/details', { undo: song.file }))));
+  if (song.ask) {
+    const on = look.has(song.file);
+    li.append(el('div', { className: 'fix' }, 'Cover and details: not sure which is right.',
+      link(on ? 'Hide' : 'Show ' + song.ask.length + ' to choose from', () => { on ? look.delete(song.file) : look.add(song.file); draw(); })));
+    if (on) {
+      const c = el('div', { className: 'cands' });
+      song.ask.forEach((a, i) => {
+        const use = el('button', { className: 'ghost', textContent: 'Use this' });
+        use.onclick = () => { look.delete(song.file); say('Written. Your decks follow in a moment.'); post('/api/dj/details', { pick: song.file, n: i + 1 }); };
+        c.append(el('div', { className: 'cand' },
+          a.cover ? el('img', { src: a.cover, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer' }) : el('span', { className: 'noart' }),
+          el('div', {}, a.title || song.title, el('small', { textContent: [a.artist, a.album, a.year, a.genre].filter(Boolean).join(' · ') }),
+            el('small', { textContent: 'From ' + (a.source || 'a music catalogue') })), use));
+      });
+      li.append(c);
+    }
+  }
   if (isOpen) li.append(picker(song));
   return li;
 }
 
 function inView(song) {
   if (kept.has(song.key)) return true;
-  return view === 'all' || (view === 'none' ? !song.genres.length : view === ' low' ? song.low : song.genres.includes(view));
+  const todo = TODO.find(t => t[0] === view);
+  return view === 'all' || (view === 'none' ? !song.genres.length : todo ? !!todo[2](song) : song.genres.includes(view));
 }
 
 function pill(label, count, key, cls) {
   const b = el('button', { className: cls || '' }, label, el('em', { textContent: count }));
   b.setAttribute('aria-pressed', view === key);
-  b.onclick = () => { view = key; kept.clear(); open.clear(); shown = 80; draw(); window.scrollTo({ top: $('pills').offsetTop - 20 }); };
+  b.onclick = () => { view = key; kept.clear(); open.clear(); picks.clear(); shown = 80; draw(); window.scrollTo({ top: $('pills').offsetTop - 20 }); };
   return b;
 }
 
@@ -483,6 +611,13 @@ function draw() {
   deck('rekordbox', 'on this Mac', S.rekordbox ? S.lastRekordbox : '', S.rekordbox ? 'Ready: filled in at the next update.' : 'rekordbox is not on this Mac. Nothing to do: install it and its library fills in by itself.');
   deck('rekordbox', stick, away ? '' : S.lastRekordboxUsb, away || 'Ready: filled in at the next update.');
   deck('Serato', stick, away ? '' : S.lastSerato, away || 'Ready: filled in at the next update.');
+  // cue points in step (cues.py): the last run's line, and Undo while there is something it sent
+  const cue = (S.fix || {}).lastCues || '', back = el('button', { className: 'ghost mini', textContent: 'Undo' });
+  back.onclick = () => { say('Putting the last cue changes back.'); post('/api/dj/cues', { undo: true }); };
+  deck('Cues', 'every deck', away ? '' : cue, away || 'In step: a cue you set on one deck reaches the others at the next update.', away ? '' : ' ok',
+    !away && / sent to /.test(cue) ? el('span', {}, '  ', back) : '');
+  const cn = $('cuesNote'), notes = (S.fix || {}).cuesNote || [];
+  cn.hidden = !notes.length; cn.textContent = notes.length ? 'Not carried: ' + notes.join('; ') + '.' : '';
   // recognising songs by their sound (AcoustID and MusicBrainz, as MusicBrainz Picard does): until it is set up,
   // the set-up card above asks for it
   $('setup').hidden = S.recognise || !S.analyser;
@@ -494,7 +629,9 @@ function draw() {
   // the club check (club.py): green is fine, amber would go wrong in a club, grey is worth knowing
   const cl = $('club'), checks = S.club || [], fix = checks.filter(r => r.ok === false).length;
   cl.hidden = !checks.length; cl.textContent = '';
-  cl.append(el('h2', {}, 'Club check', el('small', { textContent: fix ? fix + (fix === 1 ? ' thing' : ' things') + ' to sort out before a gig' : 'what a club\'s decks need from your USB' })));
+  cl.append(el('h2', {}, 'Club check', el('small', { textContent: fix ? fix + (fix === 1 ? ' thing' : ' things') + ' to sort out before a gig' : 'what a club\'s decks need from your USB' }), ask('club', 'How the club check works')),
+    notes2('club', ['Checks your USB against what club decks need: how it is formatted, the kinds of files, the right lists.',
+      'Green is fine. Amber would go wrong in a club. Grey is worth knowing.', 'It only reads: this check changes nothing on your USB.']));
   checks.forEach(r => cl.append(el('div', { className: 'row' }, el('span', { className: 'dot' + (r.ok === true ? ' ok' : r.ok === false ? ' warn' : '') }),
     el('div', {}, r.say, r.do ? el('small', { textContent: r.do }) : ''))));
 
@@ -505,6 +642,9 @@ function draw() {
   copying = !!S.copy;
   const ot = $('other'), offered = ((usbs || {}).usbs || []).filter(u => (S.others || []).includes(u.usb));
   ot.hidden = !offered.length && !S.copy && !S.lastFriend; ot.textContent = '';
+  if (offered.length) ot.append(el('div', { className: 'hd' }, el('b', { textContent: 'Copy from another USB' }), el('small', { textContent: 'Tick playlists or folders; they land in your library.' }), ask('other', 'How copying from another USB works')),
+    notes2('other', ['Copied songs get everything your own songs get: safety check, tempo, key, genres, every deck.',
+      'A song you already have isn\'t copied twice. Hot cues set in rekordbox come along.', 'The other USB is only read, never changed.']));
   if (S.copy) {
     ot.append(el('div', { className: 'head' }, el('b', {}, el('span', { className: 'spin' }), 'Copying songs from "' + S.copy.usb + '"',
       el('small', { textContent: S.copy.total ? num(S.copy.done) + ' of ' + num(S.copy.total) + '. Leave both USBs in until it is done.' : 'Reading what is on it.' }))));
@@ -546,8 +686,7 @@ function draw() {
   const p = $('pills'); p.textContent = '';
   p.append(pill('All', songs.length, 'all'));
   if (none || view === 'none') p.append(pill(NONE, none, 'none', 'todo'));
-  const thin = songs.filter(s => s.low).length;
-  if (thin || view === ' low') p.append(pill('Below gig quality', thin, ' low', 'todo'));
+  TODO.forEach(([key, label, is]) => { const n = songs.filter(is).length; if (n || view === key) p.append(pill(label, n, key, 'todo')); });
   const extra = [...new Set(songs.flatMap(s => s.genres))].filter(g => !S.list.includes(g));
   [...S.list, ...extra].forEach(g => {
     const n = songs.filter(s => s.genres.includes(g)).length;
@@ -569,19 +708,82 @@ function draw() {
 
   // the songs
   const q = $('q').value.trim().toLowerCase(), by = $('sort').value;
-  let rows = songs.filter(s => inView(s) && (!q || (s.title + ' ' + s.artist).toLowerCase().includes(q)));
+  const words = q.split(/\s+/).filter(Boolean);
+  const hay = s => [s.title, s.artist, s.genres.join(' '), s.tone || '', WHEEL[s.tone] || '', s.kind].join(' ').toLowerCase();
+  let rows = songs.filter(s => inView(s) && (!words.length || words.every(w => hay(s).includes(w))));
   if (by === 'bpm') rows = [...rows].sort((a, b) => (a.bpm || 999) - (b.bpm || 999));
   if (by === 'key') rows = [...rows].sort((a, b) => wheelNo(a.tone) - wheelNo(b.tone) || a.bpm - b.bpm);
   const ul = $('songs'); ul.textContent = '';
   if (view === 'none') rows.forEach(s => { if (!s.genres.length) open.add(s.key); });  // the to-do pile: pickers open
   rows.slice(0, shown).forEach(s => ul.append(row(s)));
-  if (!rows.length) ul.append(el('div', { className: 'empty', textContent: view === 'none' && !q ? 'Every song has a genre. Nice.' : view === ' low' && !q ? 'Every song is gig quality.' : 'No songs here.' }));
+  const todo = TODO.find(t => t[0] === view);
+  if (!rows.length) ul.append(el('div', { className: 'empty', textContent: view === 'none' && !q ? 'Every song has a genre. Nice.' : todo && !q ? todo[3] : 'No songs here.' }));
+  drawDoit(rows, songs);
+  drawAsk();
   document.querySelector('main').style.paddingBottom = playing ? '150px' : '';
   const m = $('more'); m.hidden = rows.length <= shown; m.textContent = 'Show ' + Math.min(80, rows.length - shown) + ' more';
 }
 
+// The tick line above the list: what is ticked, what can be done with it, and how far a running job is.
+function drawDoit(rows, songs) {
+  inList = rows;
+  const f = S.fix || {}, on = rows.filter(s => picks.has(s.file));
+  const all = $('all'); all.checked = !!rows.length && on.length === rows.length; all.indeterminate = !!on.length && on.length < rows.length;
+  $('allSay').textContent = on.length ? num(on.length) + ' ticked' : 'Select all ' + num(rows.length);
+  const toAiff = on.filter(s => s.kind === 'FLAC' || s.kind === 'WAV'), toFill = on.filter(s => s.lacks), off = songs.filter(s => s.usb === false).length;
+  const set = (id, label, n, ok, why) => { const b = $(id); b.textContent = label + (n ? ' (' + num(n) + ')' : ''); b.disabled = !ok; b.title = ok ? '' : why; };
+  set('doAiff', 'Convert to AIFF', toAiff.length, toAiff.length && !f.aiff && S.analyser, f.aiff ? 'Still converting the last ones.' : 'Tick FLAC or WAV songs first.');
+  set('doFill', 'Add cover & details', toFill.length, toFill.length && !f.details && S.analyser, f.details ? 'Still looking up the last ones.' : 'Tick songs that are missing a cover or details first.');
+  set('doUsb', 'Put on USB', off, off && S.usbIn, !S.usbIn ? 'Plug in your USB first.' : 'Every song is already on it.');
+  $('doAiff').onclick = () => { say('Converting ' + num(toAiff.length) + (toAiff.length === 1 ? ' song' : ' songs') + '. Each original goes to the Trash once its AIFF is checked.'); post('/api/dj/aiff', { files: toAiff.map(s => s.file) }); picks.clear(); };
+  $('doFill').onclick = () => { say('Looking up ' + num(toFill.length) + (toFill.length === 1 ? ' song' : ' songs') + ': a few seconds each.'); post('/api/dj/details', { files: toFill.map(s => s.file) }); picks.clear(); };
+  const d = $('doing'); d.textContent = ''; d.hidden = !f.aiff && !f.details;
+  if (f.aiff) d.append(el('span', { className: 'spin' }), 'Converting to AIFF: ' + num(f.aiff[0]) + ' of ' + num(f.aiff[1]) + '. ');
+  if (f.details) d.append(el('span', { className: 'spin' }), 'Looking up covers and details: ' + num(f.details[0]) + ' of ' + num(f.details[1]) + '.');
+  // a job that has just ended says how it went
+  const said = l => (l || '').replace(/^\S+ \S+\s+/, '').replace(/^[^:]*:\s*/, '');
+  if (jobs.aiff && !f.aiff && f.lastAiff) say('AIFF: ' + said(f.lastAiff), /PROBLEM/.test(f.lastAiff));
+  if (jobs.details && !f.details && f.lastDetails) say('Cover and details: ' + said(f.lastDetails), /PROBLEM/.test(f.lastDetails));
+  jobs = { aiff: !!f.aiff, details: !!f.details };
+  const auto = $('autoSay'); auto.textContent = '';
+  auto.append(f.auto ? 'New FLACs convert by themselves. ' : 'New FLACs are left as they are. ',
+    link(f.auto ? 'Switch off' : 'Switch on', () => post('/api/dj/aiff', { auto: !f.auto })));
+  const fill = $('autoFill'); fill.textContent = '';
+  fill.append(f.autoDetails ? 'New songs are filled in by themselves. ' : 'New songs are left as they are. ',
+    link(f.autoDetails ? 'Switch off' : 'Switch on', () => post('/api/dj/details', { auto: !f.autoDetails })));
+}
+// A USB that already has things on it: nothing on it is changed until you say so here (usb_ask.py).
+function drawAsk() {
+  const u = S.usbAsk, box = $('usbAsk'), ok = $('usbOk');
+  const answer = yes => post('/api/dj/usb-ok', { yes });
+  box.hidden = !u || u.state === 'ok'; box.textContent = '';
+  ok.hidden = !u || u.state !== 'ok' || !u.content; ok.textContent = '';
+  if (!ok.hidden) ok.append('"' + u.name + '" had things on it and you said go ahead. ', link('Stop', () => answer(false)));
+  if (!u || u.state === 'ok') return;
+  if (u.state === 'no') {
+    const go = el('button', { textContent: 'Allow' }); go.onclick = () => answer(true);
+    return box.append(el('span', { className: 'badge', textContent: 'Paused' }), el('h2', { textContent: '"' + u.name + '" is left alone' }),
+      el('p', { textContent: 'You said not now, so nothing on it is changed: no songs, no playlists.' }), el('div', { className: 'btns' }, go));
+  }
+  const yes = el('button', { textContent: 'Go ahead' }), no = el('button', { className: 'ghost', textContent: 'Not now' });
+  yes.onclick = () => answer(true); no.onclick = () => answer(false);
+  const adds = [u.songs ? num(u.songs) + (u.songs === 1 ? ' song' : ' songs') + ' into The Crate\'s own folder (SoundCloud Sync)' : 'New songs into The Crate\'s own folder (SoundCloud Sync)',
+    'a playlist folder called The Crate' + (u.lists && u.lists.length ? ', beside the playlists already in ' + u.lists.join(', ') : ' in the DJ apps\' lists')];
+  const ul = el('ul', {}, el('li', {}, el('b', { textContent: 'Adds: ' }), adds.join('; ') + '.'),
+    el('li', {}, el('b', { textContent: 'Cues: ' }), 'on The Crate\'s own songs only, kept in step with your other decks. None is deleted.'),
+    el('li', {}, el('b', { textContent: 'Never: ' }), 'moves, renames or deletes your files, folders or playlists.'),
+    el('li', {}, el('b', { textContent: 'Undo: ' }), 'each list is copied to dj-backups first, and you can stop any time.'));
+  if (u.trash) ul.append(el('li', {}, el('b', { textContent: 'To its Trash: ' }), num(u.trash) + ' older ' + (u.trash === 1 ? 'copy' : 'copies') + ' of The Crate\'s own songs, swapped for the library\'s file.'));
+  box.append(el('span', { className: 'badge', textContent: 'Your OK needed' }), el('h2', { textContent: 'Let The Crate add to "' + u.name + '"?' }),
+    el('p', { textContent: 'This USB already has things on it, so nothing is touched until you say so.' }), ul, el('div', { className: 'btns' }, yes, no));
+}
+$('all').onchange = () => { inList.forEach(s => $('all').checked ? picks.add(s.file) : picks.delete(s.file)); draw(); };
+$('doUsb').onclick = () => { say('Copying to your USB. Keep it plugged in.'); post('/api/dj/put', {}); };
+document.querySelectorAll('button.q').forEach(b => b.onclick = () => {
+  const h = $(b.dataset.help); h.hidden = !h.hidden; b.setAttribute('aria-expanded', !h.hidden);
+});
 $('more').onclick = () => { shown += 80; draw(); };
-$('q').oninput = () => { shown = 80; draw(); };
+$('q').oninput = () => { shown = 80; picks.clear(); draw(); };
 $('sort').onchange = draw;
 $('faqOpen').onclick = () => $('faq').showModal();
 $('faqClose').onclick = () => $('faq').close();

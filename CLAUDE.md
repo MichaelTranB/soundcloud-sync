@@ -56,13 +56,39 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   only its own; written from Serato's published layout, not yet tried in Serato itself). A song can have several
   genres: the first is the decks' Genre column, and it sits in every one of its genre playlists. Both libraries get
   one folder, "The Crate" (All songs, Newest 50, the SoundCloud playlist, one list per genre); nothing outside that
-  folder is read or changed, no track is ever deleted, music files are never edited, the decks' own analysis, cues
-  and grids are never touched, and the library file is copied to `dj-backups/` before every change (last 20 kept).
+  folder is read or changed, no track is ever deleted, the decks' own analysis and grids are never touched, and
+  the library file is copied to `dj-backups/` before every change (last 20 kept). Music files change only through
+  `aiff.py` and `details.py`, cues only through `cues.py` (all below).
   New rows are "not analysed", so the deck draws its own grid and waveform on first load. rekordbox rows get the
   file's cover (`share/PIONEER/Artwork`, its own three sizes). A genre changed in rekordbox or Engine DJ becomes
   his pick: `dj-written.json` remembers what each library showed after the last write, and a difference is his
   edit (not when emptied, not when it's just the file's own tag). `app.py` runs `dj.py` when rekordbox closes.
   Problems land in `dj.log` with the word PROBLEM and show on the page.
+- **Ask first (`usb_ask.py`):** a USB that already has files, folders or a DJ library is changed only after his
+  "Go ahead" on the page (`/` and `/dj`: what is added, what is never touched, how to undo). `usb.sh` and
+  `dj.once()` both stop at this gate; the yes is kept per stick (`.thecrate` in The Crate's folder on it,
+  `usb-ok.json`), a new kind of change (`KINDS`) asks again, "Stop" takes it back. An empty USB isn't asked.
+- **FLAC to AIFF (`aiff.py`):** `afconvert` writes the AIFF, Mutagen copies details and cover, the sound is
+  compared with the FLAC's own checksum, the AIFF passes the safety check, and only then the FLAC goes to the
+  Trash; every per-file record and the decks' rows follow, so cues and grids stay. New FLACs convert by
+  themselves (`usb.sh`, `dj.py`; switch in `aiff.json`); FLACs already there the first time, and WAVs, are his
+  pick on `/dj`. `aiff.py undo` brings the original back.
+- **Cover and details (`details.py`):** fills only EMPTY fields (cover of 500 px or more, title, artist, album,
+  genre, year). Sources, best first: the song's own SoundCloud page, its sound (only with an AcoustID key), then
+  iTunes Search and MusicBrainz by artist and title. Written by itself only when the length is within 3 s, artist
+  and title match, and it is the song's own page or two sources agree; else "needs a look" with up to three
+  candidates (`details-ask.json`). Every change is in `details-log.json` with what the file held before
+  (`details-undo/`), one Undo each. Only artist and title (and a fingerprint) leave the Mac.
+- **Cues in step (`cues.py`, last step of `dj.once()`, only with the chosen USB plugged in and allowed):** hot
+  cues, memory cues and loops across Engine DJ on the USB, rekordbox on the Mac and the USB's rekordbox library
+  (its `cue` table and analysis files). `cues-state.json` keeps what each place held after the last run, so a
+  difference is an edit there; the newest edit wins per slot; a missing cue is sent, never deleted; replaced
+  values go to `cues-history.json` and the page's Undo (`dj.py --cues-back`) puts the last run's back. rekordbox's
+  files are written only while it is closed (`app.py` runs `dj.py` when it closes). Not carried, and said on the
+  page (`cues-unmapped.txt`): MP3/M4A cues to or from Engine, memory cues to Engine, beat grids. Tests must set
+  `REKORDBOX_DB` to a scratch copy. Not yet tried on a real deck.
+- **Help on the pages:** every card has one plain line and a "?" (closed) with two to four lines: how it works,
+  what it never touches, how to undo. Keep new features to that shape; no blocks of text.
 - **Copy from another USB (`friend.py`, the card on `/dj`):** lists a second plugged-in USB's rekordbox playlists
   (read from a copy of its `exportLibrary.db` made on the Mac) or its folders; the picked songs are copied into the
   music folder (never twice: same name, any file kind), so the normal pipeline does the rest. `dj-friends.json`

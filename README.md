@@ -69,6 +69,9 @@ Never YouTube rips or recorded streams: low quality.
 - New tracks are copied after every sync (daily at your **Auto sync** time, or **Sync Now**) and the moment the USB is plugged in.
 - When new tracks land, it tells you. Tick **Eject the USB…** on the page to have it ejected then too, so you can
   just pull it out (off unless you tick it; never while a sync is still adding tracks).
+- **A USB that already has things on it is asked about first.** The page shows what would be added, what is never
+  touched and how to undo, with **Go ahead** or **Not now**. Until you say so, nothing on it is changed. The yes is
+  remembered for that stick (**Stop** on the Library Manager page takes it back); an empty USB needs no asking.
 - It only adds files. Nothing on the USB is ever deleted or overwritten. The one exception: a song you threw back
   with **Wrong or bad file** leaves the USB as well (right away if it's plugged in, else the next time you plug it
   in). It goes to the USB's own Trash, so you can still take it back until you empty the Trash; only The Crate's
@@ -105,6 +108,25 @@ straight into your decks' libraries, with no dragging and no clicks:
 - **Below gig quality:** MP3s under 320 kbps and M4As under 256 are marked. On each: **Find a better copy** (it joins the
   Soulseek search at once, and takes the old file's place in its playlists when it lands; the old one goes to the
   Trash) or **Throw away**.
+- **AIFF for club decks:** older club decks skip FLAC, so a FLAC that arrives becomes an AIFF by itself: the very
+  same sound (compared sample for sample), with its details and cover. Only once the AIFF is checked does the
+  FLAC go to the Trash, so no song is ever there twice, and its playlists and cues follow the new file. FLACs you
+  already had, and WAVs, are your pick in the song list. **Undo** brings the original back.
+- **Cover and details:** a song missing its cover, title, artist, album, genre or year gets them filled in. Only
+  empty fields are filled; nothing already there is changed. It writes by itself only when the song's own
+  SoundCloud page says so or two sources agree, and the length matches within 3 seconds; anything less sure is
+  shown as *needs a look* with up to three choices. Every change is listed with an **Undo**.
+- **Cues in step:** hot cues, memory cues and saved loops you set in one place reach the others at the next
+  update: Engine DJ on the USB (Prime 4), rekordbox on this Mac, and the USB's rekordbox library (where club
+  decks save the cues you set on them). The newest edit of a cue wins, no cue is ever deleted, and **Undo** on
+  the Cues line puts back what the last update replaced. rekordbox's side is written when rekordbox is closed.
+  Not carried: MP3 and M4A cues between rekordbox and Engine DJ (the two start those files at slightly different
+  points), memory cues to the Prime 4 (it keeps hot cues and loops), and beat grids (each app draws its own).
+- **The song list:** search by artist, title, genre, key or kind of file; filter to *Needs AIFF*, *No cover*,
+  *Missing details*, *Not on USB* or *Below club quality*; tick songs (or all) and press **Convert to AIFF**,
+  **Add cover & details** or **Put on USB**. Songs you added yourself or copied from a friend's USB are in it too.
+- **A "?" beside each part** of both pages opens a few plain lines: how it works, what it never touches, how to
+  undo. **How it works** at the top has the rest.
 - **Listen first:** ▶ beside any song plays it on the page; **Show in Finder** opens the file.
 - **My SoundCloud playlists:** one playlist with every song from all of your SoundCloud playlists.
 - **Genres:** each song is sorted by what's written on it (the file, SoundCloud's genre and tags). Songs nothing
@@ -123,8 +145,9 @@ straight into your decks' libraries, with no dragging and no clicks:
   whether they are in rekordbox's older export, which the CDJ-3000, the CDJ-2000NXS2 and the decks before them need
   for playlists, tempo and key (in rekordbox, with the USB in: drag your playlists onto it under *Devices*). It only
   looks; it changes nothing.
-- **What it never touches:** your own playlists, cues, loops and beat grids, and the music files themselves. No
-  song is ever removed from a library. A copy of the library is kept before every change (*dj-backups* in the app
+- **What it never touches:** your own playlists and folders, beat grids, and any song that isn't The Crate's. A
+  music file is changed only to fill an empty detail or to become an AIFF, each with an Undo; cues are only added
+  or brought up to date, never deleted. No song is ever removed from a library. A copy of the library is kept before every change (*dj-backups* in the app
   folder, the last 20).
 - The first time you load a song, the deck (or rekordbox) draws its own beat grid and waveform, as for any new file.
 
