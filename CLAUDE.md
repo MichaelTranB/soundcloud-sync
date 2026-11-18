@@ -86,7 +86,10 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   compared with the FLAC's own checksum, the AIFF passes the safety check, and only then the FLAC goes to the
   Trash; every per-file record and the decks' rows follow, so cues and grids stay. New FLACs convert by
   themselves (`usb.sh`, `dj.py`; switch in `aiff.json`); FLACs already there the first time, and WAVs, are his
-  pick on `/dj`. `aiff.py undo` brings the original back.
+  pick on `/dj`. `aiff.py undo` brings the original back. A 32-bit song (or float WAV) is never converted by
+  itself: `aiff.py deep` (the "Make a 24-bit copy" link on its row, `club.deep`) writes its top 24 bits as an
+  AIFF in our own code, checked against the FLAC's checksum and read back; a 32-bit FLAC is read through
+  `ffmpeg` when the Mac has it (never installed by us), and above 96 kHz nothing is made.
 - **Cover and details (`details.py`):** fills only EMPTY fields (cover of 500 px or more, title, artist, album,
   genre, year). Sources, best first: the song's own SoundCloud page, its sound (only with an AcoustID key), then
   iTunes Search and MusicBrainz by artist and title. Written by itself only when the length is within 3 s, artist
@@ -122,7 +125,7 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   services' limits. Standard library only at import (Essentia only when it runs, in the analyser's Python).
 - **Club check (`club.py`, shown on the Library Manager page):** would the music play on a club's Pioneer decks: the
   USB's format (from `mount`; FAT32 or Mac OS Extended is read by all, exFAT only by the newest), FLAC (older decks
-  skip it), whether the songs are in the USB's own rekordbox library (`dj-rekordbox-usb.json`, the newest decks),
+  skip it), songs no club deck plays (32-bit, or above 96 kHz) or only the newer ones do (above 48 kHz), whether the songs are in the USB's own rekordbox library (`dj-rekordbox-usb.json`, the newest decks),
   and whether each song's file name is in the USB's older rekordbox export (`PIONEER/rekordbox/export.pdb`: the
   CDJ-3000, CDJ-2000NXS2 and earlier; only rekordbox's own export writes it). It only looks: it never changes the USB or rekordbox, and never formats anything.
 - **`dj-setup.sh`:** the analyser's own Python (python-build-standalone, pinned by version and sha256) with the

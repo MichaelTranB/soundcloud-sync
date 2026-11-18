@@ -125,6 +125,10 @@ straight into your decks' libraries, with no dragging and no clicks:
   same sound (compared sample for sample), with its details and cover. Only once the AIFF is checked does the
   FLAC go to the Trash, so no song is ever there twice, and its playlists and cues follow the new file. FLACs you
   already had, and WAVs, are your pick in the song list. **Undo** brings the original back.
+- **32-bit songs:** no club deck plays a 32-bit file, so its row says so and offers **Make a 24-bit copy**: a
+  24-bit AIFF with no difference you can hear, the original in the Trash, **Undo** to bring it back. It is never
+  done by itself, because the copy isn't bit for bit the same file. A 32-bit FLAC needs `ffmpeg` on the Mac to be
+  read (The Crate doesn't install it); a song above 96 kHz is only pointed out.
 - **Cover and details:** a song missing its cover, title, artist, album, genre or year gets them filled in. Only
   empty fields are filled; nothing already there is changed. It writes by itself only when the song's own
   SoundCloud page says so or two sources agree, and the length matches within 3 seconds; anything less sure is
@@ -157,7 +161,7 @@ straight into your decks' libraries, with no dragging and no clicks:
   Remixes, flips and bootlegs are often not in that database; those stay as they are.
 - **Club check:** the page also says whether your USB would work on a club's decks (nearly always Pioneer CDJs):
   how the USB is formatted (FAT32 is read by every club deck, exFAT only by the newest), how many songs are FLAC
-  (older club decks skip those), whether your songs are in the USB's own rekordbox library (the newest decks), and
+  (older club decks skip those), songs no club deck plays at all (32-bit files, or above 96 kHz), whether your songs are in the USB's own rekordbox library (the newest decks), and
   whether they are in rekordbox's older export, which the CDJ-3000, the CDJ-2000NXS2 and the decks before them need
   for playlists, tempo and key (in rekordbox, with the USB in: drag your playlists onto it under *Devices*). It only
   looks; it changes nothing.
