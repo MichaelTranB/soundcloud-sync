@@ -13,7 +13,7 @@ Standard library only. Tempo and key need the private Python dj-setup.sh sets up
 still reach the decks, which then analyse them on load."""
 import fcntl, json, os, re, subprocess, sys, time, unicodedata
 
-import friend, genres, layout, recognise, usb_ask, usb_tidy
+import friend, genres, layout, liked, recognise, usb_ask, usb_tidy
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 # The private Python with Essentia, Mutagen and pyrekordbox (dj-setup.sh); the second is where the first build kept it.
@@ -24,6 +24,31 @@ CACHE = "dj-analysis.json"
 SOUNDCLOUD = "My SoundCloud playlists"  # every SoundCloud playlist of yours in one
 EDM_ALL, REST_ALL = "EDM (all)", "Other (all)"  # every EDM song in one, and every song that is none of it
 WRITTEN = "dj-written.json"  # the genre each deck library showed for each track after The Crate last wrote it
+OPTS = "dj-settings.json"  # the page's Options: what runs by itself here, each one yours to switch
+DEFAULTS = {"cues": True,        # cue points kept in step between the decks' libraries (cues.py)
+            "likedApart": True}  # Spotify Liked Songs stay out of the genre playlists until you give one a genre
+
+
+def options(dir):
+    try:
+        got = json.load(open(os.path.join(dir, OPTS)))
+    except (OSError, ValueError):
+        got = {}
+    got = got if isinstance(got, dict) else {}
+    return {k: got[k] if isinstance(got.get(k), bool) else v for k, v in DEFAULTS.items()}
+
+
+def set_options(dir, body):
+    """Saves the switches the page sent. Returns an error to show, or None."""
+    new = options(dir)
+    for k, v in body.items():
+        if k not in DEFAULTS or not isinstance(v, bool):
+            return "That isn't one of the options."
+        new[k] = v
+    with open(os.path.join(dir, OPTS + ".tmp"), "w") as f:
+        json.dump(new, f, indent=1)
+    os.replace(os.path.join(dir, OPTS + ".tmp"), os.path.join(dir, OPTS))
+    return None
 
 
 def log(dir, text):
@@ -58,15 +83,50 @@ def tracks(dir, src):
     return out
 
 
+def moved(dir, src):
+    """A song's file that moved inside the music folder (into the Liked Songs folder, or into one you made) is still
+    the same song. Each move is noted once (dj-moved.tsv: where it was, where it is): a file that was listened to is
+    gone, and the only file of that name now sits somewhere else in there."""
+    try:
+        cache = json.load(open(os.path.join(dir, CACHE)))
+    except (OSError, ValueError):
+        return
+    gone = {}
+    for k in cache if isinstance(cache, dict) else ():
+        if not os.path.lexists(os.path.join(src, k)):
+            gone.setdefault(layout.cf(os.path.basename(k)), []).append(k)
+    if not gone:
+        return
+    at = {}
+    for root, dirs, files in os.walk(src):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for f in files:
+            if layout.cf(f) in gone:
+                at.setdefault(layout.cf(f), []).append(os.path.relpath(os.path.join(root, f), src))
+    rows = [(old[0], at[n][0]) for n, old in gone.items()
+            if len(old) == 1 and len(at.get(n, [])) == 1 and at[n][0] not in cache]
+    if rows:
+        with open(os.path.join(dir, usb_tidy.MOVES), "a") as f:
+            f.writelines(f"{a}\t{b}\n" for a, b in rows)
+
+
 def follow(dir, src):
-    """Soulseek files once sat in a folder of their own; soulseek.py moved them in with the rest and noted each move
-    (soulseek-moved.tsv). The notes kept per file here go along, so no track is listened to again and the decks'
-    libraries are pointed at the new place instead of getting every track twice. Returns {where it is: where it was}."""
+    """A file that moved is followed: Soulseek files once sat in a folder of their own and soulseek.py moved them in
+    with the rest (soulseek-moved.tsv); a FLAC became an AIFF (dj-converted.tsv); a song moved into another folder
+    in the music folder (moved(), above). The notes kept per file here go along, so no track is listened to again and
+    the decks' libraries are pointed at the new place instead of getting every track twice. Returns
+    {where it is: where it was}."""
     was = {}
     for line in read(dir, "soulseek-moved.tsv").splitlines():
         old, _, new = line.partition("\t")
         if old and new:
             was[os.path.relpath(new, src)] = os.path.relpath(old, src)
+    moved(dir, src)
+    went = {}
+    for old, new in usb_tidy.rows(dir, usb_tidy.MOVES):
+        if os.path.isfile(os.path.join(src, new)) and not os.path.lexists(os.path.join(src, old)):
+            went[new] = old
+    was.update(went)
     turned = {}  # a FLAC that is now an AIFF (aiff.py), or back again: the same song under another name
     for line in read(dir, "dj-converted.tsv").splitlines():
         old, new = (line.split("\t") + [""])[:2]
@@ -96,6 +156,24 @@ def follow(dir, src):
             with open(os.path.join(dir, name + ".tmp"), "w") as f:
                 json.dump(got, f, ensure_ascii=False, indent=0, sort_keys=True)
             os.replace(os.path.join(dir, name + ".tmp"), os.path.join(dir, name))
+    def relist(name, keys, as_is=lambda r: r):  # the lists of songs aiff.py and details.py keep: a moved song is
+        try:                                    # still one they have seen, so it isn't converted or filled in anew
+            got = json.load(open(os.path.join(dir, name)))
+        except (OSError, ValueError):
+            return
+        changed = False
+        for k in keys:
+            l = got.get(k) if isinstance(got, dict) else None
+            for new, old in went.items() if isinstance(l, list) else ():
+                if as_is(old) in l and as_is(new) not in l:
+                    l[l.index(as_is(old))] = as_is(new)
+                    changed = True
+        if changed:
+            with open(os.path.join(dir, name + ".tmp"), "w") as f:
+                json.dump(got, f, ensure_ascii=False, indent=0)
+            os.replace(os.path.join(dir, name + ".tmp"), os.path.join(dir, name))
+    relist("aiff.json", ("before", "skip"))
+    relist("details.json", ("seen",), lambda r: os.path.splitext(r)[0])
     rename(CACHE)
     rename(recognise.FILE)
     rename(WRITTEN, inner=True)
@@ -115,6 +193,18 @@ def listing(dir):
                      "playlist": r.get("playlist_title") or r.get("playlist") or "",
                      "index": r.get("playlist_index") or len(rows) + 1})
     return rows
+
+
+def liked_songs(dir, src):
+    """The Spotify Liked Songs here (liked.py), by Soulseek's record of which link each file was got for:
+    {rel: its place among your likes, the newest first}."""
+    spot = {f"https://open.spotify.com/track/{i}": n for n, i in enumerate(liked.ids(dir))}
+    out = {}
+    for line in read(dir, "soulseek.tsv").splitlines() if spot else ():
+        p = line.split("\t")
+        if len(p) >= 3 and p[0] in spot:
+            out[os.path.relpath(os.path.realpath(p[2]), os.path.realpath(src))] = spot[p[0]]
+    return out
 
 
 def pair(dir, src, rels, rows):
@@ -165,7 +255,8 @@ def library(dir, src):
     except (OSError, ValueError):
         cache = {}
     rows = listing(dir)
-    pairs = pair(dir, src, rels, rows)
+    fav, home, apart = liked_songs(dir, src), liked.folder(dir), options(dir)["likedApart"]
+    pairs = pair(dir, src, [r for r in rels if r not in fav], rows)  # (a Liked Song is no playlist's track)
     known = recognise.load(dir)  # what each track sounds like, when recognise.py has asked
     g = genres.load(dir)
     table = genres.lookup(g["list"])
@@ -201,16 +292,23 @@ def library(dir, src):
             song["size"], song["mtime"] = 0, 0
         song["genres"], song["from"] = genres.decide(song, g, table)
         song["heard"] = genres.heard(song)
+        if rel in fav or (home and rel.startswith(home + os.sep)):  # one of your Spotify Liked Songs
+            song["liked"] = fav.get(rel, len(fav))
+            if apart and not (song["from"] == "your pick" and song["genres"]):  # not filed yet: on its own list
+                song.update(apart=True, guess=song["genres"], genres=[], **{"from": ""})  # only, till you pick
         out.append(song)
     out.sort(key=lambda s: (s["artist"].lower(), s["title"].lower()))
     return out
 
 
-def playlists(songs, g, came=None, other=None):
+def playlists(songs, g, came=None, other=None, liked_name=""):
     """The playlists the decks get, in order: [(name, [songs])]. All inside one "The Crate" folder there.
     came: the playlists copied in from another USB (friend.py's record): {name: {"rels": [...]}}.
-    other: the genres that aren't EDM (layout.py's, unless you changed them)."""
-    lists = [("All songs", songs), ("Newest 50", sorted(songs, key=lambda s: -s["mtime"])[:50])]
+    other: the genres that aren't EDM (layout.py's, unless you changed them).
+    liked_name: what the list of your Spotify Liked Songs is called (their folder's name). One you haven't given a
+    genre ("apart") is on that list and "All songs" only."""
+    free = [s for s in songs if not s.get("apart")]
+    lists = [("All songs", songs), ("Newest 50", sorted(free, key=lambda s: -s["mtime"])[:50])]
     mine = list(dict.fromkeys(s["playlist"] for s in songs if s["playlist"]))
     if len(mine) > 1:  # every SoundCloud playlist of yours in one, playlist after playlist
         spot = {n: i for i, n in enumerate(mine)}
@@ -218,6 +316,9 @@ def playlists(songs, g, came=None, other=None):
                                          key=lambda s: (spot[s["playlist"]], s["index"]))))
     for name in mine:
         lists.append((name, sorted((s for s in songs if s["playlist"] == name), key=lambda s: s["index"])))
+    fav = sorted((s for s in songs if "liked" in s), key=lambda s: (s["liked"], -s["mtime"]))
+    if fav:  # as on Spotify: the newest like first
+        lists.append((liked_name or liked.DEFAULTS["folder"], fav))
     by = {s["rel"]: s for s in songs}
     for name, l in (came or {}).items():  # in the order they had on the other USB
         items = [by[r] for r in l.get("rels", []) if r in by]
@@ -232,7 +333,7 @@ def playlists(songs, g, came=None, other=None):
     used = sorted({x for s in songs for x in s["genres"]}, key=lambda n: (order.get(n, 999), n.lower()))
     for name in used:
         lists.append((name, [s for s in songs if name in s["genres"]]))
-    none = [s for s in songs if not s["genres"]]
+    none = [s for s in free if not s["genres"]]
     if none:
         lists.append((genres.NONE, none))
     seen, out = set(), []
@@ -339,6 +440,7 @@ def once(dir, src, volumes):
         if "waiting for your OK" not in (read(dir, "dj.log").splitlines() or [""])[-1]:
             log(dir, f'USB "{usb}" already has things on it: waiting for your OK on the page')
         stick = ""
+    follow(dir, src)  # a song whose file moved on the Mac is noted first: the USB moves its copy too
     if stick:  # first, so it's right away: a song you threw back leaves the USB too (usb.sh does this as well)
         try:
             said = usb_tidy.say(*usb_tidy.tidy(dir, src, os.path.join(stick, "SoundCloud Sync")))
@@ -359,7 +461,7 @@ def once(dir, src, volumes):
     if adopt(dir, songs, there):  # a genre you changed on the decks' side is now your pick
         songs = library(dir, src)
     place(dir, songs, stick, usb, file=True)  # then each into its folder (a song whose genre changed moves)
-    lists = playlists(songs, genres.load(dir), friend.load(dir)["lists"], layout.load(dir)["other"])
+    lists = playlists(songs, genres.load(dir), friend.load(dir)["lists"], layout.load(dir)["other"], liked.folder(dir))
     wrote = False
     if stick:
         import engine
@@ -382,7 +484,8 @@ def once(dir, src, volumes):
     wrote = rekordbox(dir, src, songs, lists) or wrote
     if stick:  # after the Mac's library: a track rekordbox knows takes its beat grid and waveform along
         rekordbox_usb(dir, src, songs, lists, stick, usb)
-        cues(dir, src, stick, usb, [s["rel"] for s in songs])  # last: every library has its songs by now
+        if options(dir)["cues"]:  # (yours to switch off on the page)
+            cues(dir, src, stick, usb, [s["rel"] for s in songs])  # last: every library has its songs by now
     remember(dir, seen(dir, src, songs, stick) if wrote else there)
     if recognise.key(dir) and os.path.exists(PY):  # on its own: it asks the internet, and comes back here when it learns something
         subprocess.Popen([PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "recognise.py"), dir, src],

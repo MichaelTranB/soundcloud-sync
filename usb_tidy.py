@@ -22,6 +22,7 @@ import filecmp, os, shutil, sys, time, unicodedata
 
 OLD, MOVED, THROWN = "From Soulseek", "soulseek-moved.tsv", "usb-thrown.tsv"  # as soulseek.py names them
 FILLED = "details-changed.tsv"  # songs whose tags details.py changed: their copy on the USB is the older file
+MOVES = "dj-moved.tsv"  # a song's file that moved inside the music folder (dj.py notes each): where it was, where it is
 CHECKED = "safety-ok.tsv"  # the files that passed the safety check (safety.py): the only ones usb.sh copies
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus", ".alac", ".aac")
 
@@ -189,6 +190,21 @@ def tidy(d, src, dest):
                 moved += 1
             elif size(pb) == size(pa) and not trash(dest, pa):  # there twice: one is enough
                 stuck += 1
+        except OSError:
+            stuck += 1
+    for a, b in rows(d, MOVES):  # moved inside the music folder on the Mac: the same move here, not a second copy
+        if os.path.isabs(a) or os.path.isabs(b) or ".." in (a + os.sep + b).split(os.sep) or \
+                size(os.path.join(src, b)) < 0 or os.path.lexists(os.path.join(src, a)):
+            continue
+        pa, pb = os.path.join(dest, layout.spot(spots, a)), os.path.join(dest, b)
+        if size(pa) < 0 or os.path.lexists(pb):
+            continue
+        try:
+            os.makedirs(os.path.dirname(pb), exist_ok=True)
+            os.rename(pa, pb)
+            if os.path.isfile(shadow(pa)):
+                os.rename(shadow(pa), shadow(pb))
+            moved += 1
         except OSError:
             stuck += 1
     for path, n in rows(d, THROWN):

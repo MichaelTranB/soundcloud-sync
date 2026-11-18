@@ -116,6 +116,11 @@ straight into your decks' libraries, with no dragging and no clicks:
   changes moves at the next update. Playlists and cues follow, each song stays on the USB once, nothing is
   deleted, and nothing outside The Crate's own folder is touched. **One folder** puts every song back. Only the
   USB is laid out; the music folder on the Mac stays as it is.
+- **Spotify Liked Songs:** they keep their own folder (on the Mac and on the USB) and their own playlist on
+  every deck, newest like first. They stay out of the genre playlists and folders until you file one: open the
+  **Spotify Liked Songs** list and press **Add to playlist**. It joins that genre's playlist and stays on the
+  Liked list and in its folder. A song you move into another folder of your music folder yourself is followed
+  the same way: its tempo, key, genres and cues go along, and it moves on the USB instead of being copied twice.
 - **EDM (all) and Other (all):** two playlists that are always there: every song with an EDM genre in one, the
   rest in the other, beside the playlist for each genre.
 - **Below gig quality:** MP3s under 320 kbps and M4As under 256 are marked. On each: **Find a better copy** (it joins the
@@ -139,6 +144,9 @@ straight into your decks' libraries, with no dragging and no clicks:
   the Cues line puts back what the last update replaced. rekordbox's side is written when rekordbox is closed.
   Not carried: MP3 and M4A cues between rekordbox and Engine DJ (the two start those files at slightly different
   points), memory cues to the Prime 4 (it keeps hot cues and loops), and beat grids (each app draws its own).
+- **Options** (top of the page): every choice in one place, each a switch or a link to its card: AIFF for new
+  FLACs, covers and details, cues in step, Liked Songs kept apart, the USB folders and the genres. The way
+  described here is how it starts; change any of them, any time.
 - **The song list:** search by artist, title, genre, key or kind of file; filter to *Needs AIFF*, *No cover*,
   *Missing details*, *Not on USB* or *Below club quality*; tick songs (or all) and press **Convert to AIFF**,
   **Add cover & details** or **Put on USB**. Songs you added yourself or copied from a friend's USB are in it too.
