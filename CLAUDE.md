@@ -96,6 +96,14 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   and title match, and it is the song's own page or two sources agree; else "needs a look" with up to three
   candidates (`details-ask.json`). Every change is in `details-log.json` with what the file held before
   (`details-undo/`), one Undo each. Only artist and title (and a fingerprint) leave the Mac.
+- **Liked Songs on the decks (`dj.liked_songs`, the SoundCloud side files them: `liked.py`):** a Liked Song is
+  `liked` in `dj.library()` and `apart` (no genre reaches a deck, its guess kept as `guess`) until his own pick;
+  apart songs skip the genre lists, "No genre yet", "Newest 50" and `layout.arrange`, and all sit on one playlist
+  named after `liked.folder()`. A file moved inside the music folder is followed, not re-added: `dj.moved()`
+  notes `was<TAB>is` in `dj-moved.tsv`, `dj.follow()` carries the records (and `aiff.json`, `details.json`) and
+  `usb_tidy.tidy()` moves the USB's copy. The page's switches that aren't a card's own live in
+  `dj-settings.json` (`dj.options`, `POST /api/dj/options`: `cues`, `likedApart`); **Options** on `/dj` lists
+  every setting. A new feature's choice goes there, his way as the default.
 - **Cues in step (`cues.py`, last step of `dj.once()`, only with the chosen USB plugged in and allowed):** hot
   cues, memory cues and loops across Engine DJ on the USB, rekordbox on the Mac and the USB's rekordbox library
   (its `cue` table and analysis files). `cues-state.json` keeps what each place held after the last run, so a

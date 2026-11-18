@@ -206,6 +206,9 @@ def arrange(dest, songs, cfg, dry=False):
         if not have:  # not on the USB yet (usb.sh copies it in; the next look files it), or not one this files
             at[rel] = rel
             continue
+        if s.get("apart"):  # a Liked Song you haven't given a genre yet: it stays where it is
+            at[rel] = os.path.join(have[0][0], rel)
+            continue
         want = folder(s.get("genres") or [], cfg)
         got = next(((f, n) for f, n in have if cf(f) == cf(want)), None)
         real = os.path.join(dest, *got) if got else ""  # the file that stays, where it is right now
@@ -251,9 +254,9 @@ def say(moved, stuck, twice, flat=False):
 def plan(dest, songs, cfg):
     """For the page, before anything moves: how many songs each folder would hold, and how many would move on the
     USB that is plugged in (dest "" when none is)."""
-    folders = {}
-    for s in songs:
-        f = folder(s.get("genres") or [], cfg)
+    folders, can = {}, plain([s["rel"] for s in songs])
+    for s in songs:  # a song in a folder of its own (your Liked Songs) stays in it: counted there
+        f = folder(s.get("genres") or [], cfg) if s["rel"] in can and not s.get("apart") else os.path.dirname(s["rel"])
         folders[f] = folders.get(f, 0) + 1
     order = lambda f: (f.split(os.sep)[0] == safe(genres.NONE), f.split(os.sep)[0] != EDM, f.lower())
     out = {"mode": cfg["mode"], "songs": len(songs),

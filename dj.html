@@ -82,6 +82,17 @@
   #faq li { display: list-item; padding: 0; border: 0; }
   #faq li::marker { color: var(--dim); }
   #faq li b, #faq p b { color: var(--text); }
+  /* Options: the same sheet, one line a switch. */
+  dialog#opts { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 18px; padding: 26px 30px 22px; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; }
+  dialog#opts::backdrop { background: rgba(0, 0, 0, .65); }
+  #opts .lead { color: var(--dim); margin: 6px 0 14px; font-size: 14.5px; }
+  .opt { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 0; border-top: 1px solid var(--line); }
+  .opt b { display: block; font-size: 15.5px; }
+  .opt small { display: block; color: var(--dim); font-size: 13.5px; line-height: 1.45; margin-top: 2px; }
+  .opt button, .opt a { flex: none; min-width: 64px; text-align: center; }
+  .opt a.mini { padding: 3px 12px; font-size: 13.5px; }
+  .opt button[aria-checked="true"] { border-color: var(--ok, #3ddc97); color: var(--ok, #3ddc97); }
+  .g.apart { color: var(--dim); border-style: dashed; }
   /* The club check: would this music play on a club's decks tonight? */
   .club { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 20px 24px; margin-bottom: 36px; }
   .club[hidden] { display: none; }
@@ -231,6 +242,7 @@
     </div>
     <div class="acts">
       <button class="ghost ask" id="faqOpen" aria-haspopup="dialog"><b aria-hidden="true">?</b> How it works</button>
+      <button class="ghost" id="optsOpen" aria-haspopup="dialog">Options</button>
       <a class="ghost lib" href="/">&larr; The Crate</a>
       <button class="ghost go" id="run">Update decks now</button>
     </div>
@@ -257,6 +269,7 @@
       <li>New songs are filed by themselves. A song moves when you change its genre.</li>
       <li>Playlists and cues follow. Nothing outside The Crate's folder is touched, and no song is copied twice.</li>
       <li><b>One folder</b> puts every song back.</li>
+      <li><b>Spotify Liked Songs</b> keep their own folder and their own playlist. One joins a genre playlist when you give it a genre.</li>
     </ol>
 
     <h3>When it runs</h3>
@@ -303,8 +316,17 @@
     <h3>Is my library safe?</h3>
     <p>It only touches its own songs and its own <b>The Crate</b> folder. Your other playlists and grids are left alone. Each library is backed up before a change, and rekordbox's is never written while rekordbox is open: it catches up when you close it.</p>
 
+    <h3>Make it yours</h3>
+    <p><b>Options</b>, at the top, holds every switch: what runs by itself, how the USB is laid out, your genres. Each one can be changed back.</p>
+
     <h3>What it uses</h3>
     <p>Free, open-source tools on your Mac: <b>Essentia</b> (tempo and key), <b>Mutagen</b> (song details), <b>pyrekordbox</b> (rekordbox's libraries), <b>Chromaprint</b>, <b>AcoustID</b> and <b>MusicBrainz</b> (song recognition). No AI, no account besides the AcoustID key.</p>
+  </dialog>
+
+  <dialog id="opts" aria-labelledby="optsHead">
+    <div class="faqTop"><h2 id="optsHead">Options</h2><button class="ghost" id="optsClose" aria-label="Close">&times;</button></div>
+    <p class="lead">How Library Manager works for you. Change any of them, any time.</p>
+    <div id="optList"></div>
   </dialog>
 
   <div class="alert" id="alert" hidden></div>
@@ -355,6 +377,7 @@
     <p>A song's genre comes from the file, from SoundCloud, or from its sound. Your own pick always wins: press <b>Edit</b> on a song.</p>
     <p><b>EDM (all)</b> and <b>Other (all)</b> are playlists too: every EDM song in one, the rest in the other.</p>
     <p>The amber ones are to-do lists: songs with no genre, no cover, still a FLAC, and so on.</p>
+    <p id="hLiked" hidden></p>
     <p>Removing a genre only takes it off the list. No song is deleted, and a change reaches your decks in a few seconds.</p>
   </div>
   <div class="pills" id="pills"></div>
@@ -409,6 +432,7 @@ function el(tag, props = {}, ...kids) {
   return e;
 }
 const NONE = 'No genre yet';
+const LIKED = ' liked';  // the view of your Spotify Liked Songs (a genre's name never starts with a space)
 // The mixing wheel (Camelot) number for each key: neighbours on the wheel mix cleanly.
 const WHEEL = { C: '8B', G: '9B', D: '10B', A: '11B', E: '12B', B: '1B', 'F#': '2B', 'C#': '3B', Ab: '4B', Eb: '5B', Bb: '6B', F: '7B',
   Am: '8A', Em: '9A', Bm: '10A', 'F#m': '11A', 'C#m': '12A', Abm: '1A', Ebm: '2A', Bbm: '3A', Fm: '4A', Cm: '5A', Gm: '6A', Dm: '7A' };
@@ -536,7 +560,7 @@ function drawFolders() {
     const what = lay.mode === 'flat' ? 'Every song goes back into the one folder.' : songs(p.songs) + ' into ' + n + (n === 1 ? ' folder' : ' folders') + ' inside SoundCloud Sync.';
     const when = p.move == null ? ' Filed the next time ' + stick + ' is plugged in.' : p.move ? ' ' + songs(p.move) + (p.move === 1 ? ' moves' : ' move') + ' on ' + stick + ' now.' : ' Nothing on ' + stick + ' has to move.';
     box.append(el('div', { className: 'say' }, el('b', { textContent: what }), when + ' Nothing outside that folder is touched.'));
-    if (n) {
+    if (n && lay.mode !== 'flat') {
       const tree = el('div', { className: 'tree' });
       p.folders.slice(0, 12).forEach(f => tree.append(el('span', { textContent: f.name + ' ' + f.songs })));
       if (n > 12) tree.append(el('span', { textContent: '+' + (n - 12) + ' more' }));
@@ -576,6 +600,7 @@ async function throwAway(song, ask, done) {
 function setGenres(song, list) {
   kept.add(song.key);
   song.genres = list; song.from = 'your pick';  // shown at once; the app's answer follows
+  if (song.liked && (S.options || {}).likedApart) song.apart = !list.length;
   post('/api/dj/genres', { key: song.key, genres: list });
   draw();
 }
@@ -613,6 +638,13 @@ function picker(song) {
     const back = el('button', { textContent: 'back to automatic' });
     back.onclick = () => { kept.add(song.key); post('/api/dj/genres', { key: song.key, genres: null }); };
     how.append('Your pick. ', back);
+  } else if (song.apart) {  // a Liked Song, not filed yet: one tap puts it in a genre's playlist
+    how.append('Tap a genre to add it to that playlist. It stays in ' + S.likedName + ' too.');
+    if (song.guess.length) {
+      const yes = el('button', { textContent: 'add it' });
+      yes.onclick = () => setGenres(song, song.guess);
+      how.append(' Looks like ' + song.guess.join(', ') + ': ', yes, '.');
+    }
   } else how.append(song.from ? 'Sorted by ' + song.from + '. Tap a genre to change it.' : 'Nothing on this song says what it is. Tap its genre.');
   if (song.heard.length) how.append(' Labels on it: ' + song.heard.join(', ') + '.');
   if (song.sounds) how.append(' Sounds like: ' + song.sounds + '.');
@@ -626,8 +658,8 @@ function row(song) {
   const name = el('div', { className: 'n' }, song.title, el('small', { textContent: song.artist || 'Unknown artist' }));
   const gs = el('div', { className: 'gs' });
   if (song.genres.length) song.genres.forEach((g, i) => gs.append(el('span', { className: 'g' + (i ? '' : ' main'), textContent: g })));
-  else gs.append(el('span', { className: 'g none', textContent: NONE }));
-  const edit = el('button', { className: 'ghost', textContent: isOpen ? 'Done' : 'Edit' });
+  else gs.append(song.apart ? el('span', { className: 'g apart', textContent: 'Not filed yet' }) : el('span', { className: 'g none', textContent: NONE }));
+  const edit = el('button', { className: 'ghost', textContent: isOpen ? 'Done' : song.apart ? 'Add to playlist' : 'Edit' });
   edit.setAttribute('aria-expanded', isOpen);
   edit.onclick = () => { isOpen ? open.delete(song.key) : open.add(song.key); draw(); };
   const on = playing === song.file;
@@ -687,7 +719,7 @@ function row(song) {
 function inView(song) {
   if (kept.has(song.key)) return true;
   const todo = TODO.find(t => t[0] === view);
-  return view === 'all' || (view === 'none' ? !song.genres.length : todo ? !!todo[2](song) : song.genres.includes(view));
+  return view === 'all' || (view === 'none' ? !song.genres.length && !song.apart : view === LIKED ? song.liked : todo ? !!todo[2](song) : song.genres.includes(view));
 }
 
 function pill(label, count, key, cls) {
@@ -699,8 +731,8 @@ function pill(label, count, key, cls) {
 
 function draw() {
   if (!S) return;
-  const songs = S.songs, none = songs.filter(s => !s.genres.length).length;
-  $('sAll').textContent = songs.length; $('sSorted').textContent = songs.length - none; $('sNone').textContent = none;
+  const songs = S.songs, none = songs.filter(s => !s.genres.length && !s.apart).length, liked = songs.filter(s => s.liked).length;
+  $('sAll').textContent = songs.length; $('sSorted').textContent = songs.filter(s => s.genres.length).length; $('sNone').textContent = none;
   // where the decks stand
   const d = $('sDecks'), dn = $('sDecksNote');
   d.textContent = '';
@@ -727,7 +759,10 @@ function draw() {
   // cue points in step (cues.py): the last run's line, and Undo while there is something it sent
   const cue = (S.fix || {}).lastCues || '', back = el('button', { className: 'ghost mini', textContent: 'Undo' });
   back.onclick = () => { say('Putting the last cue changes back.'); post('/api/dj/cues', { undo: true }); };
-  deck('Cues', 'every deck', away ? '' : cue, away || 'In step: a cue you set on one deck reaches the others at the next update.', away ? '' : ' ok',
+  const cuesOn = el('button', { textContent: 'Switch on' });
+  cuesOn.onclick = () => setOpt({ cues: true }, 'Cues are kept in step again.');
+  if ((S.options || {}).cues === false) deck('Cues', 'every deck', '', 'Switched off: each deck keeps its own cues.', '', el('span', {}, '  ', cuesOn));
+  else deck('Cues', 'every deck', away ? '' : cue, away || 'In step: a cue you set on one deck reaches the others at the next update.', away ? '' : ' ok',
     !away && / sent to /.test(cue) ? el('span', {}, '  ', back) : '');
   const cn = $('cuesNote'), notes = (S.fix || {}).cuesNote || [];
   cn.hidden = !notes.length; cn.textContent = notes.length ? 'Not carried: ' + notes.join('; ') + '.' : '';
@@ -798,6 +833,7 @@ function draw() {
   // the pills
   const p = $('pills'); p.textContent = '';
   p.append(pill('All', songs.length, 'all'));
+  if (liked || view === LIKED) p.append(pill(S.likedName, liked, LIKED));
   if (none || view === 'none') p.append(pill(NONE, none, 'none', 'todo'));
   TODO.forEach(([key, label, is]) => { const n = songs.filter(is).length; if (n || view === key) p.append(pill(label, n, key, 'todo')); });
   const extra = [...new Set(songs.flatMap(s => s.genres))].filter(g => !S.list.includes(g));
@@ -831,6 +867,9 @@ function draw() {
   rows.slice(0, shown).forEach(s => ul.append(row(s)));
   const todo = TODO.find(t => t[0] === view);
   if (!rows.length) ul.append(el('div', { className: 'empty', textContent: view === 'none' && !q ? 'Every song has a genre. Nice.' : todo && !q ? todo[3] : 'No songs here.' }));
+  const hl = $('hLiked'), apart = (S.options || {}).likedApart; hl.hidden = !liked; hl.textContent = '';
+  if (liked) hl.append(el('b', { textContent: S.likedName }), apart ? ': your Liked Songs stay on this list only, until you press Add to playlist on one.' : ': your Liked Songs, sorted into genres like every other song.');
+  drawOpts();
   drawDoit(rows, songs);
   drawAsk();
   drawFolders();
@@ -867,6 +906,34 @@ function drawDoit(rows, songs) {
   fill.append(f.autoDetails ? 'New songs are filled in by themselves. ' : 'New songs are left as they are. ',
     link(f.autoDetails ? 'Switch off' : 'Switch on', () => post('/api/dj/details', { auto: !f.autoDetails })));
 }
+// Options: every switch in one sheet. Your way is how it starts; anyone can change it here.
+async function setOpt(body, done, path) { if (await post(path || '/api/dj/options', body)) say(done); }
+function drawOpts() {
+  const box = $('optList'), f = S.fix || {}, o = S.options || {}; box.textContent = '';
+  const line = (name, what, btn) => box.append(el('div', { className: 'opt' }, el('div', {}, el('b', { textContent: name }), el('small', { textContent: what })), btn));
+  const sw = (name, what, on, flip) => {
+    const b = el('button', { className: 'ghost mini', textContent: on ? 'On' : 'Off' });
+    b.setAttribute('role', 'switch'); b.setAttribute('aria-checked', !!on); b.setAttribute('aria-label', name); b.onclick = flip;
+    line(name, what, b);
+  };
+  const go = (name, what, to) => {
+    const b = el('button', { className: 'ghost mini', textContent: 'Change' });
+    b.onclick = () => { $('opts').close(); $(to).scrollIntoView({ block: 'start' }); };
+    line(name, what, b);
+  };
+  sw('Convert new FLACs to AIFF', 'The same sound, in a file every club deck plays. Undo is on each song.', f.auto,
+    () => setOpt({ auto: !f.auto }, f.auto ? 'New FLACs are left as they are.' : 'New FLACs convert by themselves.', '/api/dj/aiff'));
+  sw('Fill in covers and details', 'Only what is empty, and only when it\'s sure.', f.autoDetails,
+    () => setOpt({ auto: !f.autoDetails }, f.autoDetails ? 'New songs are left as they are.' : 'New songs are filled in by themselves.', '/api/dj/details'));
+  sw('Keep cues in step', 'A cue set on one deck reaches the others. Off: each deck keeps its own.', o.cues,
+    () => setOpt({ cues: !o.cues }, o.cues ? 'Cues are left as they are on each deck.' : 'Cues are kept in step again.'));
+  sw('Keep Liked Songs apart', 'Spotify Liked Songs stay on their own list until you give one a genre. Off: sorted like every song.', o.likedApart,
+    () => setOpt({ likedApart: !o.likedApart }, o.likedApart ? 'Liked Songs are sorted into genres now.' : 'Liked Songs stay on their own list.'));
+  go('USB folders', 'One folder, EDM and Other, or by genre. And which genres count as EDM.', 'folders');
+  go('Genres', 'Add or remove the genres your songs are sorted into.', 'pills');
+  const home = el('a', { className: 'ghost mini', href: '/', textContent: 'Open' });
+  line('Liked Songs folder', '"' + S.likedName + '". Its name is set on The Crate\'s main page.', home);
+}
 // A USB that already has things on it: nothing on it is changed until you say so here (usb_ask.py).
 function drawAsk() {
   const u = S.usbAsk, box = $('usbAsk'), ok = $('usbOk');
@@ -902,6 +969,9 @@ $('more').onclick = () => { shown += 80; draw(); };
 $('q').oninput = () => { shown = 80; picks.clear(); draw(); };
 $('sort').onchange = draw;
 $('faqOpen').onclick = () => $('faq').showModal();
+$('optsOpen').onclick = () => $('opts').showModal();
+$('optsClose').onclick = () => $('opts').close();
+$('opts').onclick = e => { if (e.target === $('opts')) $('opts').close(); };
 $('faqClose').onclick = () => $('faq').close();
 $('faq').onclick = e => { if (e.target === $('faq')) $('faq').close(); };
 $('run').onclick = () => { say('Updating your decks now.'); post('/api/dj/run', {}); };

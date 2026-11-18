@@ -1117,7 +1117,8 @@ def dj_state():
               "genres": s["genres"], "from": s["from"], "heard": s["heard"], "playlist": s["playlist"],
               "sounds": s["sounds_like"], "file": s["rel"], "kbps": kbps_of(s), "low": low_song(s),
               "lists": s["lists"], "friend": s["friend"], "better": s["rel"] in looked,
-              "kind": os.path.splitext(s["rel"])[1][1:].upper()} for s in lib]
+              "kind": os.path.splitext(s["rel"])[1][1:].upper(),
+              "liked": "liked" in s, "apart": bool(s.get("apart")), "guess": s.get("guess") or []} for s in lib]
     log = read("dj.log").splitlines()
     usb = read("usb.txt")
     at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)  # as usb.sh and dj.py: overridable for tests
@@ -1136,6 +1137,7 @@ def dj_state():
                     "lastCues": last("cues: ", "cues put back: ", "CUES PROBLEM"),
                     "cuesNote": read("cues-unmapped.txt").splitlines()[:6]},
             "layout": layout.load(DIR), "rbApp": bool(rekordbox_app()),
+            "options": dj.options(DIR), "likedName": liked.folder(DIR) or liked.DEFAULTS["folder"],
             "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb, club.kept(DIR, usb), OUT),
             "lastRecognise": last("song recognition", "RECOGNISE PROBLEM"),
             "engine": plugged and os.path.isfile(os.path.join(at, "Engine Library", "Database2", "m.db")),
@@ -1341,6 +1343,11 @@ def dj_post(path, body):
         layout.save(DIR, mode, other)
         dj_run(0)
         return None
+    if path == "/api/dj/options":  # the page's Options (dj.py's): cue points kept in step, Liked Songs kept apart
+        err = dj.set_options(DIR, body)
+        if not err:
+            dj_run(0)
+        return err
     if path == "/api/dj/rekordbox":  # the song handed to rekordbox, which comes to the front. Not while the decks'
         p, rb = song_path(body.get("file", "")), rekordbox_app()  # libraries are written: rekordbox's needs it closed.
         if not p:
