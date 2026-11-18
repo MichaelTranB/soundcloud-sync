@@ -154,26 +154,32 @@ def key(list_name, song):
     return list_name + "\n" + (re.sub(r"[\W_]+", "", s.lower()) or s.lower())
 
 
-def parts(name, songs, before):
+def parts(name, songs, before, owner):
     """Splits a playlist's songs into SoundCloud-sized parts. Songs placed in a part by an earlier run stay in it
-    (the playlist on SoundCloud already holds them); new songs go to the last part, then to new ones."""
-    old = [l for l in before if l["name"] == name or re.fullmatch(re.escape(name) + r" \((\d+)\)", l["name"])]
+    (the playlist on SoundCloud already holds them); new songs go to the last part, then to new ones. owner maps each
+    playlist name in the run to the folder it belongs to, so a part never takes a name another folder has."""
+    def free():
+        n = 2
+        while f"{name} ({n})" in owner:
+            n += 1
+        owner[f"{name} ({n})"] = name
+        return f"{name} ({n})"
+
+    old = [l for l in before if l.get("group") == name]
     here = {x["k"]: x for x in songs}
     out = [{"name": l["name"], "songs": [here.pop(x["k"]) for x in l["songs"] if x["k"] in here]} for l in old]
-    held = [max(l.get("held", 0), len(l["songs"])) for l in old]  # what each SoundCloud playlist already holds, songs gone from the USB too
-    last = max([int(m.group(1)) for l in old for m in [re.search(r" \((\d+)\)$", l["name"])] if m] or [1])
+    held = [max(l.get("held", 0), len(l["songs"])) for l in old]  # what each SoundCloud playlist already holds
     new = [x for x in songs if x["k"] in here]
     if not out:
-        out, held, last = [{"name": name, "songs": []}], [0], 1
+        out, held = [{"name": name if owner.get(name) == name else free(), "songs": []}], [0]
     while new:
         if held[-1] >= CAP:
-            last += 1
-            out.append({"name": f"{name} ({last})", "songs": []})
+            out.append({"name": free(), "songs": []})
             held.append(0)
         take, new = new[:CAP - held[-1]], new[CAP - held[-1]:]
         out[-1]["songs"] += take
         held[-1] += len(take)
-    return [dict(l, held=h) for l, h in zip(out, held) if l["songs"]]
+    return [dict(l, group=name, held=h) for l, h in zip(out, held) if l["songs"]]
 
 
 def start(d, vol, ids):
@@ -197,6 +203,9 @@ def start(d, vol, ids):
         else:
             groups.append((name, songs))
     with _edit(d) as s:
+        before = (s.get("run") or {}).get("lists") or []
+        owner = {name: name for name, _ in groups}  # each folder keeps its own name; earlier parts keep theirs
+        owner.update((l["name"], l["group"]) for l in before if l.get("group") in owner)
         lists = []
         for name, songs in groups:
             seen, uniq = set(), []
@@ -205,7 +214,7 @@ def start(d, vol, ids):
                 if k not in seen:
                     seen.add(k)
                     uniq.append(dict(x, k=k))
-            lists.extend(parts(name, uniq, (s.get("run") or {}).get("lists") or []))
+            lists.extend(parts(name, uniq, before, owner))
         s.update(lens={**(s.get("lens") or {}), **lens}, run={"usb": vol, "ids": ids, "at": time.time(), "lists": lists})
     return counts(d)
 
