@@ -62,9 +62,14 @@ def opened(db_file):
     import logging
     logging.disable(logging.WARNING)
     try:
-        return MasterDatabase(path=db_file) if db_file else MasterDatabase()
+        db = MasterDatabase(path=db_file) if db_file else MasterDatabase()
     except FileNotFoundError:
         return None
+    # rekordbox's own IDs are text; pyrekordbox hands new artists, genres, albums and songs number IDs, and a save
+    # holding both kinds stops ("Could not sort objects by primary key"). New IDs go in as text, like rekordbox's.
+    unused = db.generate_unused_id
+    db.generate_unused_id = lambda *a, **k: str(unused(*a, **k))
+    return db
 
 
 def write(job, db_file=None):
