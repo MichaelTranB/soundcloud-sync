@@ -195,12 +195,19 @@ def start(d, vol, ids):
     opts = settings(d)
     path = {i: offered[i].split(": ", 1)[-1].split(" / ") for i in ids}
     last = [p[-1] for p in path.values()]
+    named = dict(load(d).get("named") or {})  # each folder keeps the playlist name it was first given
+    sid = lambda i: vol + "\n" + i
 
     def own(i):  # a playlist per folder, named after it; two folders called "House" become "House (2025)" and so on
+        if sid(i) in named:
+            return named[sid(i)]
         p = path[i]
-        if last.count(p[-1]) < 2 or len(p) < 2:
-            return p[-1]
-        return f"{p[-1]} ({' / '.join(p[:-1])})"
+        taken = {v for k, v in named.items() if k != sid(i)}
+        for name in (p[-1], f"{p[-1]} ({' / '.join(p[:-1])})", " / ".join(p)):
+            if name not in taken and (name != p[-1] or last.count(p[-1]) < 2 or len(p) < 2):
+                break
+        named[sid(i)] = name
+        return name
 
     groups = []  # (playlist name, songs)
     for i in ids:
@@ -224,6 +231,7 @@ def start(d, vol, ids):
                     seen.add(k)
                     uniq.append(dict(x, k=k))
             lists.extend(parts(name, uniq, before, owner))
+        s["named"] = {**(s.get("named") or {}), **named}
         s.update(lens={**(s.get("lens") or {}), **lens}, run={"usb": vol, "ids": ids, "at": time.time(), "lists": lists})
     return counts(d)
 
