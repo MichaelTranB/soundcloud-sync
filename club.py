@@ -6,6 +6,8 @@ A club booth is nearly always Pioneer DJ decks (CDJ or XDJ), and they are fussie
     (CDJ-3000, XDJ-AZ, OPUS-QUAD, XDJ-XZ, XDJ-RX3);
   FLAC plays on the CDJ-2000NXS2 and the CDJ-3000, not on the ones before (CDJ-2000NXS, CDJ-900NXS, XDJ-RX, XDJ-RX2,
     XDJ-RR): those skip the file;
+  how fine the sound is cut: every one plays 16 and 24-bit files at 44.1 or 48 kHz. Up to 96 kHz only the
+    CDJ-2000NXS2 and the CDJ-3000 play. A 32-bit file, or one above 96 kHz, none of them plays;
   they read playlists, tempo and key from a rekordbox library on the USB itself, and there are two kinds:
     the newer one (OneLibrary: PIONEER/rekordbox/exportLibrary.db), read by the newest decks (CDJ-3000X, XDJ-AZ,
       OPUS-QUAD, OMNIS-DUO) and shown by rekordbox under the USB. The Crate keeps this one up itself
@@ -13,13 +15,16 @@ A club booth is nearly always Pioneer DJ decks (CDJ or XDJ), and they are fussie
     the older one (Device Library: PIONEER/rekordbox/export.pdb), read by the CDJ-3000, the CDJ-2000NXS2 and the
       decks before them, which only rekordbox itself writes (its Export mode: drag the playlists onto the USB
       under Devices).
-(Sources: rekordbox's "USB Device Export" guide, the CDJ-2000NXS2 and CDJ-3000 manuals, AlphaTheta's notice on
+(Sources: rekordbox's "USB Device Export" guide, the CDJ-2000NXS, CDJ-2000NXS2 and CDJ-3000 manuals ("Playable
+music file formats"), AlphaTheta's notice on
 USB devices and OneLibrary: alphatheta.com/en/information/important-notice-for-customers-using-usb-devices-with-our-dj-equipment/)
 
 Only looks, never changes anything: not the USB, not rekordbox. Standard library only.
 
   club.py DIR MUSIC USB    prints the check (USB: where the USB is mounted, e.g. /Volumes/NAME)"""
 import json, os, re, subprocess, sys, time, unicodedata
+
+import aiff
 
 MOUNT = os.environ.get("MOUNT") or "/sbin/mount"  # overridable for tests
 FORMATS = {"msdos": "FAT32", "exfat": "exFAT", "hfs": "Mac OS Extended", "apfs": "APFS", "ntfs": "NTFS"}
@@ -28,6 +33,35 @@ NEW_DECKS = "CDJ-3000, XDJ-AZ, OPUS-QUAD, XDJ-XZ, XDJ-RX3"
 ONE_DECKS = "CDJ-3000X, XDJ-AZ, OPUS-QUAD, OMNIS-DUO"  # the decks that read the newer library (OneLibrary)
 EVERY = {"MP3", "WAV", "AIFF", "AIF", "M4A"}  # what every club deck plays
 _seen = {}  # the export on the USB, read once per change of it
+_cut = {}   # path -> (size, changed, (rate, bits)): a file's first bytes are read once per change of it
+READ = {".flac": aiff.flac_info, ".wav": lambda p: aiff.wav_info(p, True), ".aiff": aiff.aiff_info, ".aif": aiff.aiff_info}
+
+
+def cut(path):
+    """(samples a second, bits a sample) of a FLAC, WAV or AIFF; (0, 0) for another kind, or one that can't be read."""
+    read = READ.get(os.path.splitext(path)[1].lower())
+    try:
+        st = os.stat(path)
+        if not read:
+            return 0, 0
+        if _cut.get(path, ())[:2] != (st.st_size, st.st_mtime_ns):
+            i = read(path)
+            _cut[path] = (st.st_size, st.st_mtime_ns, (i["rate"], i["bits"]))
+        return _cut[path][2]
+    except Exception:  # a broken file: the safety check and the decks' update say so, not this
+        return 0, 0
+
+
+def deep(path):
+    """A 32-bit FLAC or WAV the song list can make a 24-bit copy of (aiff.py). Above 96 kHz it would still not play."""
+    rate, bits = cut(path)
+    return bits > 24 and rate <= 96000 and path.lower().endswith(aiff.KINDS)
+
+
+def some(rels, most=3):
+    """A few of the songs by name, for a line that has to say which ones."""
+    show = [os.path.splitext(r)[0] for r in rels[:most]]
+    return ", ".join(show) + (f" and {len(rels) - most} more" if len(rels) > most else "")
 
 
 def fs(usb, text=None):
@@ -77,11 +111,12 @@ def kept(dir, name):
         return None
 
 
-def check(rels, usb="", plugged=False, name="", in_library=None):
+def check(rels, usb="", plugged=False, name="", in_library=None, src=""):
     """The lines of the check, each {"ok": True (fine) / False (would go wrong in a club) / None (can't tell yet, or
     just worth knowing), "say": what stands, "do": what to do about it ("" when nothing)}.
     rels: the songs, as they sit in the music folder; usb: where the USB is mounted; name: what the USB is called;
-    in_library: the songs in the USB's own rekordbox library that The Crate keeps (kept())."""
+    in_library: the songs in the USB's own rekordbox library that The Crate keeps (kept()); src: the music folder
+    (so each file's own sound can be looked at)."""
     s = lambda n: "" if n == 1 else "s"
     out, n = [], len(rels)
     stick = f'"{name}"' if name else "the USB"
@@ -156,7 +191,26 @@ def check(rels, usb="", plugged=False, name="", in_library=None):
         k = sum(os.path.splitext(r)[1][1:].upper() in odd for r in rels)
         out.append({"ok": False, "say": f"{k} song{s(k)} {'is' if k == 1 else 'are'} in a format club decks don't "
                     f"play ({', '.join(odd)}).", "do": ""})
-    elif n and not flac:
+    cuts = {r: cut(os.path.join(src, r)) for r in rels} if src else {}
+    none = [r for r in rels if cuts.get(r, (0, 0))[1] > 24 or cuts.get(r, (0, 0))[0] > 96000]
+    high = [r for r in rels if r not in none and cuts.get(r, (0, 0))[0] > 48000]
+    if none:
+        k = len(none)
+        why = " or ".join(w for w, on in (("32-bit", any(cuts[r][1] > 24 for r in none)),
+                                          ("above 96 kHz", any(cuts[r][0] > 96000 for r in none))) if on)
+        can = [r for r in none if deep(os.path.join(src, r))]
+        rest = [r for r in none if r not in can]
+        do = ([f'"Make a 24-bit copy" on {"its row" if len(can) == 1 else "their rows"} in the song list fixes that: '
+               f"{some(can)}."] if can else []) + \
+             ([f"{'It needs' if len(rest) == 1 else 'They need'} a 24-bit, 48 kHz copy before a gig: {some(rest)}."] if rest else [])
+        out.append({"ok": False, "say": f"{k} song{s(k)} {'is' if k == 1 else 'are'} {why}: no club deck plays that.",
+                    "do": " ".join(do)})
+    if high:
+        k = len(high)
+        out.append({"ok": None, "say": f"{k} song{s(k)} {'is' if k == 1 else 'are'} above 48 kHz: fine on the "
+                    f"CDJ-2000NXS2 and CDJ-3000, skipped by older decks ({OLD_DECKS}).",
+                    "do": f"Ask the venue which decks it has: {some(high)}."})
+    if n and not flac and not odd and not none and not high:
         out.append({"ok": True, "say": "Every song is in a format any club deck plays.", "do": ""})
     out.append({"ok": None, "say": "Sticks fail: DJs carry a second one with the same music.",
                 "do": "To fill a second stick: choose it on The Crate's main page, let it copy, then choose this one "
@@ -170,5 +224,5 @@ if __name__ == "__main__":
     import dj
     d, music, usb = sys.argv[1:4]
     name = os.path.basename(os.path.normpath(usb))
-    for row in check(dj.tracks(d, music), usb, os.path.isdir(usb), name, kept(d, name)):
+    for row in check(dj.tracks(d, music), usb, os.path.isdir(usb), name, kept(d, name), music):
         print({True: "ok  ", False: "FIX ", None: "note"}[row["ok"]], row["say"], row["do"])
