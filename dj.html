@@ -47,7 +47,40 @@
   .alert { margin-top: 32px; padding: 14px 18px; border: 1px solid var(--warn); border-radius: 12px; color: var(--warn); }
   .alert[hidden] { display: none; }
   .alert + .strip { margin-top: 14px; }
-  .decks { color: var(--dim); font-size: 14.5px; display: grid; gap: 4px; margin-bottom: 36px; }
+  /* Set-up that is still to do: a card of its own, never small print. */
+  .setup { border: 1px solid var(--hot); border-radius: 16px; background: linear-gradient(180deg, #1f0f15, var(--panel)); padding: 22px 24px 24px; margin-bottom: 20px; }
+  .setup[hidden] { display: none; }
+  .setup .badge { display: inline-block; font: 700 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #ffffff; background: var(--hot); border-radius: 999px; padding: 4px 11px; }
+  .setup h2 { margin: 12px 0 6px; font-size: 24px; letter-spacing: -.02em; }
+  .setup p { margin: 0 0 18px; color: #c3c1d0; max-width: 700px; }
+  .setup ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; counter-reset: step; }
+  .setup li { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 0; border: 0; counter-increment: step; }
+  .setup li::before { content: counter(step); display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--lib); color: var(--hot); font-weight: 800; font-size: 15px; flex: none; }
+  .setup li small { color: var(--dim); font-size: 14px; flex-basis: 100%; padding-left: 42px; margin-top: -4px; }
+  .setup input { flex: 1 1 260px; max-width: 420px; }
+  .setup li button { padding: 12px 22px; }
+  /* Where your songs stand in each DJ app: one row each, a light for its state. */
+  .decks { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 6px 24px; margin-bottom: 20px; }
+  .decks .row { display: grid; grid-template-columns: 17px minmax(150px, 200px) 1fr auto; gap: 2px 14px; align-items: baseline; padding: 13px 0; border-top: 1px solid var(--line); font-size: 15px; }
+  .decks .row:first-child { border-top: 0; }
+  .decks .row .dot { align-self: center; }
+  .decks .row b small { display: block; color: var(--dim); font-weight: 400; font-size: 13.5px; }
+  .decks .row .say { color: #c3c1d0; overflow-wrap: anywhere; }
+  .decks .row time { color: var(--dim); font-size: 13.5px; white-space: nowrap; }
+  /* How it works: the same sheet as on the main page. */
+  .ask b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--dim); font-size: 12px; margin-right: 6px; vertical-align: -1px; }
+  dialog#faq { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 18px; padding: 26px 30px 30px; width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; }
+  dialog#faq::backdrop { background: rgba(0, 0, 0, .65); }
+  .faqTop { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .faqTop h2 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
+  .faqTop button { padding: 4px 13px; font-size: 20px; line-height: 1.2; }
+  #faq h3 { font-size: 17px; font-weight: 700; color: #ff5a70; margin: 22px 0 8px; padding-top: 22px; border-top: 1px solid var(--line); }
+  #faq .faqTop + h3 { border-top: 0; padding-top: 0; }
+  #faq p, #faq li { color: #c3c1d0; margin: 0 0 8px; line-height: 1.55; }
+  #faq ol { padding-left: 20px; margin: 0 0 8px; }
+  #faq li { display: list-item; padding: 0; border: 0; }
+  #faq li::marker { color: var(--dim); }
+  #faq li b, #faq p b { color: var(--text); }
   /* The club check: would this music play on a club's decks tonight? */
   .club { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 20px 24px; margin-bottom: 36px; }
   .club[hidden] { display: none; }
@@ -99,10 +132,9 @@
   .edit .how button:hover { color: var(--text); }
   .decks button { background: none; border: 0; border-bottom: 1px dotted var(--dim); border-radius: 0; padding: 0; color: var(--text); font-weight: 600; font-size: 14.5px; }
   .decks a { color: var(--text); }
-  #recRow { margin: -24px 0 36px; }
   .empty { color: var(--dim); padding: 28px 0; border-bottom: 1px solid var(--line); }
   #more { margin-top: 18px; }
-  @media (max-width: 820px) { main { padding: 32px 16px 72px; } .strip { grid-template-columns: 1fr 1fr; } h1 { font-size: 40px; } .brand img { width: 44px; height: 44px; } .bar { flex-wrap: wrap; } }
+  @media (max-width: 820px) { main { padding: 32px 16px 72px; } .strip { grid-template-columns: 1fr 1fr; } h1 { font-size: 40px; } .brand img { width: 44px; height: 44px; } .bar { flex-wrap: wrap; } .decks, .setup { padding-left: 18px; padding-right: 18px; } .decks .row { grid-template-columns: 17px 1fr; } .decks .row .say, .decks .row time { grid-column: 2; } .setup li small { padding-left: 0; } }
 </style>
 </head>
 <body>
@@ -113,10 +145,45 @@
       <div class="sub">Every song with its tempo, key and genres, ready on your decks. Fix a genre here and your USB and rekordbox follow.</div>
     </div>
     <div class="acts">
+      <button class="ghost ask" id="faqOpen" aria-haspopup="dialog"><b aria-hidden="true">?</b> How it works</button>
       <a class="ghost lib" href="/">&larr; The Crate</a>
       <button class="ghost go" id="run">Update decks now</button>
     </div>
   </header>
+
+  <dialog id="faq" aria-labelledby="faqHead">
+    <div class="faqTop"><h2 id="faqHead">How it works</h2><button class="ghost" id="faqClose" aria-label="Close">&times;</button></div>
+
+    <h3>What it does</h3>
+    <p>Gets every song The Crate downloaded ready to play: it works out each song's tempo, key and genres, then puts your songs and playlists into your DJ apps. You never drag anything in.</p>
+
+    <h3>Where your songs show up</h3>
+    <ol>
+      <li><b>Engine DJ</b>, on your USB: Denon and Numark decks</li>
+      <li><b>rekordbox</b>, on this Mac: your Collection</li>
+      <li><b>rekordbox</b>, on your USB: under the USB in rekordbox, and on the newest club decks (CDJ-3000X, XDJ-AZ, OPUS-QUAD, OMNIS-DUO)</li>
+      <li><b>Serato</b>, on your USB: its crates</li>
+    </ol>
+    <p>Everywhere, your playlists sit in one folder called <b>The Crate</b>. The songs themselves stay in one folder on the USB, once.</p>
+
+    <h3>When it runs</h3>
+    <p>By itself: after every sync, when you plug in your USB, and when you change a genre here. Or press <b>Update decks now</b>.</p>
+
+    <h3>Genres</h3>
+    <p>Each genre is a playlist on your decks. A song's genre comes from the file, from SoundCloud, or from its sound. Your own pick here always wins.</p>
+
+    <h3>Song recognition</h3>
+    <p>Listens to each song and looks it up by its sound. That fills in missing genres and warns you when a Soulseek file is really another song. Needs a free AcoustID key, once. Only a sound fingerprint leaves your Mac, never the song.</p>
+
+    <h3>Club check</h3>
+    <p>Tells you what a club's decks need from your USB before a gig. Older Pioneer decks (CDJ-3000, CDJ-2000NXS2) read an older list that only rekordbox can make: export once from rekordbox before playing on those.</p>
+
+    <h3>Is my library safe?</h3>
+    <p>It only touches its own songs and its own <b>The Crate</b> folder. Your other playlists, cues and grids are left alone. Each library is backed up before a change, and rekordbox's is never written while rekordbox is open: it catches up when you close it.</p>
+
+    <h3>What it uses</h3>
+    <p>Free, open-source tools on your Mac: <b>Essentia</b> (tempo and key), <b>Mutagen</b> (song details), <b>pyrekordbox</b> (rekordbox's libraries), <b>Chromaprint</b>, <b>AcoustID</b> and <b>MusicBrainz</b> (song recognition). No AI, no account besides the AcoustID key.</p>
+  </dialog>
 
   <div class="alert" id="alert" hidden></div>
   <div class="strip">
@@ -125,11 +192,18 @@
     <div class="stat"><b id="sNone">&nbsp;</b><small>with no genre yet</small></div>
     <div class="stat"><b class="word" id="sDecks">&nbsp;</b><small id="sDecksNote">&nbsp;</small></div>
   </div>
+  <section class="setup" id="setup" hidden aria-labelledby="setupHead">
+    <span class="badge">Set-up &middot; one step left</span>
+    <h2 id="setupHead">Turn on song recognition</h2>
+    <p>The Crate listens to each song and looks it up by its sound. That fills in missing genres and warns you when a Soulseek file is really another song. Free, about a minute, done once.</p>
+    <ol>
+      <li><span>Get your free key from AcoustID</span> <a class="ghost lib" href="https://acoustid.org/new-application" target="_blank" rel="noopener">Get the key &nearr;</a>
+        <small>Sign in there, type any name and version (like The Crate, 1), and copy the API key it shows you.</small></li>
+      <li><input id="recKey" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Paste the key here" aria-label="AcoustID API key">
+        <button id="recGo">Turn it on</button></li>
+    </ol>
+  </section>
   <div class="decks" id="decks"></div>
-  <div class="addrow" id="recRow" hidden>
-    <input id="recKey" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Paste your AcoustID API key" aria-label="AcoustID API key">
-    <button id="recGo">Save</button>
-  </div>
 
   <div class="club" id="club" hidden></div>
 
@@ -282,32 +356,29 @@ function draw() {
   else { d.append(el('span', { className: 'dot ' + (S.problem ? 'warn' : 'ok') }), S.problem ? 'Needs a look' : 'Decks up to date'); dn.textContent = 'updates by itself after every sync'; }
   $('run').disabled = S.busy;
   const a = $('alert'); a.hidden = !S.problem; a.textContent = S.problem ? S.problem.replace(/^\S+ \S+\s+/, '') : '';
-  const lines = [];
-  const when = l => l ? l.slice(0, 16) : '';
-  const what = l => l.replace(/^\S+ \S+\s+/, '');
-  if (!S.analyser) lines.push('Tempo and key are not set up on this Mac yet (the next sync sets it up, or run install.sh). Your decks work them out when you load a song meanwhile.');
-  if (S.usb) lines.push(S.usbIn ? (S.engine ? (S.lastEngine ? what(S.lastEngine) + '  ·  ' + when(S.lastEngine) : 'Engine DJ on "' + S.usb + '": ready to be written')
-      : '"' + S.usb + '" has no Engine DJ library yet: plug it into the deck once and it makes one.')
-    : 'USB "' + S.usb + '" is not plugged in: its Engine DJ library catches up when you plug it in.');
-  else lines.push('No USB chosen yet (pick one on The Crate\'s main page): the Engine DJ library goes on it.');
-  lines.push(S.rekordbox ? (S.lastRekordbox ? what(S.lastRekordbox) + '  ·  ' + when(S.lastRekordbox) : 'rekordbox: ready to be written')
-    : 'rekordbox is not on this Mac (nothing to do; install it and its library fills in by itself).');
-  const dk = $('decks'); dk.textContent = ''; lines.forEach(l => dk.append(el('div', { textContent: l })));
-  // recognising songs by their sound (AcoustID and MusicBrainz, as MusicBrainz Picard does)
-  const rec = el('div');
+  // where the songs stand in each DJ app: the last line each one logged, as a row with a light
+  const when = l => { const t = new Date(l.slice(0, 16).replace(' ', 'T')); return isNaN(t) ? '' : t.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+  const what = l => l.replace(/^\S+ \S+\s+/, '').replace(/^[^:]*:\s*/, '');
+  const light = l => /PROBLEM/.test(l) ? ' warn' : /was left alone|leaves it alone/.test(l) ? '' : ' ok';
+  const dk = $('decks'); dk.textContent = '';
+  const deck = (name, where, l, idle, dot, extra) => dk.append(el('div', { className: 'row' },
+    el('span', { className: 'dot' + (l ? light(l) : dot || '') }), el('b', {}, name, el('small', { textContent: where })),
+    el('span', { className: 'say' }, l ? what(l) : idle, extra || ''), el('time', { textContent: l ? when(l) : '' })));
+  const stick = S.usb ? 'on "' + S.usb + '"' : 'on your USB';
+  const away = !S.usb ? 'No USB chosen yet: pick one on The Crate\'s main page.' : !S.usbIn ? 'Not plugged in: it catches up when you plug it in.' : '';
+  if (!S.analyser) deck('Tempo and key', 'on this Mac', '', 'Not set up on this Mac yet: the next sync sets it up. Your decks work them out when you load a song meanwhile.', ' warn');
+  deck('Engine DJ', stick, away ? '' : S.engine ? S.lastEngine : '', away || (S.engine ? 'Ready: filled in at the next update.' : 'No Engine DJ library on it yet: plug it into the deck once and it makes one.'));
+  deck('rekordbox', 'on this Mac', S.rekordbox ? S.lastRekordbox : '', S.rekordbox ? 'Ready: filled in at the next update.' : 'rekordbox is not on this Mac. Nothing to do: install it and its library fills in by itself.');
+  deck('rekordbox', stick, away ? '' : S.lastRekordboxUsb, away || 'Ready: filled in at the next update.');
+  deck('Serato', stick, away ? '' : S.lastSerato, away || 'Ready: filled in at the next update.');
+  // recognising songs by their sound (AcoustID and MusicBrainz, as MusicBrainz Picard does): until it is set up,
+  // the set-up card above asks for it
+  $('setup').hidden = S.recognise || !S.analyser;
   if (S.recognise) {
     const off = el('button', { textContent: 'Switch off' });
     off.onclick = () => { if (confirm('Stop recognising songs by their sound? What it already learned stays.')) post('/api/dj/recognise', { key: '' }); };
-    rec.append(S.lastRecognise ? what(S.lastRecognise) + '  ·  ' + when(S.lastRecognise) + '  ' : 'Songs are recognised by their sound: the first pass takes a few minutes.  ', off);
-    $('recRow').hidden = true;
-  } else if (!S.analyser) rec.append('Recognising songs by their sound comes with tempo and key (see above).');
-  else {
-    const on = el('button', { textContent: 'Set it up' });
-    on.onclick = () => { $('recRow').hidden = !$('recRow').hidden; if (!$('recRow').hidden) $('recKey').focus(); };
-    const get = el('a', { href: 'https://acoustid.org/new-application', target: '_blank', rel: 'noopener', textContent: 'a free AcoustID key' });
-    rec.append('Recognise songs by their sound (fills in genres, and flags a Soulseek file that is another song). Needs ', get, ', once.  ', on);
-  }
-  dk.append(rec);
+    deck('Song recognition', 'by sound', S.lastRecognise, 'On: the first pass takes a few minutes.', ' ok', el('span', {}, '  ', off));
+  } else deck('Song recognition', 'by sound', '', S.analyser ? 'Not set up yet: one step, in the card above.' : 'Comes with tempo and key (see above).', S.analyser ? ' warn' : '');
   // the club check (club.py): green is fine, amber would go wrong in a club, grey is worth knowing
   const cl = $('club'), checks = S.club || [], fix = checks.filter(r => r.ok === false).length;
   cl.hidden = !checks.length; cl.textContent = '';
@@ -353,6 +424,9 @@ function draw() {
 $('more').onclick = () => { shown += 80; draw(); };
 $('q').oninput = () => { shown = 80; draw(); };
 $('sort').onchange = draw;
+$('faqOpen').onclick = () => $('faq').showModal();
+$('faqClose').onclick = () => $('faq').close();
+$('faq').onclick = e => { if (e.target === $('faq')) $('faq').close(); };
 $('run').onclick = () => { say('Updating your decks now.'); post('/api/dj/run', {}); };
 function addGenre() {
   const name = $('addName').value.trim(); if (!name) return;
@@ -361,7 +435,7 @@ function addGenre() {
 }
 $('addGo').onclick = addGenre;
 function saveKey() {
-  const key = $('recKey').value.trim(); if (!key) return;
+  const key = $('recKey').value.trim(); if (!key) { $('recKey').focus(); return; }
   $('recKey').value = '';
   post('/api/dj/recognise', { key });
 }

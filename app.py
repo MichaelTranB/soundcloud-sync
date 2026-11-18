@@ -946,8 +946,9 @@ def rekordbox_closes():
             return subprocess.run(["/usr/bin/pgrep", "-x", "rekordbox"], capture_output=True).returncode == 0
         except OSError:
             return False
-    lines = [l for l in dj.read(DIR, "dj.log").splitlines()[-40:] if "rekordbox: " in l or "REKORDBOX PROBLEM" in l]
-    was = is_open() or "rekordbox is open" in (lines or [""])[-1]
+    log = dj.read(DIR, "dj.log").splitlines()[-40:]
+    waits = lambda *words: "rekordbox is open" in ([l for l in log if any(w in l for w in words)] or [""])[-1]
+    was = is_open() or waits("rekordbox: ", "REKORDBOX PROBLEM") or waits('rekordbox on "', "REKORDBOX USB PROBLEM")
     while True:
         now = is_open()
         if was and not now:
@@ -958,11 +959,11 @@ def rekordbox_closes():
 
 def dj_problem(lines):
     """The newest PROBLEM line that still stands: one the same deck's later run didn't put right."""
-    fine = {"ENGINE": "Engine DJ on", "REKORDBOX": "rekordbox: ", "ANALYSER": "listened to",
-            "RECOGNISE": "song recognition"}
+    fine = {"ENGINE": "Engine DJ on", "REKORDBOX": "rekordbox: ", "REKORDBOX USB": 'rekordbox on "',
+            "SERATO": "Serato on", "ANALYSER": "listened to", "RECOGNISE": "song recognition"}
     for i in range(len(lines) - 1, -1, -1):
         if "PROBLEM" in lines[i]:
-            m = re.search(r"([A-Z]+) PROBLEM", lines[i])
+            m = re.search(r"((?:REKORDBOX )?[A-Z]+) PROBLEM", lines[i])
             after = fine.get(m.group(1)) if m else None
             if not (after and any(after in l and "PROBLEM" not in l for l in lines[i + 1:])):
                 return lines[i]
@@ -985,12 +986,14 @@ def dj_state():
     last = lambda *words: next((l for l in reversed(log[-40:]) if any(w in l for w in words)), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
             "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged,
-            "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb),
+            "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb, club.kept(DIR, usb)),
             "lastRecognise": last("song recognition", "RECOGNISE PROBLEM"),
             "engine": plugged and os.path.isfile(os.path.join(at, "Engine Library", "Database2", "m.db")),
             "rekordbox": os.path.isfile(os.path.expanduser("~/Library/Pioneer/rekordbox/master.db")),
             "lastEngine": last("Engine DJ on") or last("ENGINE PROBLEM"),
             "lastRekordbox": last("rekordbox: ") or last("REKORDBOX PROBLEM"),
+            "lastRekordboxUsb": last('rekordbox on "', "REKORDBOX USB PROBLEM"),
+            "lastSerato": last("Serato on", "SERATO PROBLEM"),
             "problem": dj_problem(log[-6:])}
 
 

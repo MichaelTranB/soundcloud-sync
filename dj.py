@@ -284,7 +284,17 @@ def once(dir, src, volumes):
         except Exception as e:  # never silent: the page shows the last lines of dj.log
             wrote = True
             log(dir, f'ENGINE PROBLEM on "{usb}": {e}')
+    if stick:  # Serato's crates on the USB: small files of its own, beside the songs
+        import serato
+        try:
+            said = serato.write(stick, songs, lists)
+            if said:
+                log(dir, f'Serato on "{usb}": {said}')
+        except Exception as e:
+            log(dir, f'SERATO PROBLEM on "{usb}": {e}')
     wrote = rekordbox(dir, src, songs, lists) or wrote
+    if stick:  # after the Mac's library: a track rekordbox knows takes its beat grid and waveform along
+        rekordbox_usb(dir, src, songs, lists, stick, usb)
     remember(dir, seen(dir, src, songs, stick) if wrote else there)
     if recognise.key(dir) and os.path.exists(PY):  # on its own: it asks the internet, and comes back here when it learns something
         subprocess.Popen([PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "recognise.py"), dir, src],
@@ -311,6 +321,29 @@ def rekordbox(dir, src, songs, lists):
     elif r.stdout.strip():
         log(dir, "rekordbox: " + r.stdout.strip().splitlines()[-1])
     return bool(r.returncode or r.stdout.strip())
+
+
+def rekordbox_usb(dir, src, songs, lists, stick, usb):
+    """The USB's own rekordbox library (rekordbox_usb.py, through the private Python): what rekordbox shows under
+    the USB itself and the newest club decks read. Quietly nothing when the private Python isn't there."""
+    if not os.path.exists(PY):
+        return
+    here = os.path.dirname(os.path.abspath(__file__))
+    job = {"usb": stick, "src": src, "dir": dir, "backups": os.path.join(dir, "dj-backups"), "songs": songs,
+           "lists": [[n, [s["rel"] for s in items]] for n, items in lists]}
+    try:
+        r = subprocess.run([PY, os.path.join(here, "rekordbox_usb.py")], input=json.dumps(job), capture_output=True,
+                           text=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        log(dir, f'REKORDBOX USB PROBLEM on "{usb}": took over 15 minutes and was stopped')
+        return
+    if r.returncode:
+        log(dir, f'REKORDBOX USB PROBLEM on "{usb}": ' + (r.stderr.strip().splitlines() or ["stopped"])[-1][:300])
+    elif r.stdout.strip():
+        said = f'rekordbox on "{usb}": ' + r.stdout.strip().splitlines()[-1]
+        last = [l for l in read(dir, "dj.log").splitlines()[-40:] if 'rekordbox on "' in l or "REKORDBOX USB" in l]
+        if not (last and last[-1].endswith(said)):  # (a USB that is left alone says so once, not at every run)
+            log(dir, said)
 
 
 def seen(dir, src, songs, stick):

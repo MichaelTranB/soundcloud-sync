@@ -74,7 +74,7 @@ Never YouTube rips or recorded streams: low quality.
   in). It goes to the USB's own Trash, so you can still take it back until you empty the Trash; only The Crate's
   own folder on the USB is ever touched.
 
-## Your DJ decks (Engine DJ and rekordbox)
+## Your DJ decks (Engine DJ, rekordbox and Serato)
 
 Open **Library Manager** on the page. Every song is listed with its tempo, key and genres, and The Crate puts them
 straight into your decks' libraries, with no dragging and no clicks:
@@ -84,19 +84,33 @@ straight into your decks' libraries, with no dragging and no clicks:
 - **rekordbox (Pioneer DDJ controllers, and its own USB export for CDJs):** the songs are added to rekordbox on
   this Mac, in a playlist folder called *The Crate*, with their cover when the file carries one. This happens
   while rekordbox is closed; if it's open, it catches up by itself the moment you close it.
+- **rekordbox on the USB itself (the newest club decks):** the same songs and playlists are written into the USB's
+  own rekordbox library, so they show under the USB in rekordbox (*Devices*, under the USB: *OneLibrary*) and on
+  the CDJ-3000X, XDJ-AZ, OPUS-QUAD and OMNIS-DUO, with the beat grids and waveforms rekordbox already made. A USB
+  without a rekordbox library gets one; a USB that someone else's rekordbox filled keeps everything of theirs.
+  Older club decks (CDJ-3000, CDJ-2000NXS2 and before) read an older kind of list that only rekordbox itself can
+  write: before a gig on those, export once from rekordbox (drag your playlists onto the USB under *Devices*).
+- **Serato:** the USB also gets Serato crates (*The Crate*, with a crate per playlist inside it), which Serato
+  shows when the USB is plugged in. They point at the same files; nothing is copied.
+- **One folder, each song once:** all of The Crate's music sits in one folder on the USB (*SoundCloud Sync*), and
+  every library above points at those same files. A USB that already had some of the songs (a friend's, or one
+  filled by hand) gets no doubles: a file that is another download of a song is swapped for your library's, the
+  same song as another kind of file is taken off, and the songs you threw back leave it too. Those go to the
+  USB's own Trash, never deleted, and songs that aren't from your library are left alone.
 - **Genres:** each song is sorted by what's written on it (the file, SoundCloud's genre and tags). Songs nothing
   describes land in *No genre yet*: tap their genre on the page. Wrong genre? Tap **Edit**. A song can have several
   genres; it shows in each one's playlist, and the first is the Genre column on the decks. Your picks always win,
   and you can add or remove genres from the list. Change a song's genre in rekordbox (or in Engine DJ on the USB)
   instead, and that becomes your pick on the page too.
-- **Recognise songs by their sound (optional):** The Crate can listen to each song and look it up in MusicBrainz,
+- **Recognise songs by their sound (a set-up step on the page):** The Crate can listen to each song and look it up in MusicBrainz,
   the way the free app MusicBrainz Picard does. It fills in genres for songs nothing describes, and flags a
   Soulseek file that sounds like a different song. It needs a free AcoustID key, once: the page has the link and
   a box to paste it in. Only a fingerprint of the sound and the song's length leave your Mac, never file names.
   Remixes, flips and bootlegs are often not in that database; those stay as they are.
 - **Club check:** the page also says whether your USB would work on a club's decks (nearly always Pioneer CDJs):
   how the USB is formatted (FAT32 is read by every club deck, exFAT only by the newest), how many songs are FLAC
-  (older club decks skip those), and whether your songs are in the USB's rekordbox export, which club decks need
+  (older club decks skip those), whether your songs are in the USB's own rekordbox library (the newest decks), and
+  whether they are in rekordbox's older export, which the CDJ-3000, the CDJ-2000NXS2 and the decks before them need
   for playlists, tempo and key (in rekordbox, with the USB in: drag your playlists onto it under *Devices*). It only
   looks; it changes nothing.
 - **What it never touches:** your own playlists, cues, loops and beat grids, and the music files themselves. No
