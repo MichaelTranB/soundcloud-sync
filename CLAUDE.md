@@ -122,7 +122,7 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   services' limits. Standard library only at import (Essentia only when it runs, in the analyser's Python).
 - **Club check (`club.py`, shown on the Library Manager page):** would the music play on a club's Pioneer decks: the
   USB's format (from `mount`; FAT32 or Mac OS Extended is read by all, exFAT only by the newest), FLAC (older decks
-  skip it), whether the songs are in the USB's own rekordbox library (`dj-rekordbox-usb.json`, the newest decks),
+  skip it), songs no club deck plays (32-bit, or above 96 kHz) or only the newer ones do (above 48 kHz), whether the songs are in the USB's own rekordbox library (`dj-rekordbox-usb.json`, the newest decks),
   and whether each song's file name is in the USB's older rekordbox export (`PIONEER/rekordbox/export.pdb`: the
   CDJ-3000, CDJ-2000NXS2 and earlier; only rekordbox's own export writes it). It only looks: it never changes the USB or rekordbox, and never formats anything.
 - **`dj-setup.sh`:** the analyser's own Python (python-build-standalone, pinned by version and sha256) with the

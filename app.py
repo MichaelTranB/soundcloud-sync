@@ -1082,7 +1082,7 @@ def dj_state():
                     "lastCues": last("cues: ", "cues put back: ", "CUES PROBLEM"),
                     "cuesNote": read("cues-unmapped.txt").splitlines()[:6]},
             "layout": layout.load(DIR), "rbApp": bool(rekordbox_app()),
-            "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb, club.kept(DIR, usb)),
+            "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb, club.kept(DIR, usb), OUT),
             "lastRecognise": last("song recognition", "RECOGNISE PROBLEM"),
             "engine": plugged and os.path.isfile(os.path.join(at, "Engine Library", "Database2", "m.db")),
             "rekordbox": os.path.isfile(os.path.expanduser("~/Library/Pioneer/rekordbox/master.db")),

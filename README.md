@@ -153,7 +153,7 @@ straight into your decks' libraries, with no dragging and no clicks:
   Remixes, flips and bootlegs are often not in that database; those stay as they are.
 - **Club check:** the page also says whether your USB would work on a club's decks (nearly always Pioneer CDJs):
   how the USB is formatted (FAT32 is read by every club deck, exFAT only by the newest), how many songs are FLAC
-  (older club decks skip those), whether your songs are in the USB's own rekordbox library (the newest decks), and
+  (older club decks skip those), songs no club deck plays at all (32-bit files, or above 96 kHz), whether your songs are in the USB's own rekordbox library (the newest decks), and
   whether they are in rekordbox's older export, which the CDJ-3000, the CDJ-2000NXS2 and the decks before them need
   for playlists, tempo and key (in rekordbox, with the USB in: drag your playlists onto it under *Devices*). It only
   looks; it changes nothing.
