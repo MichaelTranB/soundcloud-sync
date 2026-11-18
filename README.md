@@ -97,6 +97,16 @@ straight into your decks' libraries, with no dragging and no clicks:
   filled by hand) gets no doubles: a file that is another download of a song is swapped for your library's, the
   same song as another kind of file is taken off, and the songs you threw back leave it too. Those go to the
   USB's own Trash, never deleted, and songs that aren't from your library are left alone.
+- **Copy from another USB:** plug a friend's USB in beside yours and the page lists its rekordbox playlists (or
+  its folders). Tick the ones you want and press **Copy to my library**. The songs land in your music folder, so
+  they get everything your own songs get (safety check, tempo, key, genres, every deck library, your USB), each
+  playlist keeps its name with whose it was, and a song you already have is never copied twice. Hot cues and beat
+  grids set in rekordbox come along (USB to USB). The other USB is only ever read.
+- **Below gig quality:** MP3s under 320 kbps and M4As under 256 are marked. On each: **Find a better copy** (it joins the
+  Soulseek search at once, and takes the old file's place in its playlists when it lands; the old one goes to the
+  Trash) or **Throw away**.
+- **Listen first:** ▶ beside any song plays it on the page; **Show in Finder** opens the file.
+- **My SoundCloud playlists:** one playlist with every song from all of your SoundCloud playlists.
 - **Genres:** each song is sorted by what's written on it (the file, SoundCloud's genre and tags). Songs nothing
   describes land in *No genre yet*: tap their genre on the page. Wrong genre? Tap **Edit**. A song can have several
   genres; it shows in each one's playlist, and the first is the Genre column on the decks. Your picks always win,

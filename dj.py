@@ -13,7 +13,7 @@ Standard library only. Tempo and key need the private Python dj-setup.sh sets up
 still reach the decks, which then analyse them on load."""
 import fcntl, json, os, re, subprocess, sys, time, unicodedata
 
-import genres, recognise, usb_tidy
+import friend, genres, recognise, usb_tidy
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 # The private Python with Essentia, Mutagen and pyrekordbox (dj-setup.sh); the second is where the first build kept it.
@@ -21,6 +21,7 @@ PY = next((p for p in map(os.path.expanduser, ("~/.local/share/crate-dj/python/b
                                                "~/.local/share/crate-dj/venv/bin/python")) if os.path.exists(p)),
           os.path.expanduser("~/.local/share/crate-dj/python/bin/python3"))
 CACHE = "dj-analysis.json"
+SOUNDCLOUD = "My SoundCloud playlists"  # every SoundCloud playlist of yours in one
 WRITTEN = "dj-written.json"  # the genre each deck library showed for each track after The Crate last wrote it
 
 
@@ -160,6 +161,10 @@ def library(dir, src):
     known = recognise.load(dir)  # what each track sounds like, when recognise.py has asked
     g = genres.load(dir)
     table = genres.lookup(g["list"])
+    came, lists_of = friend.load(dir), {}  # what was copied in from another USB (friend.py)
+    for n, l in came["lists"].items():
+        for r in l.get("rels", []):
+            lists_of.setdefault(r, []).append(n)
     out = []
     for rel in rels:
         a, row = cache.get(rel, {}), pairs.get(rel)
@@ -178,6 +183,9 @@ def library(dir, src):
                 "sc_tags": (row or {}).get("tags", []), "url": (row or {}).get("url", ""),
                 "playlist": (row or {}).get("playlist", ""), "index": (row or {}).get("index", 0),
                 "was": was.get(rel, "")}  # where this file sat before it was moved: the decks' libraries follow
+        f = came["songs"].get(rel) or {}  # from another USB: its name, the playlists it was in there, and what that
+        song.update(friend=f.get("from", ""), lists=lists_of.get(rel, []), anlz=f.get("anlz", ""),  # USB's rekordbox
+                    friend_bpm=f.get("bpm", 0), friend_key=f.get("key", ""), cues=f.get("cues") or [])  # knew of it
         try:
             st = os.stat(os.path.join(src, rel))
             song["size"], song["mtime"] = st.st_size, int(st.st_mtime)
@@ -190,11 +198,22 @@ def library(dir, src):
     return out
 
 
-def playlists(songs, g):
-    """The playlists the decks get, in order: [(name, [songs])]. All inside one "The Crate" folder there."""
+def playlists(songs, g, came=None):
+    """The playlists the decks get, in order: [(name, [songs])]. All inside one "The Crate" folder there.
+    came: the playlists copied in from another USB (friend.py's record): {name: {"rels": [...]}}."""
     lists = [("All songs", songs), ("Newest 50", sorted(songs, key=lambda s: -s["mtime"])[:50])]
-    for name in dict.fromkeys(s["playlist"] for s in songs if s["playlist"]):
+    mine = list(dict.fromkeys(s["playlist"] for s in songs if s["playlist"]))
+    if len(mine) > 1:  # every SoundCloud playlist of yours in one, playlist after playlist
+        spot = {n: i for i, n in enumerate(mine)}
+        lists.append((SOUNDCLOUD, sorted((s for s in songs if s["playlist"]),
+                                         key=lambda s: (spot[s["playlist"]], s["index"]))))
+    for name in mine:
         lists.append((name, sorted((s for s in songs if s["playlist"] == name), key=lambda s: s["index"])))
+    by = {s["rel"]: s for s in songs}
+    for name, l in (came or {}).items():  # in the order they had on the other USB
+        items = [by[r] for r in l.get("rels", []) if r in by]
+        if items:
+            lists.append((name, items))
     order = {n: i for i, n in enumerate(g["list"])}
     used = sorted({x for s in songs for x in s["genres"]}, key=lambda n: (order.get(n, 999), n.lower()))
     for name in used:
@@ -267,12 +286,17 @@ def once(dir, src, volumes):
                 log(dir, f'USB "{usb}": {said}')
         except Exception as e:  # never silent: the page shows the last lines of dj.log
             log(dir, f'USB PROBLEM on "{usb}": {e}')
+    for step in (better, friend.prune):
+        try:
+            step(dir, src)
+        except Exception as e:  # never silent: the page shows the last lines of dj.log
+            log(dir, f"COPY PROBLEM: {e!r}"[:300])
     analyse(dir, src)
     songs = library(dir, src)
     there = seen(dir, src, songs, stick)
     if adopt(dir, songs, there):  # a genre you changed on the decks' side is now your pick
         songs = library(dir, src)
-    lists = playlists(songs, genres.load(dir))
+    lists = playlists(songs, genres.load(dir), friend.load(dir)["lists"])
     wrote = False
     if stick:
         import engine
@@ -300,6 +324,53 @@ def once(dir, src, volumes):
         subprocess.Popen([PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "recognise.py"), dir, src],
                          start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=open(os.path.join(dir, "dj.log"), "a"))
+
+
+def fresh(day, days=30):
+    """A better copy that was thrown back is looked for again this long (day: when it was thrown back)."""
+    try:
+        return time.time() - time.mktime(time.strptime(day, "%Y-%m-%d")) < days * 86400
+    except ValueError:
+        return False
+
+
+def better(dir, src):
+    """A better copy you asked for on the page (friend.BETTER) has come in from Soulseek: only now does the file it
+    replaces go to the Trash (and off the USB, the next time it's in), and its playlists and your genre pick pass
+    to the new one. Until then you keep the old file to play."""
+    if not friend.wanted(dir):
+        return
+    import soulseek
+    with soulseek.locked(dir):  # with the page's "Find a better copy" and the Soulseek search: one writer at a time
+        got = {g[0]: g[2] for g in soulseek.load_got(dir)}
+        left, g, changed = [], genres.load(dir), False
+        for row in friend.wanted(dir):
+            name, link, old = row[0], row[1], row[6]
+            new, was = got.get(link, ""), os.path.join(src, old) if old else ""
+            if not new or not os.path.isfile(new):
+                # still looked for: the file is there to be replaced, or the better copy that came was thrown back
+                # (row[7]). A file you threw away meanwhile is looked for no more.
+                if os.path.isfile(was) or fresh(row[7]):
+                    left.append(row)
+                continue
+            if os.path.isfile(was) and not os.path.samefile(was, new):
+                size = os.path.getsize(was)
+                if not soulseek.trash(dir, was):
+                    left.append(row)  # (couldn't be moved: tried again next time)
+                    continue
+                with open(os.path.join(dir, soulseek.USB_THROWN), "a") as f:
+                    f.write(f"{was}\t{size}\n")
+            now = os.path.relpath(new, src)
+            friend.moved(dir, old, now)
+            a, b = ("file:" + os.path.splitext(os.path.basename(x))[0] for x in (old, now))
+            if a in g["songs"] and b not in g["songs"]:
+                g["songs"][b] = g["songs"].pop(a)
+                changed = True
+            log(dir, f"a better copy of {name} came in from Soulseek ({os.path.splitext(now)[1][1:].upper()}); "
+                     "the one it replaces is in the Trash")
+        if changed:
+            genres.save(dir, g)
+        friend.save_wanted(dir, left)
 
 
 def rekordbox(dir, src, songs, lists):

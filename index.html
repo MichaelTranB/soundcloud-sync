@@ -140,6 +140,8 @@
   li .why .by { color: var(--dim); }
   li button.bad, .wrongs button.undo { background: none; border: 0; padding: 0; color: var(--dim); font-size: 13px; text-decoration: underline dotted; white-space: nowrap; cursor: pointer; }
   li button.bad:hover, .wrongs button.undo:hover { color: #e0a040; }
+  li button.play { background: none; border: 1px solid var(--line); border-radius: 50%; width: 30px; height: 30px; padding: 0; flex: none; color: var(--text); font-size: 11px; line-height: 1; cursor: pointer; }
+  li button.play.on { background: var(--hot); border-color: var(--hot); color: #fff; }
   .wrongs { padding: 9px 2px 11px; color: #e0a040; font-size: 14px; }
   li .why button.undo { background: none; border: 0; padding: 0; margin-left: 8px; color: var(--dim); font-size: 13.5px; text-decoration: underline dotted; }
   #viewNote .run { display: flex; flex-wrap: wrap; align-items: center; color: var(--text); font-weight: 600; }
@@ -652,6 +654,8 @@ function draw() {
           doubted.map(t => `${t.name}: ${t.wrong}`).slice(0, 12).join('\n') + (doubted.length > 12 ? '\n…' : '') +
           '\n\nThey go to the Trash, are never taken again, and The Crate starts looking for the right ones right away.' + offUsb(true)) }))] : []),
     ...(have.length ? have.map(t => el('li', {},
+    el('button', { className: 'play' + (playing === t.file ? ' on' : ''), textContent: playing === t.file ? '❚❚' : '▶',
+      title: playing === t.file ? 'Stop' : 'Listen', ariaLabel: (playing === t.file ? 'Stop ' : 'Listen to ') + t.name, onclick: () => listen(t.file) }),
     el('span', { className: 'n', textContent: t.name }),
     ...(t.wrong ? [el('span', { className: 'tag low', title: 'Probably not the playlist\'s song: ' + t.wrong, textContent: 'Looks wrong' })] : []),
     el('span', { className: 'tag' + (LOSSLESS.includes(t.kind) ? ' lossless' : ''), textContent: t.kind }),
@@ -803,6 +807,28 @@ function paintSetup(s) {
 }
 
 $('djOpen').onclick = () => { location.href = '/dj'; };  // genres, tempo and key, and what your decks have
+
+// Hearing a downloaded song: one at a time, straight from the music folder (app.py's /play).
+const player = new Audio(); let playing = '';
+function marks() {
+  for (const b of document.querySelectorAll('#have button.play')) { b.classList.remove('on'); b.textContent = '▶'; }
+}
+function listen(file) {
+  const same = playing === file;
+  player.pause(); playing = ''; marks();
+  if (same) return;
+  playing = file; player.src = '/play?f=' + encodeURIComponent(file);
+  player.play().catch(() => { /* the error handler says why */ });
+  if (last) render(last);
+}
+player.onended = () => { playing = ''; marks(); };
+player.onerror = () => {
+  if (!playing) return;
+  const file = playing; playing = ''; marks();
+  // a kind of file the browser can't play (AIFF outside Safari): shown in Finder instead, where the space bar plays it
+  fetch('/api/dj/show', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file }) }).catch(() => {});
+  alert("Your browser can't play this kind of file here. It is shown in Finder instead: press the space bar there to hear it.");
+};
 
 async function call(path, body) {
   const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});

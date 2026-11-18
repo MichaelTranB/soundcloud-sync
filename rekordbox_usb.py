@@ -21,7 +21,7 @@ library was already in step.
     later run. Without rekordbox, the tempo and key The Crate worked out are used and the deck draws the rest.
   The older library on the USB (export.pdb, for the CDJ-3000, CDJ-2000NXS2 and earlier) is only written by
     rekordbox's own export; club.py says where that stands."""
-import json, os, shutil, subprocess, sys, tempfile, time, unicodedata, zlib
+import json, os, shutil, struct, subprocess, sys, tempfile, time, unicodedata, zlib
 
 MUSIC, FOLDER, RECORD = "SoundCloud Sync", "The Crate", "dj-rekordbox-usb.json"
 KINDS = {".mp3": 1, ".mp4": 3, ".m4a": 4, ".flac": 5, ".wav": 11, ".aiff": 12, ".aif": 12}  # rekordbox's own codes
@@ -180,6 +180,42 @@ def mac(job, master=None):
         db.close()
 
 
+BLANK = {"db": 0, "id": 0, "link": 0, "bpm": 0, "key": "", "length": 0, "bitrate": 0, "depth": 0, "rate": 0,
+         "anlz": "", "art": "", "created": "", "added": ""}  # a song rekordbox on this Mac doesn't know
+
+
+def cued(dat):
+    """Does this analysis hold cue points (hot cues, memory cues, loops)?"""
+    from pyrekordbox.anlz import AnlzFile
+    for part in ("DAT", "EXT"):
+        try:
+            with open(dat[:-3] + part, "rb") as f:
+                a = AnlzFile.parse(f.read())
+            if any(t.content.count for tag in ("PCOB", "PCO2") for t in a.getall_tags(tag)):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def carried(job, known):
+    """A song copied in from another USB brought that USB's analysis along (friend.py): its beat grid, waveform and
+    cue points. It is used where rekordbox on this Mac has none for the song, or has one without cue points while
+    the one that came along holds some. Cue points you set yourself on this Mac always win."""
+    for s in job["songs"]:
+        a = s.get("anlz") or ""
+        if not a or not os.path.isfile(a):
+            continue
+        k = known.get(s["rel"])
+        if k and k.get("anlz") and (cued(k["anlz"]) or not cued(a)):
+            continue
+        k = known.setdefault(s["rel"], dict(BLANK))
+        k["anlz"] = a
+        k["bpm"] = k["bpm"] or int(s.get("friend_bpm") or 0)
+        k["key"] = k["key"] or s.get("friend_key") or ""
+    return known
+
+
 def fresh(db_file, name, master_id):
     """A new, empty library on a USB that has none, laid out as rekordbox 7 makes one."""
     from sqlalchemy import text
@@ -240,10 +276,28 @@ def restore(saved, db_file):
             os.remove(db_file + x)
 
 
+def repath(data, path):
+    """One analysis file's bytes with its track's place changed, and everything else byte for byte as it was: the
+    beat grid, the waveforms, the cue points. (Done by hand: pyrekordbox can't write back a file that holds cue
+    points.) The place sits in the file's PPTH part, as UTF-16 with a closing zero."""
+    if data[:4] != b"PMAI":
+        raise ValueError("not an analysis file")
+    i = struct.unpack(">I", data[4:8])[0]
+    while i + 12 <= len(data):
+        size = struct.unpack(">I", data[i + 8:i + 12])[0]
+        if size < 12:
+            break
+        if data[i:i + 4] == b"PPTH":
+            p = path.encode("utf-16-be") + b"\0\0"
+            out = data[:i] + b"PPTH" + struct.pack(">III", 16, 16 + len(p), len(p)) + p + data[i + size:]
+            return out[:8] + struct.pack(">I", len(out)) + out[12:]
+        i += size
+    raise ValueError("an analysis file with no track in it")
+
+
 def analysis(usb, dat, path):
     """rekordbox's analysis of one track (beat grid, waveform, cues), copied from the Mac onto the USB and addressed
     to the track's place there. Where its first file is, as the library names it; "" when it couldn't be made."""
-    from pyrekordbox.anlz import AnlzFile
     h = zlib.crc32(path.encode())
     rel = f"/PIONEER/USBANLZ/P{(h >> 20) & 0xFFF:03X}/{h & 0xFFFFF:08X}"
     while os.path.exists(usb + rel):
@@ -254,10 +308,9 @@ def analysis(usb, dat, path):
         for part in PARTS:
             if os.path.isfile(dat[:-3] + part):
                 with open(dat[:-3] + part, "rb") as f:
-                    a = AnlzFile.parse(f.read())
-                a.set_path(path)
+                    data = repath(f.read(), path)
                 with open(f"{usb}{rel}/ANLZ0000.{part}", "wb") as f:
-                    f.write(a.build())
+                    f.write(data)
         return rel + "/ANLZ0000.DAT"
     except Exception:  # an analysis file this can't read: the track goes on without, and the deck draws its own
         shutil.rmtree(usb + rel, ignore_errors=True)
@@ -266,16 +319,14 @@ def analysis(usb, dat, path):
 
 def readdress(usb, dat, path):
     """A track that moved on the USB: its analysis files there are told the new place."""
-    from pyrekordbox.anlz import AnlzFile
     for part in PARTS:
         p = usb + dat[:-3] + part
         try:
             with open(p, "rb") as f:
-                a = AnlzFile.parse(f.read())
-            a.set_path(path)
+                data = repath(f.read(), path)
             with open(p, "wb") as f:
-                f.write(a.build())
-        except Exception:
+                f.write(data)
+        except (OSError, ValueError, struct.error):
             pass
 
 
@@ -336,11 +387,11 @@ def write(job, master=None, is_open=running):
             return ""
         if is_open():
             return OPEN
-        known = mac(job, master)
+        known = carried(job, mac(job, master))
         fresh(db_file, name, max([k["db"] for k in known.values()] or [0]))
         made = True
     if known is None:
-        known = mac(job, master)
+        known = carried(job, mac(job, master))
     lib = opened(db_file)
     run = lambda sql, **p: lib.session.execute(text(sql), p)
 
@@ -348,6 +399,7 @@ def write(job, master=None, is_open=running):
         return [r[0] for r in run("SELECT content_id FROM playlist_content WHERE playlist_id = :p ORDER BY sequenceNo", p=pid)]
     tmp = tempfile.mkdtemp(prefix="crate-covers-")
     try:
+        cue_cols = [r[1] for r in run("PRAGMA table_info(cue)")]
         # Only The Crate's own rows: the tracks in the USB's "SoundCloud Sync" folder.
         own = {nfc(p): {"id": i, "genre": g or "", "anlz": a or "", "image": im or 0} for i, p, g, a, im in run(
             "SELECT c.content_id, c.path, g.name, c.analysisDataFilePath, c.image_id FROM content c "
@@ -449,6 +501,11 @@ def write(job, master=None, is_open=running):
                 i = run(f'INSERT INTO content ({", ".join(COLUMNS)}) VALUES ({", ".join(":" + c for c in COLUMNS)})',
                         **row).lastrowid
                 own[p] = {"id": i, "genre": (s.get("genres") or [""])[0], "anlz": anlz, "image": row["image_id"]}
+                for c in s.get("cues") or []:  # the cue rows it had on the USB it was copied from (friend.py)
+                    cols = [x for x in c if x in cue_cols and x not in ("cue_id", "content_id")]
+                    if cols:
+                        run(f'INSERT INTO cue (content_id, {", ".join(cols)}) VALUES (:content_id, '
+                            f'{", ".join(":" + x for x in cols)})', content_id=i, **{x: c[x] for x in cols})
             for s in regenre:
                 run("UPDATE content SET genre_id = :g WHERE content_id = :i", g=named("genre", s["genres"][0]),
                     i=own[at[s["rel"]]]["id"])

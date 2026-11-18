@@ -26,6 +26,7 @@
   button, a.ghost { font: inherit; font-weight: 700; border: 0; border-radius: 999px; cursor: pointer; padding: 14px 26px; background: var(--hot); color: #ffffff; transition: transform .08s, opacity .2s; }
   button:active { transform: scale(.97); }
   button:disabled { opacity: .45; cursor: default; }
+  [hidden] { display: none !important; }
   button.ghost, a.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 10px 18px; font-weight: 600; text-decoration: none; display: inline-block; }
   /* The two at the top, in the main page's colours: the way back is milk white with red words (as the Library
      Manager button there), the action is the app's red. */
@@ -91,6 +92,7 @@
   .club .row small { display: block; color: var(--dim); font-size: 14px; }
   .note { color: var(--dim); font-size: 14.5px; min-height: 18px; }
   .note.bad { color: var(--warn); }
+  .note:not(:empty) { position: sticky; top: 10px; z-index: 6; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
 
   /* The genre pills: pick one to see its songs. */
   .pills { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -134,6 +136,39 @@
   .decks a { color: var(--text); }
   .empty { color: var(--dim); padding: 28px 0; border-bottom: 1px solid var(--line); }
   #more { margin-top: 18px; }
+  /* Another USB with songs on it: one calm line until you open it. */
+  .other { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 4px 24px; margin-bottom: 20px; }
+  .other[hidden] { display: none; }
+  .other .head { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding: 14px 0; border-top: 1px solid var(--line); }
+  .other .head:first-child { border-top: 0; }
+  .other .head b { flex: 1 1 260px; font-size: 16px; min-width: 0; overflow-wrap: anywhere; }
+  .other .head b small { display: block; color: var(--dim); font-weight: 400; font-size: 14px; }
+  .other .head button { padding: 9px 18px; font-size: 14.5px; }
+  .other label { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); cursor: pointer; font-size: 15px; }
+  .other label input { width: 18px; height: 18px; accent-color: var(--hot); flex: none; padding: 0; }
+  .other label span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .other label small { color: var(--dim); font-size: 14px; white-space: nowrap; }
+  .other label small i { font-style: normal; color: var(--warn); }
+  .other .foot { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding: 14px 0; border-top: 1px solid var(--line); }
+  .other .foot small { color: var(--dim); font-size: 14px; flex: 1 1 260px; }
+  .other .foot button { padding: 11px 22px; }
+  .other .foot button.more { background: none; border: 0; border-bottom: 1px dotted var(--dim); border-radius: 0; padding: 0; color: var(--dim); font-weight: 600; font-size: 14.5px; }
+  .other p { margin: 0; padding: 0 0 14px; color: var(--dim); font-size: 14.5px; }
+  .other progress { width: 100%; height: 6px; accent-color: var(--hot); margin: 0 0 14px; }
+  /* Listening, and what is below gig quality. */
+  button.play { background: transparent; border: 1px solid var(--line); color: var(--text); width: 36px; height: 36px; padding: 0; flex: none; font-size: 12px; line-height: 1; }
+  button.play.on { background: var(--hot); border-color: var(--hot); }
+  .tag.low { color: var(--warn); border-color: #6b5a1a; }
+  .fix { margin: 8px 0 0 48px; color: var(--dim); font-size: 14.5px; display: flex; gap: 4px 14px; flex-wrap: wrap; align-items: baseline; }
+  .fix button { background: none; border: 0; border-bottom: 1px dotted var(--dim); border-radius: 0; padding: 0; color: var(--text); font-weight: 600; font-size: 14.5px; }
+  #player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--panel); border-top: 1px solid var(--line); padding: 10px 20px; display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
+  #player[hidden] { display: none; }
+  #player b { flex: 0 1 300px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; }
+  #player b small { display: block; color: var(--dim); font-weight: 400; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; }
+  #player audio { flex: 1 1 280px; min-width: 0; height: 36px; }
+  #player audio[hidden], #player .cant[hidden] { display: none; }
+  #player .cant { flex: 1 1 280px; color: var(--warn); font-size: 14.5px; }
+  #player button { padding: 8px 14px; font-size: 14px; }
   @media (max-width: 820px) { main { padding: 32px 16px 72px; } .strip { grid-template-columns: 1fr 1fr; } h1 { font-size: 40px; } .brand img { width: 44px; height: 44px; } .bar { flex-wrap: wrap; } .decks, .setup { padding-left: 18px; padding-right: 18px; } .decks .row { grid-template-columns: 17px 1fr; } .decks .row .say, .decks .row time { grid-column: 2; } .setup li small { padding-left: 0; } }
 </style>
 </head>
@@ -178,6 +213,18 @@
     <h3>Club check</h3>
     <p>Tells you what a club's decks need from your USB before a gig. Older Pioneer decks (CDJ-3000, CDJ-2000NXS2) read an older list that only rekordbox can make: export once from rekordbox before playing on those.</p>
 
+    <h3>Copying from another USB</h3>
+    <p>Plug a friend's USB in and a line shows up here. Open it, tick its playlists or folders, press <b>Copy to my library</b>.</p>
+    <ol>
+      <li>Songs land in your library first, so they get everything your own songs get: safety check, tempo, key, genres, every deck.</li>
+      <li>A song you already have isn't copied twice. One you threw away stays away.</li>
+      <li>Each playlist keeps its name. Hot cues set in rekordbox come along onto your USB's rekordbox list.</li>
+      <li>The other USB is only read, never changed.</li>
+    </ol>
+
+    <h3>Listening and quality</h3>
+    <p>Press <b>&#9654;</b> on a song to hear it. <b>Below gig quality</b> means an MP3 under 320 kbps (or an AAC under 256): fine at home, thin on a club system. <b>Find a better copy</b> asks Soulseek, and you keep your file until the better one lands.</p>
+
     <h3>Is my library safe?</h3>
     <p>It only touches its own songs and its own <b>The Crate</b> folder. Your other playlists, cues and grids are left alone. Each library is backed up before a change, and rekordbox's is never written while rekordbox is open: it catches up when you close it.</p>
 
@@ -204,6 +251,7 @@
     </ol>
   </section>
   <div class="decks" id="decks"></div>
+  <section class="other" id="other" hidden aria-label="Copy from another USB"></section>
 
   <div class="club" id="club" hidden></div>
 
@@ -224,6 +272,13 @@
   </div>
   <ul id="songs"></ul>
   <button class="ghost" id="more" hidden></button>
+  <div id="player" hidden>
+    <b id="pName"></b>
+    <audio id="pAudio" controls preload="none"></audio>
+    <span class="cant" id="pCant" hidden>Your browser can't play this kind of file here. Open it in Finder and press the space bar to hear it.</span>
+    <button class="ghost" id="pShow">Show in Finder</button>
+    <button class="ghost" id="pClose" aria-label="Close the player">&times;</button>
+  </div>
 </main>
 
 <script>
@@ -246,6 +301,10 @@ let kept = new Set();         // songs you just fixed stay in view until you cha
 let tidy = false;             // the genre pills show their remove buttons
 let shown = 80;               // how many rows are drawn (more on "Show more")
 let saving = 0;
+let usbs = null, usbKey = null;  // what each other plugged-in USB offers to copy (asked only when what's plugged in changes)
+let openUsb = '', ticked = new Set(), allLists = false;  // the USB opened to copy from, and what is ticked on it
+let copying = false;          // a copy was running at the last look
+let playing = '';             // the file in the player
 
 function say(text, bad) { const n = $('note'); n.textContent = text || ''; n.className = 'note' + (bad ? ' bad' : ''); }
 
@@ -265,6 +324,42 @@ async function post(path, body) {
     S = j; raw = ''; say('');
   } catch (e) { say(e.message, true); }
   saving--; draw();
+}
+
+async function lookUsbs() {
+  try { const r = await fetch('/api/dj/usbs'); if (r.ok) { usbs = await r.json(); draw(); } } catch (e) { /* asked again at the next change */ }
+}
+const num = n => n.toLocaleString();
+const size = mb => mb >= 1000 ? (Math.round(mb / 100) / 10) + ' GB' : mb + ' MB';
+const link = (text, go) => { const b = el('button', { textContent: text }); b.onclick = go; return b; };
+
+// The player: one song at a time, in a bar at the foot of the page.
+function stop() {
+  const a = $('pAudio'); playing = '';
+  a.pause(); a.removeAttribute('src'); a.load();
+  $('player').hidden = true; draw();
+}
+function listen(song) {
+  if (playing === song.file) return stop();
+  const a = $('pAudio'); playing = song.file;
+  $('pName').textContent = ''; $('pName').append(song.title, el('small', { textContent: song.artist || 'Unknown artist' }));
+  $('pCant').hidden = true; a.hidden = false; $('player').hidden = false;
+  a.src = '/play?f=' + encodeURIComponent(song.file);
+  a.play().catch(() => { /* the error handler below says why */ });
+  draw();
+}
+// "Wrong or bad file", as on the main page: to the Trash, off the decks and the USB, never taken again.
+async function throwAway(song, ask, done) {
+  if (!confirm(ask)) return;
+  if (playing === song.file) stop();
+  saving++;
+  try {
+    const r = await fetch('/api/soulseek-bad', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file: song.file }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Something went wrong.');
+    say(done);
+  } catch (e) { say(e.message, true); }
+  saving--; raw = ''; load();
 }
 
 function setGenres(song, list) {
@@ -310,6 +405,7 @@ function picker(song) {
   } else how.append(song.from ? 'Sorted by ' + song.from + '. Tap a genre to change it.' : 'Nothing on this song says what it is. Tap its genre.');
   if (song.heard.length) how.append(' Labels on it: ' + song.heard.join(', ') + '.');
   if (song.sounds) how.append(' Sounds like: ' + song.sounds + '.');
+  if (song.friend) how.append(' Copied from "' + song.friend + '"' + (song.lists.length ? ' (' + song.lists.join(', ') + ')' : '') + '.');
   box.append(how);
   return box;
 }
@@ -323,18 +419,34 @@ function row(song) {
   const edit = el('button', { className: 'ghost', textContent: isOpen ? 'Done' : 'Edit' });
   edit.setAttribute('aria-expanded', isOpen);
   edit.onclick = () => { isOpen ? open.delete(song.key) : open.add(song.key); draw(); };
-  const top = el('div', { className: 'top' }, name, gs,
+  const on = playing === song.file;
+  const play = el('button', { className: 'play' + (on ? ' on' : ''), textContent: on ? '❚❚' : '▶', title: on ? 'Stop' : 'Listen' });
+  play.setAttribute('aria-label', (on ? 'Stop ' : 'Listen to ') + song.title);
+  play.onclick = () => listen(song);
+  const top = el('div', { className: 'top' }, play, name, gs,
     el('span', { className: 'tag bpm', textContent: song.bpm ? String(Math.round(song.bpm * 10) / 10) : '—', title: 'Tempo (beats a minute)' }),
     el('span', { className: 'tag', textContent: song.tone ? song.tone + (WHEEL[song.tone] ? ' · ' + WHEEL[song.tone] : '') : '—', title: 'Key, and its number on the mixing wheel' }),
-    el('span', { className: 'tag', textContent: song.kind }), edit);
+    el('span', { className: 'tag' + (song.low ? ' low' : ''), textContent: song.low ? song.kind + ' ' + song.kbps : song.kind,
+      title: song.low ? 'Below gig quality: ' + song.kbps + ' kbps' : '' }), edit);
   const li = el('li', {}, top);
+  if (song.better) li.append(el('div', { className: 'fix' }, 'Looking for a better copy on Soulseek. You keep this one until it lands.',
+    link('Stop looking', () => post('/api/dj/better', { key: song.key, off: true }))));
+  else if (song.low) {
+    const own = song.key.startsWith('file:');  // a file with no SoundCloud note: kept until the better copy is in
+    const fix = el('div', { className: 'fix' }, 'Below gig quality (' + song.kbps + ' kbps): thin on a club system.');
+    fix.append(link('Find a better copy', () => own ? post('/api/dj/better', { key: song.key })
+      : throwAway(song, 'Look for a better copy of "' + song.title + '" on Soulseek?\n\nThis is the file from SoundCloud itself, so it goes to the Trash now (off your decks and your USB too) and Soulseek is asked for a better one.',
+        'In the Trash. Soulseek is being asked for a better copy.')));
+    if (own) fix.append(link('Throw away', () => throwAway(song, 'Throw "' + song.title + '" away?\n\nIt goes to the Trash, leaves your decks and your USB, and is never copied in again.', 'In the Trash. It leaves your decks and your USB too.')));
+    li.append(fix);
+  }
   if (isOpen) li.append(picker(song));
   return li;
 }
 
 function inView(song) {
   if (kept.has(song.key)) return true;
-  return view === 'all' || (view === 'none' ? !song.genres.length : song.genres.includes(view));
+  return view === 'all' || (view === 'none' ? !song.genres.length : view === ' low' ? song.low : song.genres.includes(view));
 }
 
 function pill(label, count, key, cls) {
@@ -386,10 +498,56 @@ function draw() {
   checks.forEach(r => cl.append(el('div', { className: 'row' }, el('span', { className: 'dot' + (r.ok === true ? ' ok' : r.ok === false ? ' warn' : '') }),
     el('div', {}, r.say, r.do ? el('small', { textContent: r.do }) : ''))));
 
+  // another USB with songs on it (friend.py): one line each until you open it; what it offers is asked only when
+  // what is plugged in changes, or a copy has just finished
+  const plugged = (S.others || []).join('\n');
+  if (plugged !== usbKey || (copying && !S.copy)) { usbKey = plugged; if (plugged) lookUsbs(); else usbs = null; }
+  copying = !!S.copy;
+  const ot = $('other'), offered = ((usbs || {}).usbs || []).filter(u => (S.others || []).includes(u.usb));
+  ot.hidden = !offered.length && !S.copy && !S.lastFriend; ot.textContent = '';
+  if (S.copy) {
+    ot.append(el('div', { className: 'head' }, el('b', {}, el('span', { className: 'spin' }), 'Copying songs from "' + S.copy.usb + '"',
+      el('small', { textContent: S.copy.total ? num(S.copy.done) + ' of ' + num(S.copy.total) + '. Leave both USBs in until it is done.' : 'Reading what is on it.' }))));
+    const bar = el('progress', { max: S.copy.total || 1, value: S.copy.done });
+    ot.append(bar);
+  } else if (S.lastFriend) ot.append(el('div', { className: 'head' }, el('b', {}, 'Last copy from another USB',
+    el('small', { textContent: S.lastFriend.replace(/^\S+ \S+\s+/, '').replace(/^USB copy from /, 'From ').replace(/^COPY PROBLEM from /, 'It stopped: from ') + ' (' + when(S.lastFriend) + ')' }))));
+  offered.forEach(u => {
+    const isOpen = openUsb === u.usb && !S.copy, every = u.lists.find(l => l.kind === 'all');
+    const lists = u.lists.filter(l => l.kind !== 'all'), songsOn = every ? every.count : lists.reduce((n, l) => n + l.count, 0);
+    const go = el('button', { className: 'ghost', textContent: isOpen ? 'Close' : 'Copy songs from it', disabled: !!S.copy });
+    go.setAttribute('aria-expanded', isOpen);
+    go.onclick = () => { openUsb = isOpen ? '' : u.usb; ticked.clear(); allLists = false; draw(); };
+    ot.append(el('div', { className: 'head' }, el('b', {}, u.own ? 'Your USB "' + u.usb + '" holds songs that aren\'t in your library' : 'Another USB is plugged in: "' + u.usb + '"',
+      el('small', { textContent: (lists.length ? num(lists.length) + (u.rekordbox ? ' playlist' : ' folder') + (lists.length === 1 ? '' : 's') + ', ' : '') + num(songsOn) + ' songs'
+        + (u.older ? '. It has only the older rekordbox list, which can\'t be read here: its folders are shown instead.' : '') })), go));
+    if (!isOpen) return;
+    const tick = l => {
+      const box = el('input', { type: 'checkbox', checked: ticked.has(l.id) || (l.kind !== 'all' && every && ticked.has(every.id)), disabled: l.kind !== 'all' && !!every && ticked.has(every.id) });
+      box.onchange = () => { box.checked ? ticked.add(l.id) : ticked.delete(l.id); draw(); };
+      const facts = el('small', {}, num(l.count) + (l.count === 1 ? ' song' : ' songs') + ' · ' + size(l.mb));
+      if (l.low) facts.append(' · ', el('i', { textContent: num(l.low) + ' below gig quality' }));
+      return el('label', {}, box, el('span', { textContent: l.kind === 'all' ? 'Everything on it' : l.name }), facts);
+    };
+    if (every) ot.append(tick(every));
+    lists.slice(0, allLists ? lists.length : 12).forEach(l => ot.append(tick(l)));
+    const picked = every && ticked.has(every.id) ? [every] : u.lists.filter(l => ticked.has(l.id));
+    const n = picked.reduce((a, l) => a + l.count, 0), mb = picked.reduce((a, l) => a + l.mb, 0);
+    const copy = el('button', { textContent: 'Copy to my library', disabled: !picked.length });
+    copy.onclick = () => { const body = { usb: u.usb, lists: picked.map(l => l.id) }; openUsb = ''; ticked.clear(); say('Copying. New songs show up here as they are checked.'); post('/api/dj/copy', body); };
+    const foot = el('div', { className: 'foot' });
+    if (lists.length > 12 && !allLists) { const m = link('Show all ' + num(lists.length), () => { allLists = true; draw(); }); m.className = 'more'; foot.append(m); }
+    foot.append(el('small', { textContent: !picked.length ? 'Tick what you want. Songs you already have aren\'t copied twice, and the other USB is never changed.'
+      : (picked.length > 1 ? 'Up to ' : '') + num(n) + ' songs, ' + size(mb) + '. ' + (mb > usbs.freeMb ? 'This Mac has ' + size(usbs.freeMb) + ' free: it copies what fits.' : 'Free on this Mac: ' + size(usbs.freeMb) + '.') }), copy);
+    ot.append(foot);
+  });
+
   // the pills
   const p = $('pills'); p.textContent = '';
   p.append(pill('All', songs.length, 'all'));
   if (none || view === 'none') p.append(pill(NONE, none, 'none', 'todo'));
+  const thin = songs.filter(s => s.low).length;
+  if (thin || view === ' low') p.append(pill('Below gig quality', thin, ' low', 'todo'));
   const extra = [...new Set(songs.flatMap(s => s.genres))].filter(g => !S.list.includes(g));
   [...S.list, ...extra].forEach(g => {
     const n = songs.filter(s => s.genres.includes(g)).length;
@@ -417,7 +575,8 @@ function draw() {
   const ul = $('songs'); ul.textContent = '';
   if (view === 'none') rows.forEach(s => { if (!s.genres.length) open.add(s.key); });  // the to-do pile: pickers open
   rows.slice(0, shown).forEach(s => ul.append(row(s)));
-  if (!rows.length) ul.append(el('div', { className: 'empty', textContent: view === 'none' && !q ? 'Every song has a genre. Nice.' : 'No songs here.' }));
+  if (!rows.length) ul.append(el('div', { className: 'empty', textContent: view === 'none' && !q ? 'Every song has a genre. Nice.' : view === ' low' && !q ? 'Every song is gig quality.' : 'No songs here.' }));
+  document.querySelector('main').style.paddingBottom = playing ? '150px' : '';
   const m = $('more'); m.hidden = rows.length <= shown; m.textContent = 'Show ' + Math.min(80, rows.length - shown) + ' more';
 }
 
@@ -440,6 +599,10 @@ function saveKey() {
   post('/api/dj/recognise', { key });
 }
 $('recGo').onclick = saveKey;
+$('pAudio').onerror = () => { if (playing) { $('pAudio').hidden = true; $('pCant').hidden = false; } };
+$('pAudio').onended = stop;
+$('pShow').onclick = () => { if (playing) post('/api/dj/show', { file: playing }); };
+$('pClose').onclick = stop;
 $('recKey').onkeydown = e => { if (e.key === 'Enter') saveKey(); };
 $('addName').onkeydown = e => { if (e.key === 'Enter') addGenre(); };
 document.addEventListener('visibilitychange', load);
