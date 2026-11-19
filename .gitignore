@@ -35,6 +35,8 @@ safety-ok.tsv.tmp
 .usb-list.new
 usb-layout.json
 usb-layout.json.tmp
+usb-place.json
+usb-place.json.tmp
 .originals
 .archive-have
 blocked-originals.txt

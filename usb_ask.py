@@ -9,14 +9,14 @@ on that USB is touched: no song copied, no list written, nothing moved to its Tr
 
   usb_ask.py check DIR USB    exit 0: go ahead; exit 3: waiting for your OK (USB: the drive, e.g. /Volumes/Lexar)
 
-What The Crate does once allowed: songs go only into its own folder (SoundCloud Sync), its playlists are added
+What The Crate does once allowed: songs go only into its own folder (SoundCloud Sync, or where you chose: place.py), its playlists are added
 beside the ones already in the USB's rekordbox, Engine DJ and Serato lists (each list is copied to dj-backups
 first), and your own files, folders and playlists are never moved, renamed or deleted. Standard library only."""
 import json, os, sys, time, uuid
 
-import usb_tidy
+import place, usb_tidy
 
-OK, FOLDER, MARK = "usb-ok.json", "SoundCloud Sync", ".thecrate"
+OK, MARK = "usb-ok.json", place.MARK
 KINDS = ["songs", "lists", "convert"]  # what a yes covers: songs into its folder, playlists into the DJ lists, AIFF
 SYSTEM = ("system volume information", "$recycle.bin", "lost.dir", "found.000")  # a drive's own, not content
 LISTS = (("rekordbox", os.path.join("PIONEER", "rekordbox")), ("Engine DJ", "Engine Library"),
@@ -42,7 +42,7 @@ def save(dir, rec):
 def mark(usb):
     """The id The Crate left on this stick when you allowed it ("" when it never was)."""
     try:
-        with open(os.path.join(usb, FOLDER, MARK)) as f:
+        with open(os.path.join(place.folder(usb), MARK)) as f:
             return f.read().strip()[:64]
     except OSError:
         return ""
@@ -64,12 +64,16 @@ def content(usb):
         top = [f for f in os.listdir(usb) if not f.startswith(".") and f.lower() not in SYSTEM]
     except OSError:
         return False
-    if any(f != FOLDER for f in top):
-        return True
-    try:
-        return any(not f.startswith(".") for f in os.listdir(os.path.join(usb, FOLDER)))
-    except OSError:
-        return False
+    at = usb
+    for p in place.on(usb).split(os.sep):  # down to The Crate's folder: anything beside the way there is someone's
+        if any(place.cf(f) != place.cf(p) for f in top):
+            return True
+        at = os.path.join(at, p)
+        try:
+            top = [f for f in os.listdir(at) if not f.startswith(".")]
+        except OSError:
+            return False
+    return bool(top)
 
 
 def state(dir, usb):
@@ -87,8 +91,8 @@ def answer(dir, usb, yes):
     rec = load(dir)
     if yes:
         i = mark(usb) or uuid.uuid4().hex
-        os.makedirs(os.path.join(usb, FOLDER), exist_ok=True)
-        with open(os.path.join(usb, FOLDER, MARK), "w") as f:
+        os.makedirs(place.folder(usb), exist_ok=True)
+        with open(os.path.join(place.folder(usb), MARK), "w") as f:
             f.write(i + "\n")
         rec[i] = {"yes": True, "kinds": KINDS, "name": os.path.basename(os.path.normpath(usb)),
                   "day": time.strftime("%Y-%m-%d")}
@@ -114,7 +118,7 @@ def ready(dir, usb):
 def what(dir, src, usb):
     """For the page's question: what would change on this USB, in numbers."""
     import layout
-    dest, rels = os.path.join(usb, FOLDER), usb_tidy.checked(dir, src)
+    dest, rels = place.folder(usb), usb_tidy.checked(dir, src)
     at = layout.places(dest, rels)  # (a USB laid out in folders has each song in its genre's folder)
     new = sum(1 for r in rels if usb_tidy.size(os.path.join(dest, at[r])) < 0)
     swap = sum(1 for r in rels if 0 <= usb_tidy.size(os.path.join(dest, at[r])) != usb_tidy.size(os.path.join(src, r)))

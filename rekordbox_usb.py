@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Writes The Crate's songs into the USB's own rekordbox library (PIONEER/rekordbox/exportLibrary.db, the list
 rekordbox shows under Devices and the newest club decks read), so they show from the USB itself. The songs stay
-where usb.sh put them, in the USB's "SoundCloud Sync" folder: nothing is copied or moved.
+where usb.sh put them, in The Crate's folder on the USB ("SoundCloud Sync", or where you chose: place.py): nothing is copied or moved.
 
   rekordbox_usb.py < job     job, as JSON: {"usb": where the USB is mounted, "src": the music folder on the Mac,
                              "dir": the app folder, "backups": where the copy from before goes,
@@ -10,7 +10,7 @@ where usb.sh put them, in the USB's "SoundCloud Sync" folder: nothing is copied 
 Run by dj.py with the private Python (pyrekordbox). It prints one line saying what it did, or nothing when the
 library was already in step.
 
-  Only The Crate's own rows are ever touched: tracks under /SoundCloud Sync/ and the "The Crate" playlist folder.
+  Only The Crate's own rows are ever touched: tracks under The Crate's folder (/SoundCloud Sync/, or where place.py says) and the "The Crate" playlist folder.
     Everything else in the library (songs and playlists rekordbox exported, anyone's) stays exactly as it is.
   A USB that has no rekordbox library at all gets a fresh one. One that only has the older kind (export.pdb, made
     by an old rekordbox) is left alone: a new library beside it would hide that export on the newest decks.
@@ -23,9 +23,9 @@ library was already in step.
     rekordbox's own export; club.py says where that stands."""
 import json, os, shutil, struct, subprocess, sys, tempfile, time, unicodedata, zlib
 
-import layout
+import layout, place
 
-MUSIC, FOLDER, RECORD = "SoundCloud Sync", "The Crate", "dj-rekordbox-usb.json"
+FOLDER, RECORD = "The Crate", "dj-rekordbox-usb.json"
 KINDS = {".mp3": 1, ".mp4": 3, ".m4a": 4, ".flac": 5, ".wav": 11, ".aiff": 12, ".aif": 12}  # rekordbox's own codes
 PARTS = ("DAT", "EXT", "2EX")  # the files of one track's analysis
 # A fresh library, as rekordbox 7 lays one out (its tables, and the lists a deck's browse menu is built from).
@@ -116,9 +116,9 @@ def nfc(s):
     return unicodedata.normalize("NFC", s or "")
 
 
-def device(rel):
+def device(rel, music=place.NAME):
     """A song's place as the USB's library names it."""
-    return "/" + MUSIC + "/" + nfc(rel).replace(os.sep, "/")
+    return "/" + music + "/" + nfc(rel).replace(os.sep, "/")
 
 
 def num(v):
@@ -374,13 +374,13 @@ def note(job, name, rels, analysed):
 def write(job, master=None, is_open=running):
     from sqlalchemy import text
     usb, src = job["usb"].rstrip("/"), job["src"]
-    name, folder = os.path.basename(usb), os.path.join(usb, MUSIC)
+    name, folder, music = os.path.basename(usb), place.folder(usb), place.web(usb)
     db_file = os.path.join(usb, "PIONEER", "rekordbox", "exportLibrary.db")
     songs = [s for s in job["songs"] if os.path.splitext(s["rel"])[1].lower() in KINDS]
     skipped = len(job["songs"]) - len(songs)
     on = lambda s: os.path.join(folder, s.get("at") or s["rel"])  # ("at": the folder it sits in here, layout.py)
     songs = [s for s in songs if os.path.isfile(on(s))]
-    at = {s["rel"]: device(s.get("at") or s["rel"]) for s in songs}
+    at = {s["rel"]: device(s.get("at") or s["rel"], music) for s in songs}
     known = None
     made = False
     if not os.path.isfile(db_file):
@@ -403,15 +403,17 @@ def write(job, master=None, is_open=running):
     tmp = tempfile.mkdtemp(prefix="crate-covers-")
     try:
         cue_cols = [r[1] for r in run("PRAGMA table_info(cue)")]
-        # Only The Crate's own rows: the tracks in the USB's "SoundCloud Sync" folder.
+        # Only The Crate's own rows: the tracks in its folder on the USB (and at a place that folder had before:
+        # such a row follows its file below).
+        pre = tuple("/" + m + "/" for m in [music] + place.others(usb))
         own = {nfc(p): {"id": i, "genre": g or "", "anlz": a or "", "image": im or 0} for i, p, g, a, im in run(
             "SELECT c.content_id, c.path, g.name, c.analysisDataFilePath, c.image_id FROM content c "
-            "LEFT JOIN genre g ON g.genre_id = c.genre_id WHERE c.path LIKE :p", p="/" + MUSIC + "/%")}
+            "LEFT JOIN genre g ON g.genre_id = c.genre_id") if p and nfc(p).startswith(pre)}
         # A file that moved inside the folder (dj.py's "was") is the same track at a new place: its row follows.
         moved = []
-        by = layout.rows(own, "/" + MUSIC + "/")
+        by = layout.rows(own, pre)
         for s in songs:
-            old = device(s["was"]) if s.get("was") else ""
+            old = device(s["was"], music) if s.get("was") else ""
             if at[s["rel"]] not in own and old not in own:  # filed into another folder on the USB (layout.py)
                 old = layout.old(by, s, at[s["rel"]], lambda p: os.path.isfile(usb + p))
             if old in own and at[s["rel"]] not in own:

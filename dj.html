@@ -188,11 +188,15 @@
   .folders { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 16px 24px; margin-bottom: 20px; display: grid; gap: 12px; }
   .folders .say { color: #c3c1d0; font-size: 14.5px; }
   .folders .say b { color: var(--text); }
+  .folders .say.bad { color: var(--warn); }
   .folders .tree { display: flex; flex-wrap: wrap; gap: 6px; }
   .folders .tree span { font: 13px var(--mono); color: var(--dim); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
   .folders .btns { display: flex; gap: 10px; flex-wrap: wrap; }
   .folders .btns button { padding: 9px 18px; font-size: 14.5px; }
   .folders .rest { color: var(--dim); font-size: 14.5px; display: flex; gap: 4px 12px; flex-wrap: wrap; align-items: baseline; }
+  .folders .place { display: grid; gap: 10px; }
+  .folders .place label { display: grid; gap: 6px; color: var(--dim); font-size: 13.5px; }
+  .folders .place input { max-width: 320px; padding: 9px 12px; }
   .folders .rest button { background: none; border: 0; border-bottom: 1px dotted var(--dim); border-radius: 0; padding: 0; color: var(--text); font-weight: 600; font-size: 14.5px; }
   /* A section's name with one plain line, and a "?" that opens its note. */
   .hd { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; margin: 0 0 10px; }
@@ -363,6 +367,7 @@
     <button class="q" data-help="hFolders" aria-expanded="false" aria-label="How USB folders work">?</button></div>
   <div class="help" id="hFolders" hidden>
     <p><b>By genre</b> files each song under its first genre, like EDM/Dubstep or Other/Hip Hop. A song with any EDM genre counts as EDM. New songs are filed by themselves.</p>
+    <p><b>Where it sits:</b> at the top of the USB, or inside a folder you already keep music in, so all your songs are in one part of the USB. Changing it moves only The Crate's folder.</p>
     <p><b>Never:</b> touches anything outside The Crate's own folder, copies a song twice, or deletes one. Playlists and cues follow.</p>
     <p><b>Undo:</b> pick <b>One folder</b> and every song goes back.</p>
   </div>
@@ -452,6 +457,9 @@ let playing = '';             // the file in the player
 let wave = null;              // its waveform (/wave), once it is in
 let lay = null;               // the USB layout being looked at before it is picked: { mode, plan }
 let restOpen = false;         // the "which genres aren't EDM" picker is open
+let placeAt = null;
+let placeSaid = null;         // what the last save of it said, shown right there: { text, bad }
+const crateName = () => (S && S.place && S.place.name) || 'SoundCloud Sync';  // The Crate's folder on the USB           // where The Crate's folder should sit on the USB, while you pick: { in, name, type }
 let picks = new Set();        // the songs ticked in the list (their files)
 let look = new Set();         // songs whose "which one is it?" candidates are open
 let inList = [];              // the songs in the list right now (what "Select all" ticks)
@@ -546,18 +554,21 @@ async function consider(mode) {
   draw();
 }
 function drawFolders() {
-  const box = $('folders'), L = S.layout, songs = n => num(n) + (n === 1 ? ' song' : ' songs'); box.textContent = '';
+  const box = $('folders'), L = S.layout, songs = n => num(n) + (n === 1 ? ' song' : ' songs');
+  const typing = box.contains(document.activeElement) ? document.activeElement.id : '';
+  box.textContent = '';
   const pick = el('div', { className: 'pick' });
   LAYOUTS.forEach(([mode, label]) => {
     const b = el('button', { textContent: label }); b.setAttribute('aria-pressed', (lay ? lay.mode : L.mode) === mode);
     b.onclick = () => consider(mode); pick.append(b);
   });
   box.append(pick);
-  const now = { flat: 'Every song in the one folder, SoundCloud Sync.', group: 'In EDM, Other and No genre yet, inside SoundCloud Sync.',
-    genre: 'A folder for each genre, inside EDM and Other, inside SoundCloud Sync.' };
+  const cn = crateName();
+  const now = { flat: 'Every song in the one folder, ' + cn + '.', group: 'In EDM, Other and No genre yet, inside ' + cn + '.',
+    genre: 'A folder for each genre, inside EDM and Other, inside ' + cn + '.' };
   if (lay && lay.plan) {
     const p = lay.plan, n = p.folders.length, stick = S.usb ? '"' + S.usb + '"' : 'your USB';
-    const what = lay.mode === 'flat' ? 'Every song goes back into the one folder.' : songs(p.songs) + ' into ' + n + (n === 1 ? ' folder' : ' folders') + ' inside SoundCloud Sync.';
+    const what = lay.mode === 'flat' ? 'Every song goes back into the one folder.' : songs(p.songs) + ' into ' + n + (n === 1 ? ' folder' : ' folders') + ' inside ' + cn + '.';
     const when = p.move == null ? ' Filed the next time ' + stick + ' is plugged in.' : p.move ? ' ' + songs(p.move) + (p.move === 1 ? ' moves' : ' move') + ' on ' + stick + ' now.' : ' Nothing on ' + stick + ' has to move.';
     box.append(el('div', { className: 'say' }, el('b', { textContent: what }), when + ' Nothing outside that folder is touched.'));
     if (n && lay.mode !== 'flat') {
@@ -571,6 +582,8 @@ function drawFolders() {
     no.onclick = () => { lay = null; draw(); };
     box.append(el('div', { className: 'btns' }, yes, no));
   } else box.append(el('div', { className: 'say', textContent: lay ? 'Counting…' : now[L.mode] }));
+  drawPlace(box);
+  if (typing && $(typing)) { const i = $(typing); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
   const rest = el('div', { className: 'rest' }, 'Not EDM: ' + (L.other.join(', ') || 'nothing') + '.', link(restOpen ? 'Done' : 'Change', () => { restOpen = !restOpen; draw(); }));
   box.append(rest);
   if (restOpen) {
@@ -582,6 +595,36 @@ function drawFolders() {
     });
     box.append(set);
   }
+}
+// Where The Crate's folder sits on the USB (place.py): at the top, or inside a folder you already keep music in.
+function drawPlace(box) {
+  const P = S.place || { in: '', name: 'SoundCloud Sync' }, d = placeAt, stick = S.usb ? '"' + S.usb + '"' : 'your USB';
+  box.append(el('div', { className: 'rest' }, 'The Crate\'s folder: "' + P.name + '", ' + (P.in ? 'inside "' + P.in + '".' : 'at the top of the USB.'),
+    link(d ? 'Cancel' : 'Change', () => { placeAt = d ? null : { in: P.in, name: P.name, type: false }; placeSaid = null; draw(); })));
+  if (P.clash) box.append(el('div', { className: 'say' }, stick + ' already has a "' + P.clash + '" of yours with things in it, so there The Crate keeps its folder where it is. Pick another name.'));
+  else if (P.move && !d) box.append(el('div', { className: 'say', textContent: 'Moving on ' + stick + ' now. Your decks\' lists follow.' }));
+  else if (placeSaid && !placeSaid.bad && !d) box.append(el('div', { className: 'say', textContent: placeSaid.text }));
+  if (!d) return;
+  const form = el('div', { className: 'place' }), set = el('div', { className: 'pick' });
+  [['', 'Top of the USB'], ...[...new Set([...(P.tops || []), ...(P.in ? [P.in] : [])])].map(t => [t, t])].forEach(([v, label]) => {
+    const b = el('button', { textContent: label }); b.setAttribute('aria-pressed', !d.type && d.in === v);
+    b.onclick = () => { d.in = v; d.type = false; draw(); }; set.append(b);
+  });
+  const other = el('button', { className: 'more', textContent: '+ Another folder' }); other.setAttribute('aria-pressed', d.type);
+  other.onclick = () => { d.type = true; d.in = ''; draw(); }; set.append(other);
+  form.append(el('label', {}, 'Sits in', set));
+  const field = (id, key, hint) => { const i = el('input', { id, value: d[key], placeholder: hint, maxLength: 60, autocomplete: 'off' }); i.oninput = () => { d[key] = i.value; }; return i; };
+  if (d.type) form.append(el('label', {}, 'The folder it sits in', field('placeIn', 'in', 'Music')));
+  form.append(el('label', {}, 'Called', field('placeName', 'name', 'SoundCloud Sync')));
+  const yes = el('button', { textContent: 'Save' }), no = el('button', { className: 'ghost', textContent: 'Cancel' });
+  yes.onclick = async () => { const body = { in: d.in.trim(), name: d.name.trim() }; const ok = await post('/api/dj/place', body);
+    if (ok) { placeAt = null; placeSaid = { text: 'Saved.' + (S.place && S.place.now != null ? '' : ' Your USB follows when you plug it in.') }; }
+    else { placeSaid = { text: $('note').textContent, bad: true }; say(''); }  // said here, where you are looking
+    draw(); };
+  no.onclick = () => { placeAt = null; placeSaid = null; draw(); };
+  form.append(el('div', { className: 'say', textContent: 'Only The Crate\'s folder moves. Nothing else on the USB is touched, and your cues stay.' }), el('div', { className: 'btns' }, yes, no));
+  if (placeSaid && placeSaid.bad) form.append(el('div', { className: 'say bad', textContent: placeSaid.text }));
+  box.append(form);
 }
 // "Wrong or bad file", as on the main page: to the Trash, off the decks and the USB, never taken again.
 async function throwAway(song, ask, done) {
@@ -929,7 +972,7 @@ function drawOpts() {
     () => setOpt({ cues: !o.cues }, o.cues ? 'Cues are left as they are on each deck.' : 'Cues are kept in step again.'));
   sw('Keep Liked Songs apart', 'Spotify Liked Songs stay on their own list until you give one a genre. Off: sorted like every song.', o.likedApart,
     () => setOpt({ likedApart: !o.likedApart }, o.likedApart ? 'Liked Songs are sorted into genres now.' : 'Liked Songs stay on their own list.'));
-  go('USB folders', 'One folder, EDM and Other, or by genre. And which genres count as EDM.', 'folders');
+  go('USB folders', 'Where The Crate\'s folder sits on the USB, how songs are filed in it, and which genres count as EDM.', 'folders');
   go('Genres', 'Add or remove the genres your songs are sorted into.', 'pills');
   const home = el('a', { className: 'ghost mini', href: '/', textContent: 'Open' });
   line('Liked Songs folder', '"' + S.likedName + '". Its name is set on The Crate\'s main page.', home);
@@ -949,7 +992,7 @@ function drawAsk() {
   }
   const yes = el('button', { textContent: 'Go ahead' }), no = el('button', { className: 'ghost', textContent: 'Not now' });
   yes.onclick = () => answer(true); no.onclick = () => answer(false);
-  const adds = [u.songs ? num(u.songs) + (u.songs === 1 ? ' song' : ' songs') + ' into The Crate\'s own folder (SoundCloud Sync)' : 'New songs into The Crate\'s own folder (SoundCloud Sync)',
+  const adds = [u.songs ? num(u.songs) + (u.songs === 1 ? ' song' : ' songs') + ' into The Crate\'s own folder (' + crateName() + ')' : 'New songs into The Crate\'s own folder (' + crateName() + ')',
     'a playlist folder called The Crate' + (u.lists && u.lists.length ? ', beside the playlists already in ' + u.lists.join(', ') : ' in the DJ apps\' lists')];
   const ul = el('ul', {}, el('li', {}, el('b', { textContent: 'Adds: ' }), adds.join('; ') + '.'),
     el('li', {}, el('b', { textContent: 'Cues: ' }), 'on The Crate\'s own songs only, kept in step with your other decks. None is deleted.'),

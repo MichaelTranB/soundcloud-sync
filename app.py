@@ -6,7 +6,7 @@ in the browser cannot press the buttons.
 """
 import glob, json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, unicodedata, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
-import aiff, club, details, dj, friend, genres, layout, liked, recognise, usb_ask, waveform
+import aiff, club, details, dj, friend, genres, layout, liked, recognise, place, usb_ask, waveform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1080,7 +1080,7 @@ def progress(name):
 def on_usb(at, plugged):
     """The names in The Crate's folder on the chosen USB, however the drive spells them (None: not plugged in)."""
     try:
-        return set(layout.where(os.path.join(at, usb_ask.FOLDER))) if plugged else None  # (in any of its folders)
+        return set(layout.where(place.folder(at))) if plugged else None  # (in any of its folders)
     except OSError:
         return set()
 
@@ -1103,7 +1103,7 @@ def fix_song(rel, lacks, det, back, left, on):
         out["left"] = left[rel]
     if on is not None:
         out["usb"] = unicodedata.normalize("NFC", rel).casefold() in on if os.sep not in rel else \
-            os.path.isfile(os.path.join(os.environ.get("VOLUMES") or "/Volumes", read("usb.txt"), usb_ask.FOLDER, rel))
+            os.path.isfile(os.path.join(place.folder(os.path.join(os.environ.get("VOLUMES") or "/Volumes", read("usb.txt"))), rel))
     return out
 
 
@@ -1136,7 +1136,7 @@ def dj_state():
                     "lastAiff": last("AIFF: ", "AIFF PROBLEM"), "lastDetails": last("details: ", "DETAILS PROBLEM"),
                     "lastCues": last("cues: ", "cues put back: ", "CUES PROBLEM"),
                     "cuesNote": read("cues-unmapped.txt").splitlines()[:6]},
-            "layout": layout.load(DIR), "rbApp": bool(rekordbox_app()),
+            "layout": layout.load(DIR), "place": place.status(at if plugged else "", DIR), "rbApp": bool(rekordbox_app()),
             "options": dj.options(DIR), "likedName": liked.folder(DIR) or liked.DEFAULTS["folder"],
             "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb, club.kept(DIR, usb), OUT),
             "lastRecognise": last("song recognition", "RECOGNISE PROBLEM"),
@@ -1159,7 +1159,7 @@ def layout_plan(mode):
     usb = read("usb.txt").strip()
     at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)
     ready = bool(usb) and os.path.isdir(at) and usb_ask.ready(DIR, at)
-    return layout.plan(os.path.join(at, usb_ask.FOLDER) if ready else "", dj.library(DIR, OUT), cfg)
+    return layout.plan(place.folder(at) if ready else "", dj.library(DIR, OUT), cfg)
 
 
 def rekordbox_app():
@@ -1341,6 +1341,20 @@ def dj_post(path, body):
         if (mode is not None and mode not in layout.MODES) or (other is not None and not isinstance(other, list)):
             return "That isn't one of the folder layouts."
         layout.save(DIR, mode, other)
+        dj_run(0)
+        return None
+    if path == "/api/dj/place":  # where The Crate's folder sits on a USB, and its name (place.py). The run moves
+        usb, inside, name = read("usb.txt").strip(), body.get("in") or "", body.get("name") or ""  # that one folder.
+        at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)
+        if not isinstance(inside, str) or not isinstance(name, str):
+            return "That isn't a folder's name."
+        try:
+            new = place.rel(place.check(inside, name))
+            if usb and os.path.isdir(at) and place.taken(at, new):  # a folder of yours is never taken for The Crate's
+                return f'"{usb}" already has a "{new.replace(os.sep, "/")}" of yours with things in it. Pick another name.'
+            place.save(DIR, inside, name)
+        except ValueError as e:
+            return str(e)
         dj_run(0)
         return None
     if path == "/api/dj/options":  # the page's Options (dj.py's): cue points kept in step, Liked Songs kept apart
