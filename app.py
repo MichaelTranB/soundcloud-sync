@@ -1302,6 +1302,21 @@ def fix_post(path, body):
     return None
 
 
+def is_that_playlist(url, text):
+    """A song list pasted in the one box is the chosen Spotify playlist's full list (past the first 100 Spotify shows)
+    when it holds most of the songs that playlist shows; anything else is his Liked Songs."""
+    if playlists.service(url) != "spotify":
+        return False
+    got = set(playlists.SONG.findall(text))
+    try:
+        shown = [t["link"].rpartition("/")[2] for t in playlists.spotify(url)["tracks"]]
+    except Exception:  # Spotify didn't answer: the songs pasted for it before
+        shown = playlists.pasted(DIR, url)
+    if len(shown) < playlists.SPOTIFY_CAP and len(got) > len(shown) + 10:
+        return False  # Spotify showed the whole playlist and this is far longer: a Liked Songs list that holds it
+    return bool(shown) and sum(i in got for i in shown) * 2 >= len(shown)
+
+
 def dj_post(path, body):
     """The DJ library page's buttons. Returns an error line, or None when done."""
     if path == "/api/dj/recognise":  # the AcoustID key for recognising songs by their sound; "" switches it off
@@ -1555,7 +1570,7 @@ class Handler(BaseHTTPRequestHandler):
             remember(url, title)
         elif self.path == "/api/spotify-songs":
             url = read("playlist.txt")
-            if playlists.service(url) != "spotify":  # no Spotify playlist chosen: these are his Liked Songs
+            if not is_that_playlist(url, str(body.get("text", ""))):  # not the chosen Spotify playlist: his Liked Songs
                 return self.liked(str(body.get("text", "")))
             n = playlists.paste(DIR, url, str(body.get("text", "")))
             if not n:
