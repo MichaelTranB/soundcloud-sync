@@ -144,3 +144,4 @@ liked-state.json
 *.json.tmp
 .waves/
 liked-settings.json
+.soulseek-timeup
