@@ -174,19 +174,23 @@ def parts(name, songs, before, owner):
 
     old = [l for l in before if l.get("group") == name]
     here = {x["k"]: x for x in songs}
-    out = [{"name": l["name"], "songs": [here.pop(x["k"]) for x in l["songs"] if x["k"] in here]} for l in old]
+    # keys: every song the SoundCloud playlist holds, kept even while it's not in the source (a part emptied for now
+    # stays reserved with what it holds; a song put back goes to the part it's already in)
+    out = [{"name": l["name"], "songs": [here.pop(x["k"]) for x in l["songs"] if x["k"] in here],
+            "keys": [x["k"] for x in l["songs"]]} for l in old]
     held = [max(l.get("held", 0), len(l["songs"])) for l in old]  # what each SoundCloud playlist already holds
     new = [x for x in songs if x["k"] in here]
     if not out:
-        out, held = [{"name": name if owner.get(name) == name else free(), "songs": []}], [0]
+        out, held = [{"name": name if owner.get(name) == name else free(), "songs": [], "keys": []}], [0]
     while new:
         if held[-1] >= CAP:
-            out.append({"name": free(), "songs": []})
+            out.append({"name": free(), "songs": [], "keys": []})
             held.append(0)
         take, new = new[:CAP - held[-1]], new[CAP - held[-1]:]
         out[-1]["songs"] += take
+        out[-1]["keys"] += [x["k"] for x in take]
         held[-1] += len(take)
-    return [dict(l, group=name, held=h) for l, h in zip(out, held) if l["songs"]]
+    return [dict(l, group=name, held=h) for l, h in zip(out, held) if l["keys"]]
 
 
 def start(d, vol, ids):
@@ -213,7 +217,7 @@ def start(d, vol, ids):
         if sid(i) in named:
             return named[sid(i)]
         p = path[i]
-        taken = {v for k, v in named.items() if k != sid(i)} | extra
+        taken = {v for k, v in named.items() if k != sid(i)} | extra | set(kept)  # kept: "one playlist" names too
         tries = [p[-1]] + ([f"{p[-1]} ({' / '.join(p[:-1])})", " / ".join(p)] if len(p) > 1 else [])
         for name in tries:
             if name not in taken and (name != p[-1] or last.count(p[-1]) < 2 or len(p) < 2):
@@ -232,6 +236,8 @@ def start(d, vol, ids):
         name = own(i) if opts["mode"] == "each" else opts["name"]
         if name in extra and name not in {l["group"] for g in kept.values() for l in g if l["name"] == name}:
             raise ValueError(f"“{name}” is already a part of another playlist. Pick another name in Options.")
+        if opts["mode"] != "each" and name in named.values():
+            raise ValueError(f"“{name}” is already a folder's own playlist. Pick another name in Options.")
         g = next((g for g in groups if g[0] == name), None)
         if g:
             g[1].extend(songs)
@@ -245,7 +251,7 @@ def start(d, vol, ids):
         owner = {v: v for v in list((s.get("named") or {}).values()) + list(named.values())}
         owner.update((l["name"], l.get("group", l["name"])) for l in before)
         owner.update((name, name) for name, _ in groups)
-        lists = []
+        every = []
         for name, songs in groups:
             seen, uniq = set(), []
             for x in songs:
@@ -253,10 +259,11 @@ def start(d, vol, ids):
                 if k not in seen:
                     seen.add(k)
                     uniq.append(dict(x, k=k))
-            lists.extend(parts(name, uniq, before, owner))
+            every.extend(parts(name, uniq, before, owner))
+        lists = [l for l in every if l["songs"]]  # this run's work; every also holds parts with nothing to add now
         s["named"] = {**(s.get("named") or {}), **named}
-        slim = lambda l: {"name": l["name"], "group": l["group"], "held": l["held"], "songs": [{"k": x["k"]} for x in l["songs"]]}
-        s["parts"] = {**kept, **{name: [slim(l) for l in lists if l["group"] == name] or kept.get(name, []) for name, _ in groups}}
+        slim = lambda l: {"name": l["name"], "group": l["group"], "held": l["held"], "songs": [{"k": k} for k in l["keys"]]}
+        s["parts"] = {**kept, **{name: [slim(l) for l in every if l["group"] == name] or kept.get(name, []) for name, _ in groups}}
         s.update(lens={**(s.get("lens") or {}), **lens}, run={"usb": vol, "ids": ids, "at": time.time(), "lists": lists})
     return counts(d)
 
