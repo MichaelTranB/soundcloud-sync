@@ -1302,19 +1302,21 @@ def fix_post(path, body):
     return None
 
 
-def is_that_playlist(url, text):
-    """A song list pasted in the one box is the chosen Spotify playlist's full list (past the first 100 Spotify shows)
-    when it holds most of the songs that playlist shows; anything else is his Liked Songs."""
+def paste_goes_to(url, text):
+    """Where a song list pasted in the one box goes: "liked" (his Liked Songs), "playlist" (the chosen Spotify
+    playlist's full list, past the first 100 Spotify shows) or "ask" (it could be either: he picks)."""
     if playlists.service(url) != "spotify":
-        return False
+        return "liked"
     got = set(playlists.SONG.findall(text))
     try:
         shown = [t["link"].rpartition("/")[2] for t in playlists.spotify(url)["tracks"]]
     except Exception:  # Spotify didn't answer: the songs pasted for it before
         shown = playlists.pasted(DIR, url)
-    if len(shown) < playlists.SPOTIFY_CAP and len(got) > len(shown) + 10:
-        return False  # Spotify showed the whole playlist and this is far longer: a Liked Songs list that holds it
-    return bool(shown) and sum(i in got for i in shown) * 2 >= len(shown)
+    if not shown or sum(i in got for i in shown) * 2 < len(shown):
+        return "liked"  # holds few of the playlist's songs
+    if len(shown) < playlists.SPOTIFY_CAP:  # Spotify showed the whole playlist
+        return "playlist" if len(got) <= len(shown) + 10 else "ask"
+    return "ask"  # a long playlist and a list holding most of what it shows: can't tell from the songs alone
 
 
 def dj_post(path, body):
@@ -1569,10 +1571,16 @@ class Handler(BaseHTTPRequestHandler):
                                                 "Share link (it ends in /s-…)."})
             remember(url, title)
         elif self.path == "/api/spotify-songs":
-            url = read("playlist.txt")
-            if not is_that_playlist(url, str(body.get("text", ""))):  # not the chosen Spotify playlist: his Liked Songs
-                return self.liked(str(body.get("text", "")))
-            n = playlists.paste(DIR, url, str(body.get("text", "")))
+            url, text = read("playlist.txt"), str(body.get("text", ""))
+            to = body.get("to") if body.get("to") in ("liked", "playlist") else paste_goes_to(url, text)
+            if to == "playlist" and playlists.service(url) != "spotify":
+                to = "liked"
+            if to == "ask":
+                return self.send(409, {"ask": True, "playlist": title_of(url) or "this playlist",
+                                       "error": "Are these your Liked Songs, or all the songs in the playlist?"})
+            if to == "liked":
+                return self.liked(text)
+            n = playlists.paste(DIR, url, text)
             if not n:
                 return self.send(400, {"error": "No Spotify song links in that. In Spotify, click one song, press "
                                                 "⌘A then ⌘C, and paste here."})

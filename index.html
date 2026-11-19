@@ -965,7 +965,7 @@ player.onerror = () => {
 async function call(path, body) {
   const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
   const j = await r.json();
-  if (!r.ok) throw new Error(j.error || 'Something went wrong.');
+  if (!r.ok) throw Object.assign(new Error(j.error || 'Something went wrong.'), { reply: j });
   if (j && Array.isArray(j.have)) render(j);  // the Library Manager's buttons reply with its own state, not this page's
   return j;
 }
@@ -981,12 +981,20 @@ function busyBtn(b, on, label) {
 }
 // One box for everything: a playlist link from any of the three, or the songs copied from the Spotify app.
 const SONGS = /open\.spotify\.com\/(intl-[a-z-]+\/)?track\/|spotify:track:/;
-function addSongs(text) {
+function addSongs(text, to) {
   busyBtn($('saveUrl'), true, 'Adding'); say('urlNote', 'Saving the songs…');
-  call('/api/spotify-songs', { text })
+  call('/api/spotify-songs', { text, to })
     .then(s => { $('url').value = ''; say('urlNote', s.likedPasted ? `Saved as your Liked Songs: ${s.likedPasted} songs, EDM first. They show as ♥ Liked Songs below.`
       : `Got all ${s.pasted} songs. Reading them now (see Getting now).`); })
-    .catch(e => say('urlNote', e.message, true)).finally(() => busyBtn($('saveUrl'), false, 'Add'));
+    .catch(e => e.reply && e.reply.ask ? askWhere(text, e.reply.playlist) : say('urlNote', e.message, true)).finally(() => busyBtn($('saveUrl'), false, 'Add'));
+}
+function askWhere(text, playlist) {  // the pasted songs could be his Liked Songs or the chosen playlist: he picks
+  urlSaid = Date.now() + 600000;  // stays until he answers
+  const go = to => () => { urlSaid = 0; addSongs(text, to); };
+  $('urlNote').className = 'note';
+  $('urlNote').replaceChildren('Are these your Liked Songs, or all the songs in ' + playlist + '? ',
+    el('button', { className: 'ghost', textContent: 'Liked Songs', onclick: go('liked') }), ' ',
+    el('button', { className: 'ghost', textContent: playlist, onclick: go('playlist') }));
 }
 $('url').onpaste = e => {  // a pasted song list keeps its line breaks this way (the box itself is one line)
   const text = e.clipboardData.getData('text');
