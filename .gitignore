@@ -48,6 +48,7 @@ soulseek-missed.tsv
 soulseek-missed.tsv.tmp
 soulseek-wrong.tsv
 .soulseek-again
+.soulseek-timeup
 soulseek-from.tsv
 soulseek-from.tsv.tmp
 soulseek-checked.json
@@ -144,4 +145,3 @@ liked-state.json
 *.json.tmp
 .waves/
 liked-settings.json
-.soulseek-timeup
