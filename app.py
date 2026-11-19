@@ -6,7 +6,7 @@ in the browser cannot press the buttons.
 """
 import glob, json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, unicodedata, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
-import aiff, club, details, dj, friend, genres, layout, liked, recognise, usb_ask, waveform
+import aiff, club, details, dj, friend, genres, layout, liked, naming, recognise, usb_ask, waveform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1128,11 +1128,16 @@ def dj_state():
         s.update(fix_song(s["file"], lacks, det, back, rec["skip"], on))
         if club.deep(os.path.join(OUT, s["file"])):
             s["deep"] = True  # 32-bit: no club deck plays it; its row offers a 24-bit copy
+    off = naming.status(DIR, OUT, lib)  # a title and artist that look mixed up, or that The Crate put right
+    for s in songs:
+        if s["file"] in off:
+            s["name"] = off[s["file"]]
     last = lambda *words: next((l for l in reversed(log[-40:]) if any(w in l for w in words)), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
             "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged, "usbAsk": usb_asking(),
             "fix": {"auto": rec["auto"], "autoDetails": details.load(DIR)["auto"],
                     "aiff": progress(".aiff-progress"), "details": progress(".details-progress"),
+                    "naming": progress(".naming-progress"), "lastNames": last("names: ", "NAMES PROBLEM"),
                     "lastAiff": last("AIFF: ", "AIFF PROBLEM"), "lastDetails": last("details: ", "DETAILS PROBLEM"),
                     "lastCues": last("cues: ", "cues put back: ", "CUES PROBLEM"),
                     "cuesNote": read("cues-unmapped.txt").splitlines()[:6]},
@@ -1247,7 +1252,8 @@ def fix_post(path, body):
     """The song list's buttons: the ticked songs become AIFFs (or one goes back), get their missing cover and details
     looked up (or one put back, or your pick of the candidates written), or go onto the USB. Ticking and pressing is
     the yes. Each runs on its own and the decks' lists follow when it is done."""
-    have = {s["rel"] for s in dj.library(DIR, OUT)}
+    lib = dj.library(DIR, OUT)
+    have = {s["rel"] for s in lib}
     names = lambda v: [r for r in (v if isinstance(v, list) else [v]) if isinstance(r, str) and r in have]
     if path == "/api/dj/usb-ok":  # the same answer as on the main page, from this page
         return usb_answer(body.get("yes"))
@@ -1285,6 +1291,31 @@ def fix_post(path, body):
         if r.returncode:
             return "Couldn't write that one: " + (r.stderr.strip().splitlines() or ["no reason given"])[-1][:160]
         return follow()
+    if kind == "naming":  # naming.py: a title and artist that are mixed up, put right
+        how = next((k for k in ("fix", "set", "undo", "fine") if k in body), "")
+        if not how:  # the ticked songs, or every song whose name looks off, in one go
+            rels = [] if body.get("all") is True else names(body.get("files"))
+            if not rels and body.get("all") is not True:
+                return "Tick the songs first."
+            if not fix_start("naming", "fix", "\n".join(rels)):
+                return "Still working on the last ones. Try again when it's done."
+            return None
+        rel = names(body[how])
+        if not rel or (how == "set" and not isinstance(body.get("n"), int)):
+            return "That song isn't in your library any more."
+        if how == "fine":  # your word that the name is right: not asked about again
+            s = next(s for s in lib if s["rel"] == rel[0])
+            naming.fine(DIR, rel[0], s["artist"], s["title"])
+            return None
+        cmd = {"fix": ["one", DIR, OUT, rel[0]], "set": ["set", DIR, OUT, rel[0], str(body.get("n"))],
+               "undo": ["undo", DIR, OUT, rel[0]]}[how]
+        try:
+            r = subprocess.run([dj.PY, os.path.join(DIR, "naming.py"), *cmd], capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            return "That took too long. Try again in a moment."
+        if r.returncode:
+            return "Couldn't fix that one: " + (r.stderr.strip().splitlines() or ["no reason given"])[-1][:160]
+        return None if how == "fix" and '"fixed"' not in r.stdout else follow()
     back = "undo" in body
     rels = names(body.get("undo") if back else body.get("files"))
     if not rels:
@@ -1334,7 +1365,7 @@ def dj_post(path, body):
         p.stdin.close()
         threading.Thread(target=p.wait, daemon=True).start()
         return None
-    if path in ("/api/dj/aiff", "/api/dj/details", "/api/dj/put", "/api/dj/usb-ok", "/api/dj/cues"):
+    if path in ("/api/dj/aiff", "/api/dj/details", "/api/dj/naming", "/api/dj/put", "/api/dj/usb-ok", "/api/dj/cues"):
         return fix_post(path, body)
     if path == "/api/dj/layout":  # how the songs sit inside The Crate's folder on the USB (layout.py: one folder, or
         mode, other = body.get("mode"), body.get("other")  # by genre), and which genres aren't EDM. The run files them.
@@ -1529,7 +1560,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {"error": "wrong origin"})
         try:
             # a pasted song list is ~55 bytes a song; the playlists and folders ticked to copy from another USB
-            cap = 600_000 if self.path in ("/api/spotify-songs", "/api/liked", "/api/dj/aiff", "/api/dj/details") else \
+            cap = 600_000 if self.path in ("/api/spotify-songs", "/api/liked", "/api/dj/aiff", "/api/dj/details", "/api/dj/naming") else \
                 200_000 if self.path in ("/api/dj/copy", "/api/dj/layout") else 4096
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
         except ValueError:

@@ -144,3 +144,6 @@ liked-state.json
 *.json.tmp
 .waves/
 liked-settings.json
+names.json
+names.json.tmp
+.naming-progress

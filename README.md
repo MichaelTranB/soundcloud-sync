@@ -148,8 +148,14 @@ straight into your decks' libraries, with no dragging and no clicks:
   FLACs, covers and details, cues in step, Liked Songs kept apart, the USB folders and the genres. The way
   described here is how it starts; change any of them, any time.
 - **The song list:** search by artist, title, genre, key or kind of file; filter to *Needs AIFF*, *No cover*,
-  *Missing details*, *Not on USB* or *Below club quality*; tick songs (or all) and press **Convert to AIFF**,
-  **Add cover & details** or **Put on USB**. Songs you added yourself or copied from a friend's USB are in it too.
+  *Missing details*, *Names to fix*, *Not on USB* or *Below club quality*; tick songs (or all) and press
+  **Convert to AIFF**, **Add cover & details** or **Put on USB**. Songs you added yourself or copied from a friend's
+  USB are in it too.
+- **Names that are mixed up:** a title with the artist in it, or the two the wrong way round, gets a line on its
+  row with **Fix**; **Fix all names** does every one in one go. A name is written (in the file, and your decks
+  follow) only when it is plain or a music catalogue agrees; otherwise you pick between the ways it could read.
+  A Soulseek file whose own details name another song is marked "may be the wrong song": **Wrong file** sends it
+  back, or say it's the right one and its name is fixed. **Undo** on the row puts the old name back.
 - **A "?" beside each part** of both pages opens a few plain lines: how it works, what it never touches, how to
   undo. **How it works** at the top has the rest.
 - **Listen first:** ▶ beside any song plays it on the page, with its waveform: tap it to jump, and a file that

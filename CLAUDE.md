@@ -96,6 +96,11 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   and title match, and it is the song's own page or two sources agree; else "needs a look" with up to three
   candidates (`details-ask.json`). Every change is in `details-log.json` with what the file held before
   (`details-undo/`), one Undo each. Only artist and title (and a fingerprint) leave the Mac.
+- **Names (`naming.py`):** a title and artist that are mixed up, put right in the file's own tags; time, tempo, key
+  and everything else stay. `look()` only reads; `one()` writes when the fix is plain (the artist twice, a version
+  after a dash) or iTunes/MusicBrainz confirms ONE reading, and never from the file's name alone; else the ways wait
+  for a pick (`names.json`: fixed with its undo, ask, fine, and the names each song went by). A deck's row follows
+  only where it still shows a name the song went by (`naming.follows`): a name typed on a deck stays.
 - **Liked Songs on the decks (`dj.liked_songs`, the SoundCloud side files them: `liked.py`):** a Liked Song is
   `liked` in `dj.library()` and `apart` (no genre reaches a deck, its guess kept as `guess`) until his own pick;
   apart songs skip the genre lists, "No genre yet", "Newest 50" and `layout.arrange`, and all sit on one playlist
