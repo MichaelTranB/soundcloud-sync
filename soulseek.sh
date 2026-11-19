@@ -39,10 +39,15 @@ trap 'rm -f "$CONF"' EXIT
 printf 'username = %s\npassword = %s\n' "$SUSER" "$SPASS" >"$CONF"
 # A sync's Soulseek turn ends after SLSK_HOURS (3 to start): a long list (a Liked Songs batch) otherwise held the
 # rekordbox update, the USB copy and the next sync back for a day. What it didn't reach waits for the next sync;
-# playlist songs are first on the list, so only Liked Songs ever wait.
-END=$(( $(date +%s) + ${SLSK_HOURS:-3} * 3600 ))
-TIMEUP="$DIR/.soulseek-timeup"; rm -f "$TIMEUP"
+# playlist songs are first on the list, so only Liked Songs ever wait. The lossless pass has the first two thirds
+# of it and the 320 MP3 pass always gets the rest, so a song only out there as MP3 is never stuck behind a long
+# lossless search. A track both passes searched and found nothing for waits its days (soulseek.py missed), so the
+# next sync goes on further down the list instead of searching the same first songs again.
+START=$(date +%s); HOURS=${SLSK_HOURS:-3}
+END=$(( START + HOURS * 3600 ))
+TIMEUP="$DIR/.soulseek-timeup"
 get() {
+  rm -f "$TIMEUP"
   # Never the same wrong file twice: the people whose file you threw back aren't asked again, and the ones whose
   # file the check threw back come last (soulseek-wrong.tsv, kept by soulseek.py).
   local BAN=(${(f)"$(python3 "$DIR/soulseek.py" banned "$DIR" "$SLSK" 2>>"$LOG")"})
@@ -51,7 +56,7 @@ get() {
     --strict-title --length-tol 5 "${LOOSE[@]}" --no-skip-existing --no-progress "${BAN[@]}" "$@" >"$DIR/soulseek-pass.log" 2>&1 &
   local pid=$!
   ( while kill -0 $pid 2>/dev/null; do
-      [ "$(date +%s)" -ge "$END" ] && { touch "$TIMEUP"; kill -TERM $pid; break; }
+      (( $(date +%s) >= UNTIL )) && { touch "$TIMEUP"; kill -TERM $pid; break; }
       sleep 15
     done ) >/dev/null 2>&1 &
   local watch=$!
@@ -70,7 +75,7 @@ get() {
   local n=$(( $(wc -l < "$DIR/soulseek.csv") - 1 ))
   local got=$(( $(grep -c '\] SongJob: succeeded:' "$DIR/soulseek-pass.log") - back ))
   if [ -e "$TIMEUP" ]; then
-    echo "stopped at the ${SLSK_HOURS:-3}-hour limit after getting $(( got > 0 ? got : 0 )) of $n; the rest are looked for next sync"
+    echo "stopped at its time limit after getting $(( got > 0 ? got : 0 )) of $n; the rest are looked for next sync"
   elif grep -q -i 'unhandled exception' "$DIR/soulseek-pass.log"; then
     echo "FAILED (sockseek crashed after getting $(( got > 0 ? got : 0 )) of $n), see soulseek-run.log"
   elif grep -q 'Job List: ' "$DIR/soulseek-pass.log"; then
@@ -97,14 +102,17 @@ pass() {
 : >"$DIR/soulseek-run.log"
 prep
 if [ "$(rows)" -gt 0 ]; then
+  UNTIL=$(( START + HOURS * 2400 ))
   RESULT="lossless pass: $(pass --format flac,wav,aiff,aif,alac --pref-format flac,wav,aiff,aif)"
+  cp "$DIR/soulseek-run.log" "$DIR/soulseek-lossless.log"
   prep
-  if [ "$(rows)" -gt 0 ] && [ ! -e "$TIMEUP" ]; then
+  if [ "$(rows)" -gt 0 ]; then
+    UNTIL=$END
     RESULT="$RESULT; 320 MP3 pass: $(pass --format mp3 --min-bitrate 320 --strict-conditions)"
   fi
-  # Tracks no pass found at all are searched again after a wait (soulseek.py: 1, 2, 4, then 7 days).
-  # (Only when every pass ran to the end: a pass that crashed or hit the time limit didn't search everything.)
-  case "$RESULT" in *FAILED*|*"-hour limit"*) ;; *) python3 "$DIR/soulseek.py" missed "$DIR" "$SLSK" >>"$LOG" 2>&1 ;; esac
+  # Tracks no pass found at all are searched again after a wait (soulseek.py: 1, 2, 4, then 7 days). Only tracks
+  # both passes searched count (a pass stopped by the time limit didn't reach them all), and none after a crash.
+  case "$RESULT" in *FAILED*) ;; *) python3 "$DIR/soulseek.py" missed "$DIR" "$SLSK" "soulseek-lossless.log" "soulseek-pass.log" >>"$LOG" 2>&1 ;; esac
   say "Soulseek: ${RESULT}"
   # Only a sign-in or a crash that the second try didn't get past is a problem; a peer that doesn't answer is
   # normal (the next one is tried).

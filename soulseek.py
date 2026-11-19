@@ -4,7 +4,7 @@
   soulseek.py prepare DIR SLSK   writes DIR/soulseek.csv (Artist,Title,Length for every track still to get) and
                                  removes a Soulseek copy once the artist's own file has landed in the music folder
   soulseek.py record  DIR SLSK   updates DIR/soulseek.tsv (SoundCloud link, name, file) from sockseek's index
-  soulseek.py missed  DIR SLSK   after both passes: notes each track Soulseek had nothing for (soulseek-missed.tsv)
+  soulseek.py missed  DIR SLSK [LOG...]  after both passes: notes each track Soulseek had nothing for (soulseek-missed.tsv)
   soulseek.py banned  DIR SLSK   prints sockseek's options that keep thrown-back files from being taken again
 
 Every file sockseek brings is looked at before it counts (judge): its real length and the song named inside it must
@@ -301,20 +301,25 @@ def outcomes(d, log):
     return out
 
 
-def missed(d, slsk):
+def missed(d, slsk, *logs):
     """After this sync's passes: a track whose every search came back empty is counted as missed (looked for
-    again later, see WAIT_DAYS); one found, or there but not downloaded, is searched again every sync."""
+    again later, see WAIT_DAYS); one found, or there but not downloaded, is searched again every sync. With logs
+    (one per pass), a track only counts as missed once each of those passes searched it: a pass stopped by the time
+    limit leaves the rest as they were, and the next sync searches them first."""
     rows = {link: query(artist, title) for link, name, artist, title, _ in to_get(d)}
     old, now = load_missed(d), time.time()
     new = {}
     res = outcomes(d, "soulseek-run.log")
+    each = [outcomes(d, log) for log in logs]
+    empty = {("failed", "no search results")}
     for link, q in rows.items():
-        if link in res:
-            if res[link] == {("failed", "no search results")}:
-                n = old[link][1] + 1 if link in old and old[link][0] == q else 1
-                new[link] = (q, n, now)
+        if link in res and res[link] != empty:
+            continue  # found, or there but not downloaded: searched again every sync
+        if link in res and all(link in o for o in each):
+            n = old[link][1] + 1 if link in old and old[link][0] == q else 1
+            new[link] = (q, n, now)
         elif link in old:
-            new[link] = old[link]  # not searched this sync (still waiting): kept as it was
+            new[link] = old[link]  # not searched by every pass this sync: kept as it was
     tmp = os.path.join(d, "soulseek-missed.tsv.tmp")
     with open(tmp, "w") as f:
         f.write(SEARCH)
@@ -887,9 +892,11 @@ def progress(d, live):
     return out
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4 or sys.argv[1] not in ("prepare", "record", "missed", "banned"):
+    if len(sys.argv) < 4 or sys.argv[1] not in ("prepare", "record", "missed", "banned") or (len(sys.argv) > 4 and sys.argv[1] != "missed"):
         sys.exit(__doc__)
     if sys.argv[1] == "banned":
         print("\n".join(banned(sys.argv[2])))
+    elif sys.argv[1] == "missed":
+        missed(sys.argv[2], sys.argv[3], *sys.argv[4:])
     else:
         {"prepare": prepare, "record": record, "missed": missed}[sys.argv[1]](sys.argv[2], sys.argv[3])
