@@ -1303,20 +1303,19 @@ def fix_post(path, body):
 
 
 def paste_goes_to(url, text):
-    """Where a song list pasted in the one box goes: "liked" (his Liked Songs), "playlist" (the chosen Spotify
-    playlist's full list, past the first 100 Spotify shows) or "ask" (it could be either: he picks)."""
+    """Where a song list pasted in the one box goes: "liked" (his Liked Songs: no Spotify playlist is chosen),
+    "playlist" (plainly the chosen Spotify playlist: the whole of what Spotify shows for it, and little else) or
+    "ask" (anything else: he picks, so neither list is ever replaced by a guess)."""
     if playlists.service(url) != "spotify":
         return "liked"
     got = set(playlists.SONG.findall(text))
     try:
         shown = [t["link"].rpartition("/")[2] for t in playlists.spotify(url)["tracks"]]
-    except Exception:  # Spotify didn't answer: the songs pasted for it before
-        shown = playlists.pasted(DIR, url)
-    if not shown or sum(i in got for i in shown) * 2 < len(shown):
-        return "liked"  # holds few of the playlist's songs
-    if len(shown) < playlists.SPOTIFY_CAP:  # Spotify showed the whole playlist
-        return "playlist" if len(got) <= len(shown) + 10 else "ask"
-    return "ask"  # a long playlist and a list holding most of what it shows: can't tell from the songs alone
+    except Exception:
+        return "ask"  # Spotify didn't answer
+    if shown and len(shown) < playlists.SPOTIFY_CAP and all(i in got for i in shown) and len(got) <= len(shown) + 10:
+        return "playlist"
+    return "ask"
 
 
 def dj_post(path, body):
