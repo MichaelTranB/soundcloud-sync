@@ -46,6 +46,10 @@ AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus", ".al
 CUT = re.compile(r"\b(?:clip|preview|snippet|teaser)\b", re.I)
 # Promo text uploaders put in titles; Soulseek files never carry it, so it only hurts the search.
 PROMO = re.compile(r"\s*[(\[][^)\]]*\b(?:free|download|dl|out now|premiere|buy|preview|clip|exclusive|support)\b[^)\]]*[)\]]", re.I)
+# The kind of edit, not the song: "Slowed + Reverb", "Super Slowed", "Nightcore", "Sped Up". Two different songs in
+# the same kind of edit share these words, so they never count toward a file being the playlist's song.
+EDITS = set("slowed reverb reverbed sped speed nightcore daycore super ultra chopped screwed bass boosted phonk "
+            "tiktok".split())
 VERSION = re.compile(r"[(\[][^)\]]*\b(?:remix|flip|edit|bootleg|vip|rework|mashup|refix)\b[^)\]]*[)\]]", re.I)
 PREFIX = re.compile(r"^\s*(?:premiere|free download|free dl|out now)\s*[:|\-]\s*", re.I)
 
@@ -362,7 +366,10 @@ def judge(path, name, secs, remote="", thrown=()):
     except OSError:
         return ""
     real, artist, title = inside(path)
-    want = words(name.partition(" - ")[2] or name)
+    asked = name.partition(" - ")[2] or name
+    # the song's own name: brackets ("(Kryd Hoodtrap Remix)") and edit words ("Slowed + Reverb") left out, so another
+    # song in the same remix or edit isn't taken for this one; a name that is only those words keeps them all
+    want = (words(re.sub(r"[(\[{][^)\]}]*[)\]}]", " ", asked)) - EDITS) or words(asked)
     named = None  # nothing written inside: no say
     if want and words(title):
         named = len(want & words(artist + " " + title)) * 2 >= len(want)
