@@ -367,12 +367,16 @@ def judge(path, name, secs, remote="", thrown=()):
         return ""
     real, artist, title = inside(path)
     asked = name.partition(" - ")[2] or name
-    # the song's own name: brackets ("(Kryd Hoodtrap Remix)") and edit words ("Slowed + Reverb") left out, so another
-    # song in the same remix or edit isn't taken for this one; a name that is only those words keeps them all
-    want = (words(re.sub(r"[(\[{][^)\]}]*[)\]}]", " ", asked)) - EDITS) or words(asked)
+    # edit words ("Slowed + Reverb", "Nightcore") never count: another song in the same edit shares them. Half the
+    # name's words must be inside the file, and half of its main name too (outside brackets), so another song in the
+    # same remix ("(Kryd Hoodtrap Mylancore)") isn't taken for it; brackets that are part of the title
+    # ("Sweet Dreams (Are Made of This)") still count in the first check
+    want = (words(asked) - EDITS) or words(asked)
+    main = words(re.sub(r"[(\[{][^)\]}]*[)\]}]", " ", asked)) - EDITS
     named = None  # nothing written inside: no say
     if want and words(title):
-        named = len(want & words(artist + " " + title)) * 2 >= len(want)
+        got = words(artist + " " + title)
+        named = len(want & got) * 2 >= len(want) and len(main & got) * 2 >= len(main)
     if secs and real:
         off = abs(real - secs)
         if off > 15 or (off > 5 and not named):
