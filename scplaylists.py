@@ -203,16 +203,26 @@ def start(d, vol, ids):
     path = {i: offered[i].split(": ", 1)[-1].split(" / ") for i in ids}
     last = [p[-1] for p in path.values()]
     named = dict(load(d).get("named") or {})  # each folder keeps the playlist name it was first given
+    # every playlist's parts, kept from every run (not just the last one): a folder picked again later finds its songs
+    # in the parts SoundCloud already holds them in, and no new folder is given the name of another one's part
+    kept = load(d).get("parts") or {}
+    extra = {l["name"] for g in kept.values() for l in g if l["name"] != l["group"]}
     sid = lambda i: vol + "\n" + i
 
     def own(i):  # a playlist per folder, named after it; two folders called "House" become "House (2025)" and so on
         if sid(i) in named:
             return named[sid(i)]
         p = path[i]
-        taken = {v for k, v in named.items() if k != sid(i)}
-        for name in (p[-1], f"{p[-1]} ({' / '.join(p[:-1])})", " / ".join(p)):
+        taken = {v for k, v in named.items() if k != sid(i)} | extra
+        tries = [p[-1]] + ([f"{p[-1]} ({' / '.join(p[:-1])})", " / ".join(p)] if len(p) > 1 else [])
+        for name in tries:
             if name not in taken and (name != p[-1] or last.count(p[-1]) < 2 or len(p) < 2):
                 break
+        else:  # every plain name is taken (a folder named like another playlist's part, "House (2)"): "House (2) · 2"
+            n = 2
+            while f"{p[-1]} · {n}" in taken:
+                n += 1
+            name = f"{p[-1]} · {n}"
         named[sid(i)] = name
         return name
 
@@ -220,15 +230,21 @@ def start(d, vol, ids):
     for i in ids:
         songs = songs_of(d, vol, i, lens)
         name = own(i) if opts["mode"] == "each" else opts["name"]
+        if name in extra and name not in {l["group"] for g in kept.values() for l in g if l["name"] == name}:
+            raise ValueError(f"“{name}” is already a part of another playlist. Pick another name in Options.")
         g = next((g for g in groups if g[0] == name), None)
         if g:
             g[1].extend(songs)
         else:
             groups.append((name, songs))
     with _edit(d) as s:
-        before = (s.get("run") or {}).get("lists") or []
-        owner = {name: name for name, _ in groups}  # each folder keeps its own name; earlier parts keep theirs
-        owner.update((l["name"], l["group"]) for l in before if l.get("group") in owner)
+        kept = s.get("parts") or {}
+        before = [l for g in kept.values() for l in g]
+        before += [l for l in (s.get("run") or {}).get("lists") or [] if l.get("group") not in kept]  # made before parts were kept
+        # names in use: every folder's own name and every earlier part (of any playlist, not only this run's)
+        owner = {v: v for v in list((s.get("named") or {}).values()) + list(named.values())}
+        owner.update((l["name"], l.get("group", l["name"])) for l in before)
+        owner.update((name, name) for name, _ in groups)
         lists = []
         for name, songs in groups:
             seen, uniq = set(), []
@@ -239,6 +255,8 @@ def start(d, vol, ids):
                     uniq.append(dict(x, k=k))
             lists.extend(parts(name, uniq, before, owner))
         s["named"] = {**(s.get("named") or {}), **named}
+        slim = lambda l: {"name": l["name"], "group": l["group"], "held": l["held"], "songs": [{"k": x["k"]} for x in l["songs"]]}
+        s["parts"] = {**kept, **{name: [slim(l) for l in lists if l["group"] == name] or kept.get(name, []) for name, _ in groups}}
         s.update(lens={**(s.get("lens") or {}), **lens}, run={"usb": vol, "ids": ids, "at": time.time(), "lists": lists})
     return counts(d)
 
