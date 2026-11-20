@@ -6,8 +6,9 @@ in the browser cannot press the buttons.
 """
 import glob, json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, unicodedata, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek
-import aiff, club, details, dj, friend, genres, layout, liked, recognise, place, usb_ask, waveform
+import aiff, club, details, dj, friend, genres, layout, liked, recognise, usb_ask, waveform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import place
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.expanduser("~/Music/SoundCloud Sync")
