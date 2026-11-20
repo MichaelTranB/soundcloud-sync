@@ -27,7 +27,7 @@ library was already in step.
   Analysis files sit where rekordbox itself would put them (spot()): the CDJ-3000 looks there without asking."""
 import json, os, shutil, struct, subprocess, sys, tempfile, time, unicodedata, zlib
 
-import layout, naming, place
+import layout, naming, place, tempo
 
 FOLDER, RECORD = "The Crate", "dj-rekordbox-usb.json"
 KINDS = {".mp3": 1, ".mp4": 3, ".m4a": 4, ".flac": 5, ".wav": 11, ".aiff": 12, ".aif": 12}  # rekordbox's own codes
@@ -146,7 +146,9 @@ def opened(db_file):
 
 def mac(job, master=None):
     """What rekordbox on this Mac holds for each song ({song: {...}}): its ids there, its tempo and key, and where
-    its analysis and cover are. {} when there's no rekordbox on this Mac. Reads only."""
+    its analysis and cover are. {} when there's no rekordbox on this Mac. Reads only. The tempo is the one in its
+    beat grid (what plays when the song is loaded), 0 until rekordbox has analysed the song: never the number in
+    its list, which for a song The Crate added is only what The Crate once wrote there."""
     try:
         import logging
         logging.disable(logging.WARNING)
@@ -171,12 +173,14 @@ def mac(job, master=None):
             if c is None:
                 continue
             anlz, img = share + (c.AnalysisDataPath or ""), share + (c.ImagePath or "")
+            anlz = anlz if c.AnalysisDataPath and os.path.isfile(anlz) else ""
             key = getattr(c, "Key", None)
             out[s["rel"]] = {
                 "db": num(c.MasterDBID), "id": num(c.MasterSongID) or num(c.ID), "link": num(c.ContentLink),
-                "bpm": num(c.BPM), "key": (key.ScaleName or "") if key is not None else "", "length": num(c.Length),
+                "bpm": tempo.grid(anlz) if anlz else 0, "key": (key.ScaleName or "") if key is not None else "",
+                "length": num(c.Length),
                 "bitrate": num(c.BitRate), "depth": num(c.BitDepth), "rate": num(c.SampleRate),
-                "anlz": anlz if c.AnalysisDataPath and os.path.isfile(anlz) else "",
+                "anlz": anlz,
                 "art": img if c.ImagePath and all(os.path.isfile(img[:-4] + x) for x in ("_s.jpg", "_m.jpg")) else "",
                 "created": str(c.DateCreated or "")[:10], "added": str(c.StockDate or "")[:10]}
         return out
@@ -217,7 +221,7 @@ def carried(job, known):
             continue
         k = known.setdefault(s["rel"], dict(BLANK))
         k["anlz"] = a
-        k["bpm"] = k["bpm"] or int(s.get("friend_bpm") or 0)
+        k["bpm"] = tempo.grid(a) or k["bpm"] or int(s.get("friend_bpm") or 0)  # (the grid that goes along)
         k["key"] = k["key"] or s.get("friend_key") or ""
     return known
 
@@ -461,9 +465,10 @@ def one(job, master=None, is_open=running):
         # Only The Crate's own rows: the tracks in its folder on the USB (and at a place that folder had before:
         # such a row follows its file below).
         pre = tuple("/" + m + "/" for m in [music] + place.others(usb))
-        own = {nfc(p): {"id": i, "genre": g or "", "anlz": a or "", "image": im or 0, "title": t or "", "artist": ar or ""}
-               for i, p, g, a, im, t, ar in run(
-            "SELECT c.content_id, c.path, g.name, c.analysisDataFilePath, c.image_id, c.title, ar.name FROM content c "
+        own = {nfc(p): {"id": i, "genre": g or "", "anlz": a or "", "image": im or 0, "title": t or "", "artist": ar or "",
+                        "bpm": b or 0}
+               for i, p, g, a, im, t, ar, b in run(
+            "SELECT c.content_id, c.path, g.name, c.analysisDataFilePath, c.image_id, c.title, ar.name, c.bpmx100 FROM content c "
             "LEFT JOIN genre g ON g.genre_id = c.genre_id LEFT JOIN artist ar ON ar.artist_id = c.artist_id_artist")
                if p and nfc(p).startswith(pre)}
         # A file that moved inside the folder (dj.py's "was") is the same track at a new place: its row follows.
@@ -489,6 +494,15 @@ def one(job, master=None, is_open=running):
                   and not o["anlz"].startswith(spot(p) + "/") and os.path.isfile(usb + o["anlz"])]
         regenre = [s for s in songs if at[s["rel"]] in own and s.get("genres") and own[at[s["rel"]]]["genre"] != s["genres"][0]]
         fill = [s for s in songs if at[s["rel"]] in own and not own[at[s["rel"]]]["anlz"] and known.get(s["rel"], {}).get("anlz")]
+        # The tempo a row shows is the one in its own beat grid on this USB (what a deck plays it at), else the
+        # one settled for the song (tempo.py), else none: a row left showing an old guess is put right.
+        retempo = []
+        for s in songs:
+            o = own.get(at[s["rel"]])
+            if o and s not in fill:
+                b = (tempo.grid(usb + o["anlz"]) if o["anlz"] else 0) or int(round(float(s.get("bpm") or 0) * 100))
+                if b != o["bpm"]:
+                    retempo.append((o["id"], b))
         # a name fixed on the page (naming.py): the row follows only where it still shows the old one
         rename = [(s, f) for s in songs for o in [own.get(at[s["rel"]])] if o
                   for f in [naming.follows(s, o["title"], o["artist"])] if f]
@@ -508,7 +522,8 @@ def one(job, master=None, is_open=running):
         stale = [n for (pid, _), (n, rels) in zip(kids, wanted)
                  if members(pid) != [own[at[r]]["id"] for r in rels]] if same_lists and not new else []
         old_covers = [r for r in covers if at[r] in own]
-        if not (made or new or moved or gone or resite or regenre or fill or old_covers or stale or rename) and same_lists:
+        if not (made or new or moved or gone or resite or regenre or fill or old_covers or stale or rename or retempo) \
+                and same_lists:
             note(job, name, [s["rel"] for s in songs], sum(bool(own[at[s["rel"]]]["anlz"]) for s in songs))
             return ""
         if is_open():
@@ -610,6 +625,8 @@ def one(job, master=None, is_open=running):
                         "masterDbId = :d, masterContentId = :m, contentLink = :l WHERE content_id = :i", a=o["anlz"],
                         b=k["bpm"] or int(round(float(s.get("bpm") or 0) * 100)),
                         k=named("key", k["key"] or s.get("musical_key")), d=k["db"], m=k["id"], l=k["link"], i=o["id"])
+            for i, b in retempo:
+                run("UPDATE content SET bpmx100 = :b WHERE content_id = :i", b=b, i=i)
             for rel in old_covers:
                 run("UPDATE content SET image_id = :m WHERE content_id = :i", m=image(rel), i=own[at[rel]]["id"])
             for p in gone:  # its file left the USB (a song you threw back): its row goes too
@@ -672,6 +689,8 @@ def one(job, master=None, is_open=running):
             said += f"; {len(moved)} followed to where their file{'s are' if len(moved) != 1 else ' is'} now"
         if sited:
             said += f"; {sited} analys{'e' if sited != 1 else 'i'}s filed where the CDJ-3000 looks"
+        if retempo:
+            said += f"; {len(retempo)} tempo{s(len(retempo))} put right"
         if gone:
             said += f"; {len(gone)} taken out (no longer on the USB)"
         if skipped:

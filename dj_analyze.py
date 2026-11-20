@@ -4,7 +4,8 @@ rest of The Crate stays standard-library only and works without it (tracks then 
 
     dj_analyze.py <music folder> <cache.json> [relative paths, one per line, on stdin]
 
-Only files that changed since the last run (size or time) are analysed again."""
+Only files that changed since the last run (size or time) are analysed again. The tempo is counted twice, by two
+different counters ("bpm" and "bpm2"): tempo.py shows The Crate's own count only where they agree."""
 import json, os, sys
 from multiprocessing import Pool
 
@@ -105,10 +106,20 @@ def load(path):
     return audio
 
 
+def second(audio):
+    """The tempo once more, by a counter that works another way (Percival's): 0 when it finds none."""
+    import essentia.standard as es
+    try:
+        return round(float(es.PercivalBpmEstimator()(audio)), 2)
+    except Exception:
+        return 0
+
+
 def listen(path):
     """Tempo and key from the audio itself."""
     import essentia.standard as es
     audio = load(path)
+    again = second(audio)
     bpm, beats, conf, _, _ = es.RhythmExtractor2013(method="multifeature")(audio)
     key, scale, strength = es.KeyExtractor(profileType="edma")(audio)
     bpm = float(bpm)
@@ -123,13 +134,18 @@ def listen(path):
         pass
     if bpm < 40:
         raise ValueError("no steady beat found")
-    return {"bpm": round(bpm, 2), "bpm_sure": round(float(conf), 2), "key": FLAT.get(key, key) + ("m" if scale == "minor" else ""),
+    return {"bpm": round(bpm, 2), "bpm2": again, "bpm_sure": round(float(conf), 2), "key": FLAT.get(key, key) + ("m" if scale == "minor" else ""),
             "key_sure": round(float(strength), 2), "first_beat": round(float(beats[0]), 3) if len(beats) else 0.0}
 
 
 def one(job):
-    root, rel = job
+    root, rel, had = job
     path = os.path.join(root, rel)
+    if had:  # listened to before the second count existed: only that is added, nothing else is heard again
+        try:
+            return rel, {**had, "bpm2": second(load(path))}
+        except Exception:
+            return rel, {**had, "bpm2": 0}
     st = os.stat(path)
     out = {"size": st.st_size, "mtime": int(st.st_mtime), "v": VERSION}
     try:
@@ -164,14 +180,17 @@ def main():
             continue
         c = cache.get(rel)
         if c and c.get("size") == st.st_size and c.get("mtime") == int(st.st_mtime) and ("bpm" in c or "listen_error" in c) and "tag_error" not in c and c.get("v") == VERSION:
+            if "bpm" not in c or "bpm2" in c:
+                continue
+            jobs.append((root, rel, c))
             continue
-        jobs.append((root, rel))
-    done = 0
+        jobs.append((root, rel, None))
+    done, only = 0, {j[1] for j in jobs if j[2]}  # (only: those whose second count alone is added)
     with Pool(min(6, os.cpu_count() or 2)) as pool:
         for rel, out in pool.imap_unordered(one, jobs):
             cache[rel] = out
             done += 1
-            print(f"{done}/{len(jobs)}  {out.get('bpm', '?')}  {out.get('key', '?')}  {rel}", flush=True)
+            print(f"{'again ' if rel in only else ''}{done}/{len(jobs)}  {out.get('bpm', '?')}  {out.get('key', '?')}  {rel}", flush=True)
             if done % 10 == 0:
                 save(cache, cache_path)
     for rel in list(cache):  # a track no longer in the folder leaves the cache
