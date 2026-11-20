@@ -46,7 +46,8 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   (`dj_analyze.py`: Essentia, cached in `dj-analysis.json`) and its genres (`genres.py`: his pick in `genres.json`
   wins, then the file's tag, SoundCloud's genre, what it sounds like, SoundCloud's tags, a genre word in the title;
   else "No genre yet"), and is
-  written into the Engine DJ library on the USB (`engine.py`, plain sqlite3: Denon Prime and other Engine OS decks)
+  written into the Engine DJ library on the USB (`engine.py`, plain sqlite3: Denon Prime and other Engine OS decks;
+  a row in The Crate's folder whose file has left the USB goes, as in `rekordbox_usb.py`, never any other row)
   and rekordbox on the Mac (`rekordbox.py`, pyrekordbox; only while rekordbox is closed), then into the USB's own
   rekordbox library (`rekordbox_usb.py`: `PIONEER/rekordbox/exportLibrary.db`, the "OneLibrary" the CDJ-3000X,
   XDJ-AZ, OPUS-QUAD and OMNIS-DUO read and rekordbox shows under the USB; only its own `/SoundCloud Sync/` rows and

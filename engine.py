@@ -7,7 +7,8 @@ The library is the SQLite file <USB>/Engine Library/Database2/m.db that the deck
   - on rows the deck has not analysed yet, keeps title, artist, tempo, key and genre up to date; on analysed rows
     only the genre (the deck's own tempo, key, grid, cues and loops are never touched);
   - keeps one playlist folder, "The Crate", in step. Nothing outside that folder is read or changed.
-Never deletes a track, never touches the music files. Before any change the library file is copied to the Mac
+Never touches the music files, and never takes a track out, with one exception: a row in The Crate's own folder
+whose file has left the USB (a song you threw back), which a deck would only show as missing. Before any change the library file is copied to the Mac
 (dj-backups/, the last 20 kept). Works only on the library version it knows (3.x); anything else is left alone
 with a line in the log. Standard library only."""
 import os, shutil, sqlite3, time, unicodedata
@@ -158,6 +159,19 @@ def write(usb, songs, lists, backups):
             cur = con.execute(f"INSERT INTO Track ({', '.join(r)}) VALUES ({', '.join('?' * len(r))})", tuple(r.values()))
             ids[s["rel"]] = cur.lastrowid
             added += 1
+        # A row in The Crate's own folder whose file has left the USB (a song you threw back) goes too, the same as
+        # in the USB's rekordbox library: a deck would only show it as a missing file. Only rows of that folder, never
+        # a song of your own or a friend's, and only while the folder and some of its songs are seen on the USB.
+        gone = 0
+        if on_usb and os.path.isdir(place.folder(usb)):
+            kept, inside = set(ids.values()), nfc(f"../{music}/")
+            for p, (tid, _) in list(have.items()):
+                if tid in kept or not p.startswith(inside) or there(p):
+                    continue
+                con.execute("DELETE FROM PlaylistEntity WHERE trackId=? AND databaseUuid=?", (tid, uuid))
+                con.execute("DELETE FROM Track WHERE id=?", (tid,))  # (its cues and grid go with it: the schema's own rule)
+                del have[p]
+                gone += 1
         # The Crate's folder of playlists: made once, then each list inside it kept in step.
         top = con.execute("SELECT id FROM Playlist WHERE title=? AND parentListId=0", (FOLDER,)).fetchone()
         if top:
@@ -222,7 +236,7 @@ def write(usb, songs, lists, backups):
             pass
         total = len(ids)
         return (f"{total} tracks in the library ({added} new, {analysed} already analysed by the deck), "
-                f"{len(wanted)} playlists in \"{FOLDER}\"")
+                f"{len(wanted)} playlists in \"{FOLDER}\"" + (f"; {gone} taken out (no longer on the USB)" if gone else ""))
     except Exception:
         if con.in_transaction:
             con.execute("ROLLBACK")
