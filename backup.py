@@ -604,6 +604,7 @@ SAID = {"full": "your own cloud is full: make room there (or get more), and the 
         "net": "your own cloud could not be reached (is this Mac online?): tried again later"}
 
 _ASKED = {}
+_REFUSED = set()  # (USB, song) the own cloud refused this run: logged once
 
 
 def tally(dir, name, up, pool, lists, free=True, every=300):
@@ -649,8 +650,9 @@ def tally(dir, name, up, pool, lists, free=True, every=300):
 def lifted(dir, name):
     """How much of a USB's backups is kept in the cloud the newest one went to (a file kept once counts once)."""
     seen, got = {}, snaps(dir, name)
+    far = next((s.get("place") for s in got if s.get("place") in FAR), None)  # the newest one kept in a cloud
     for s in got:
-        if s.get("place") in FAR and s.get("place") == got[0].get("place"):
+        if s.get("place") in FAR and s.get("place") == far:
             seen.update({(row[3], rel): row[0] for rel, row in files_of(dir, name, s["id"]).items() if len(row) > 3})
     return sum(seen.values())
 
@@ -1040,6 +1042,15 @@ def _songs(dir, usb, name, skip, turn=20):
                     else:
                         skip.add(mark)
                     continue
+                if err and err.split(":")[0] == "net" and owncloud.reachable(dir):
+                    # The cloud answers, but won't take this one file (a name or size it refuses): the others go on,
+                    # and this one is said once, by name; it is tried again at the next plug-in.
+                    skip.add(mark)
+                    if (name, rel) not in _REFUSED:
+                        _REFUSED.add((name, rel))
+                        log(dir, f'BACKUP PROBLEM: "{name}": your own cloud would not take "{rel}": '
+                            f"{err.split(': ', 1)[-1] or 'no reason given'}. The other songs carry on.")
+                    continue
                 if err:  # full, a sign-in to give again, or offline: said on the page, and this turn ends here
                     why, said = err.split(":")[0], err
                     rest += 1
@@ -1090,7 +1101,7 @@ def _songs(dir, usb, name, skip, turn=20):
             left0 = len(waiting)
     why = why or ("unread" if any(r in skip for r in newest) else "")
     keep = {k: v for k, v in (seen or was).items() if k in ("sent", "unsent", "out", "asked")}
-    if why in SAID and why != (was.get("why") or ""):
+    if own and why in SAID and why != (was.get("why") or ""):  # (iCloud's own words are said by the page)
         log(dir, f'BACKUP PROBLEM: "{name}": songs wait to go up: {SAID[why]}.' + (f" ({said.split(': ', 1)[-1]})" if said else ""))
     note(dir, name, up={**keep, "left": left0, "here": here, "why": why, "said": said, "at": int(time.time())},
          **({"kept": lifted(dir, name)} if did else {}))
@@ -1138,6 +1149,8 @@ def check(dir, usb, name):
             by[row[3]] = sums_of(dir, name, row[3])
         sha = by[row[3]].get(rel)
         a = os.path.join(usb, *rel.split("/"))
+        if not os.path.lexists(a) and os.path.isdir(usb):
+            continue  # gone from the USB since (taken off, or moved): not damaged; the next backup lists what is there
         try:
             st = os.stat(a)
             if not sha or [st.st_size, st.st_mtime_ns] != row[:2]:

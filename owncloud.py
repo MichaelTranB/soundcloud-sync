@@ -47,7 +47,9 @@ def setup():
     name = f"rclone-{VERSION}-osx-{arch}"
     with tempfile.TemporaryDirectory() as t:
         z = os.path.join(t, name + ".zip")
-        urllib.request.urlretrieve(f"https://downloads.rclone.org/{VERSION}/{name}.zip", z)
+        with urllib.request.urlopen(f"https://downloads.rclone.org/{VERSION}/{name}.zip", timeout=60) as r, \
+                open(z, "wb") as out:
+            shutil.copyfileobj(r, out)
         if sha256(z) != SUMS[arch]:
             raise OSError("the rclone download is not the one expected (sha256): not used")
         with zipfile.ZipFile(z) as zf, zf.open(f"{name}/rclone") as src:
@@ -105,6 +107,8 @@ def ours(path):
 def why(text):
     """What went wrong, in a word the page explains: "full", "signin" (sign in again) or "net"."""
     t = text or ""
+    if re.search(r"rate.?limit|too many requests|\b429\b|throttl|slow ?down", t, re.I):  # busy, not full
+        return "net"
     if re.search(r"quota|insufficient.?storage|not enough (space|storage)|storage.{0,20}full|exceed\w* .{0,30}(limit|space)"
                  r"|\b507\b|space_left|insufficient_space", t, re.I):
         return "full"
@@ -121,7 +125,7 @@ def tail(text):
 
 # What is in the cloud under one USB's folder, by full rclone path: {path: size}. Asked once and kept up to date by
 # what is sent and dropped here; asked again after LS seconds, or after a send failed.
-_LS, LS, _REAL = {}, 600, {}
+_LS, LS, _REAL, _FAIL = {}, 600, {}, {}  # _FAIL: when a listing last failed
 
 
 def nfc(path):
@@ -144,10 +148,13 @@ def listing(dir, path, fresh=False):
     got = _LS.get(k)
     if got and not fresh and time.time() - got[0] < LS:
         return got[1]
+    if not fresh and time.time() - _FAIL.get(k, 0) < 120:  # it just couldn't be asked: don't wait on it again yet
+        return None
     r = rc(dir, "lsjson", "-R", "--files-only", "--no-mimetype", "--fast-list", k, timeout=600)
     if r.returncode == 3 or (r.returncode and "directory not found" in r.stderr):
         files = {}
     elif r.returncode:
+        _FAIL[k] = time.time()
         return None
     else:
         try:
@@ -158,7 +165,9 @@ def listing(dir, path, fresh=False):
                 if nfc(p) != p:
                     _REAL[nfc(p)] = p
         except (ValueError, KeyError, TypeError):
+            _FAIL[k] = time.time()
             return None
+    _FAIL.pop(k, None)
     _LS[k] = (time.time(), files)
     return files
 
@@ -278,6 +287,11 @@ def _ask(dir, p):
     except OSError:
         pass
     return got
+
+
+def reachable(dir):
+    """Whether the cloud answers at all just now (a short look at its top folder)."""
+    return rc(dir, "lsf", "--max-depth", "1", "--dirs-only", REMOTE + ":", timeout=60).returncode == 0
 
 
 def free(dir, wait=True):

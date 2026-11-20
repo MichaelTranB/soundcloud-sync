@@ -1499,7 +1499,7 @@ def dj_post(path, body):
             threading.Thread(target=p.wait, daemon=True).start()
             return None
         if body.get("disconnect") is True:  # The Crate lets go of it; the backups there stay
-            if backup.alive(DIR):
+            if backup.alive(DIR) or backup.progress(DIR) is not None:  # (a backup, its songs, or a repair)
                 return "A backup is at work: try again once it is done."
             owncloud.disconnect(DIR)
             if backup.load(DIR)["place"] == "own":

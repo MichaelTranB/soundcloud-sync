@@ -171,6 +171,42 @@ owncloud.rc = lambda *a, **k: (time.sleep(5), real_rc(*a, **k))[1]
 t0 = time.time(); st = backup.status(DIR); took = time.time() - t0
 owncloud.rc = real_rc
 ok(took < 2 and st.get("free") is not None, f"page answers at once with the last room known ({took:.1f}s)")
+# 8g. one file the cloud refuses (it answers, but won't take that one): the others still go up, that one is named once
+newest = backup.snaps(DIR, "Lexar")[0]["id"]
+wp = os.path.join(DIR, "usb-backups", "Lexar", newest, "waiting.json")
+w = json.load(open(wp))
+for n in ("r1", "r2"):
+    put(os.path.join(USB, "Contents", f"{n}.mp3"), 30000)
+    st3 = os.stat(os.path.join(USB, "Contents", f"{n}.mp3"))
+    w[f"Contents/{n}.mp3"] = [st3.st_size, st3.st_mtime_ns, "song"]
+json.dump(w, open(wp, "w"))
+real_put = owncloud.put
+owncloud.put = lambda d, a, b: ("net: Error: the name is not allowed" if a.endswith("r1.mp3") else real_put(d, a, b))
+backup._ASKED.clear()
+backup._songs(DIR, USB, "Lexar", set())
+owncloud.put = real_put
+up = backup.note(DIR, "Lexar")["up"]
+ok(os.path.isfile(os.path.join(CLOUD, "The Crate", "USB backups", "Lexar", newest, "files", "Contents", "r2.mp3"))
+   and up.get("why") != "net", f"a refused file doesn't hold the others back ({up.get('why')})")
+ok('would not take "Contents/r1.mp3"' in open(os.path.join(DIR, "dj.log")).read(), "the refused file is named in the log")
+# 8h. a song gone from the USB since is not "damaged" (the weekly check)
+s0p = os.path.join(USB, "Contents", "song0.mp3")
+os.rename(s0p, os.path.join(T, "song0.away"))
+backup.note(DIR, "Lexar", sums={"day": "x", "at": 1}, damaged=None, repair=None)
+backup.check(DIR, USB, "Lexar")
+ok(not backup.note(DIR, "Lexar").get("damaged") and not backup.note(DIR, "Lexar").get("repair"),
+   f"a song gone from the USB is not called damaged ({backup.note(DIR, 'Lexar').get('damaged')})")
+os.rename(os.path.join(T, "song0.away"), s0p)
+# 8i. busy is not full; a cloud that can't be asked isn't asked again at once
+ok(owncloud.why("Error 429: you have exceeded the rate limit") == "net"
+   and owncloud.why("quota exceeded") == "full", "a rate limit reads as busy, not full")
+calls = []
+owncloud.rc = lambda *a, **k: calls.append(1) or subprocess.CompletedProcess(a, 1, "", "dial tcp: no such host")
+first = owncloud.listing(DIR, "crate:Nowhere/x")
+second = owncloud.listing(DIR, "crate:Nowhere/x")
+owncloud.rc = real_rc
+ok(first is None and second is None and len(calls) == 1, f"a failed listing is not asked again at once ({len(calls)} asks)")
+owncloud._FAIL.clear()
 # 9. Off: no backup at plug-in; "now" still makes one, on this Mac
 backup.save(DIR, place="off")
 before = len(backup.snaps(DIR, "Lexar"))
