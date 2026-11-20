@@ -120,8 +120,10 @@ straight into your decks' libraries, with no dragging and no clicks:
   own rekordbox library, so they show under the USB in rekordbox (*Devices*, under the USB: *OneLibrary*) and on
   the CDJ-3000X, XDJ-AZ, OPUS-QUAD and OMNIS-DUO, with the beat grids and waveforms rekordbox already made. A USB
   without a rekordbox library gets one; a USB that someone else's rekordbox filled keeps everything of theirs.
-  Older club decks (CDJ-3000, CDJ-2000NXS2 and before) read an older kind of list that only rekordbox itself can
-  write: before a gig on those, export once from rekordbox (drag your playlists onto the USB under *Devices*).
+  Older club decks (CDJ-3000, CDJ-2000NXS2 and before) read an older kind of list on the USB (*Device Library*).
+  When the USB has one, The Crate keeps it in step with the newer one at every copy, so rekordbox 7 finds no
+  mismatch between the two; a USB that has never had one needs one export from rekordbox first (drag a playlist
+  onto the USB under *Devices*, once).
 - **Serato:** the USB also gets Serato crates (*The Crate*, with a crate per playlist inside it), which Serato
   shows when the USB is plugged in. They point at the same files; nothing is copied.
 - **One folder, each song once:** all of The Crate's music sits in The Crate's own folder on the USB (*SoundCloud Sync* at its top,
