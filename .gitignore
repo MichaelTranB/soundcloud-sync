@@ -48,6 +48,7 @@ soulseek-missed.tsv
 soulseek-missed.tsv.tmp
 soulseek-wrong.tsv
 .soulseek-again
+.soulseek-timeup
 soulseek-from.tsv
 soulseek-from.tsv.tmp
 soulseek-checked.json
@@ -146,3 +147,6 @@ liked-state.json
 liked-settings.json
 tour.json
 tour.json.*
+sc-playlists.json
+sc-playlists.json.*.tmp
+.sc-playlists.lock

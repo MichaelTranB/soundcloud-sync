@@ -12,8 +12,25 @@ try:
         sys.exit(0)  # already sent back once this turn: let it stop
 except ValueError:
     pass
+HERE = os.path.dirname(os.path.abspath(__file__))
 try:
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "to-buy.tsv")) as f:
+    with open(os.path.join(HERE, ".agent-run.json")) as f:
+        job = json.load(f).get("job")
+except (OSError, ValueError, AttributeError):
+    job = ""
+if job == "scpl":  # songs from a USB into SoundCloud playlists
+    sys.path.insert(0, HERE)
+    import scplaylists
+    left = scplaylists.counts(HERE)["left"]
+    if left:
+        print(json.dumps({"decision": "block", "reason":
+            f"The Crate still lists {left} song(s) to add to SoundCloud playlists. Carry on with the next one. If "
+            "something waits on me (a sign-in, a check), leave its tab open and tell me in one line. If you're "
+            "asking me something you can't go on without, or every song left waits on me, stop now with your short "
+            "list."}))
+    sys.exit(0)
+try:
+    with open(os.path.join(HERE, "to-buy.tsv")) as f:
         left = sum(1 for l in f if len(p := l.rstrip("\n").split("\t")) > 2 and re.match(r"https?://\S+$", p[2]))
 except OSError:
     sys.exit(0)

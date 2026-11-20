@@ -87,6 +87,18 @@ Never YouTube rips or recorded streams: low quality.
   in). It goes to the USB's own Trash, so you can still take it back until you empty the Trash; only The Crate's
   own folder on the USB is ever touched.
 
+### USB to SoundCloud playlists
+
+- **USB to SoundCloud** turns folders or rekordbox playlists on a USB into **private** SoundCloud playlists. Pick the
+  USB, tick what to bring, press **Make playlists**.
+- **Options:** one playlist per folder, named after it (the default), or all of them merged into one playlist you name.
+  Past 500 songs (SoundCloud's limit) a playlist carries on as "Name (2)".
+- Claude or Codex does the clicking in your own signed-in Chrome. Each song is matched by artist, title and length
+  (within 5 seconds); anything it isn't sure of, or can't find, goes to **Needs a look** on the list page with the
+  closest link, for you to decide.
+- It only ever makes private playlists and adds songs to them: it never uploads, posts, makes anything public, follows,
+  likes, deletes or pays. **Carry on** picks up where it stopped; the list page (`/to-soundcloud`) works by hand too.
+
 ## Your DJ decks (Engine DJ, rekordbox and Serato)
 
 Open **Library Manager** on the page. Every song is listed with its tempo, key and genres, and The Crate puts them

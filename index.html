@@ -168,6 +168,10 @@
   .opts label { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0; font-size: 14.5px; font-weight: 500; color: var(--dim); }
   .opts input, .opts select { flex: 1 1 160px; min-width: 0; }
   .opts input[type=number] { flex: 0 0 90px; }
+  .picks { max-height: 220px; overflow-y: auto; margin-top: 10px; display: grid; gap: 2px; }
+  .picks label { display: flex; align-items: center; gap: 10px; margin: 0; padding: 4px 2px; font-size: 14.5px; font-weight: 500; color: var(--text); }
+  .picks label small { color: var(--dim); margin-left: auto; font-variant-numeric: tabular-nums; }
+  .picks input { width: auto; flex: none; }
   li .why button.undo { background: none; border: 0; padding: 0; margin-left: 8px; color: var(--dim); font-size: 13.5px; text-decoration: underline dotted; }
   #viewNote .run { display: flex; flex-wrap: wrap; align-items: center; color: var(--text); font-weight: 600; }
   #viewNote .run .bar { flex: 1 1 100%; height: 4px; margin-top: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
@@ -222,7 +226,7 @@
   kbd { font: 600 13px var(--mono); color: var(--text); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; background: #1d1d27; white-space: nowrap; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   footer { color: var(--dim); font-size: 14px; margin-top: 56px; }
-  .stat a.inl { color: var(--text); font-size: 14px; text-underline-offset: 3px; }
+  .stat a.inl, #scplNote a { color: var(--text); font-size: 14px; text-underline-offset: 3px; }
   .alert .fix { display: inline-block; margin: 12px 0 0; padding: 10px 18px; font-size: 15px; }
   #startNote { margin: 0 0 12px; } #startNote:empty { display: none; }
   .every { color: var(--dim); font-size: 14.5px; align-self: center; white-space: nowrap; }
@@ -331,11 +335,20 @@
       <div class="help" id="hLists" hidden>
         <p>Every sync gets each song in these playlists onto your Mac, in the best quality it finds.</p>
         <p><b>Never:</b> changes the playlist or your account. It only reads the song list.</p>
-        <p><b>Undo:</b> remove a playlist with its ×. Its files stay on your Mac.</p>
+        <p><b>Spotify Liked Songs</b> go in here too: in Spotify, open Liked Songs, click the newest song, Shift-click the oldest you want, press ⌘C and paste here. They're fetched <b>EDM first</b> into their own folder, only while your Mac keeps some space free (<b>10 GB</b> to start; change it under <b>Liked Songs options</b>). Liked more? Paste again.</p>
+        <p><b>Undo:</b> remove a playlist, or Liked Songs, with its ×. Its files stay on your Mac.</p>
       </div>
       <div class="row"><input id="url" placeholder="Paste a playlist link" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="act" id="saveUrl">Add</button></div>
-      <div class="note" id="urlNote">Works with SoundCloud, Spotify and Apple Music. Tap a saved one to sync it.</div>
+      <div class="note" id="urlNote">Works with SoundCloud, Spotify and Apple Music, and your Spotify Liked Songs. Tap a saved one to sync it.</div>
       <div class="lists" id="saved"></div>
+      <div class="note" id="likedNote" hidden></div>
+      <details id="likedOpts" hidden><summary>Liked Songs options</summary>
+        <div class="opts">
+          <label>Folder <input id="loFolder" placeholder="None: with your playlist songs" spellcheck="false" autocomplete="off"></label>
+          <label>Order <select id="loOrder"><option value="edm">EDM first, then the rest</option><option value="newest">Newest first, any kind</option></select></label>
+          <label>Keep free on your Mac <input id="loFloor" type="number" min="1" max="500" step="1"> GB</label>
+        </div>
+      </details>
       <details><summary>Or find them on your profile</summary>
       <div class="row" style="margin-top:10px">
         <span class="pre"><span>soundcloud.com/</span><input id="profile" placeholder="yourname" spellcheck="false" autocapitalize="off" autocomplete="off"></span>
@@ -347,24 +360,6 @@
       </div>
       <div class="note" id="profNote">Uses the SoundCloud sign-in already in that browser. No password typed here.</div>
       <div class="lists" id="lists"></div>
-      </details>
-    </div>
-    <div class="field">
-      <div class="lab"><label for="liked"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>Spotify Liked Songs</label>
-        <button class="q" data-help="hLiked" aria-expanded="false" aria-label="How Liked Songs works">?</button></div>
-      <div class="help" id="hLiked" hidden>
-        <p>Every sync looks for the next batch on Soulseek, <b>EDM first</b> (newest first), into their own folder, so you can sort them into your playlists yourself.</p>
-        <p>It only takes what fits: your Mac always keeps some space free (<b>10 GB</b> to start). Change the folder, order or space under <b>Options</b>. <b>Never:</b> signs in to Spotify or changes anything there.</p>
-        <p>Liked more songs? Paste again. <b>Undo:</b> <button class="ghost" id="likedForget" style="padding:4px 10px;font-size:13px">Stop</button> clears the list; songs already here stay.</p>
-      </div>
-      <div class="row"><input id="liked" placeholder="Paste your Liked Songs" spellcheck="false" autocapitalize="off" autocomplete="off"><button class="act" id="likedAdd">Add</button></div>
-      <div class="note" id="likedNote">In Spotify, open Liked Songs, click the newest song, Shift-click the oldest you want, press ⌘C, paste here.</div>
-      <details id="likedOpts"><summary>Options</summary>
-        <div class="opts">
-          <label>Folder <input id="loFolder" placeholder="None: with your playlist songs" spellcheck="false" autocomplete="off"></label>
-          <label>Order <select id="loOrder"><option value="edm">EDM first, then the rest</option><option value="newest">Newest first, any kind</option></select></label>
-          <label>Keep free on your Mac <input id="loFloor" type="number" min="1" max="500" step="1"> GB</label>
-        </div>
       </details>
     </div>
     </div>
@@ -380,6 +375,24 @@
       <div class="usbprog" id="usbProg" hidden><span id="usbIcon"></span><progress id="usbBar" max="1" value="0"></progress><span id="usbPct"></span></div>
       <div class="note" id="usbNote" role="status" aria-live="polite"></div>
       <label class="note"><input type="checkbox" id="eject"> Eject the USB once a sync has put its new tracks on it, so you can just pull it out (never mid-sync)</label>
+    </div>
+    <div class="field">
+      <div class="lab"><label for="scplUsb"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>USB to SoundCloud</label>
+        <button class="q" data-help="hScpl" aria-expanded="false" aria-label="How USB to SoundCloud works">?</button></div>
+      <div class="help" id="hScpl" hidden>
+        <p>Makes a <b>private</b> SoundCloud playlist from each folder you tick, named after it, or one for all (<b>Options</b>). Over 500 songs, it's split in parts.</p>
+        <p>Claude or Codex finds each song in your Chrome and checks artist, title and length. Unsure ones wait for your look. Or do it yourself from the list.</p>
+        <p><b>Never:</b> uploads files, makes anything public or changes your USB. <b>Undo:</b> delete the playlist on SoundCloud.</p>
+      </div>
+      <div class="row"><select id="scplUsb" aria-label="USB to make playlists from"></select><button class="act" id="scplGo">Make playlists</button></div>
+      <div class="picks" id="scplPicks"></div>
+      <div class="note" id="scplNote" role="status" aria-live="polite"></div>
+      <details id="scplOpts"><summary>Options</summary>
+        <div class="opts">
+          <label>Make <select id="scplMode"><option value="each">A playlist per folder, named after it</option><option value="one">One playlist for all</option></select></label>
+          <label id="scplNameRow">Its name <input id="scplName" maxlength="80" spellcheck="false" autocomplete="off"></label>
+        </div>
+      </details>
     </div>
     <div class="field">
       <div class="lab"><label for="slskUser"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/></svg>Soulseek</label>
@@ -523,8 +536,8 @@ function render(s) {
       : s.service === 'spotify' && s.pasted ? `All ${s.pasted} songs are in. Added more in Spotify? Copy and paste them here again.`
       : s.service === 'apple' ? (s.capped ? 'Apple Music shows only the first 300 songs. Split bigger playlists into parts of 300 or fewer.'
         : 'Apple Music playlists: up to 300 songs each.')
-      : 'Works with SoundCloud, Spotify and Apple Music. Tap a saved one to sync it.', false, true);
-  paintSetup(s); last = s; draw(); paintStart(s); paintHelper();
+      : 'Works with SoundCloud, Spotify and Apple Music, and your Spotify Liked Songs. Tap a saved one to sync it.', false, true);
+  paintSetup(s); last = s; draw(); paintStart(s); paintHelper(); scplLine(s);
 }
 
 // The Get started list: each step a friend needs once, ticked from what the app can see, with a button that opens
@@ -599,7 +612,7 @@ const CLAUDE_EXT = 'https://chromewebstore.google.com/detail/fcoeoabgfenejglbffo
 const CODEX_APP = 'https://developers.openai.com/codex/app';
 const CODEX_CHROME = 'https://learn.chatgpt.com/docs/chrome-extension';
 const GET_CHROME = 'https://www.google.com/chrome/';
-let helperWho = '', helperDone = {}, helperMsg = '', helperKey = '';
+let helperWho = '', helperDone = {}, helperMsg = '', helperKey = '', helperJob = 'free';  // or 'scpl': USB to SoundCloud
 try { helperWho = localStorage.getItem('crateAgent') || ''; } catch (e) {}
 if (!AGENT[helperWho]) helperWho = '';
 // Which one the guide opens on, when the friend hasn't picked: the one furthest set up (installed counts most, then
@@ -611,26 +624,31 @@ function bestAgent(s) {
   return score('codex') > score('claude') ? 'codex' : 'claude';
 }
 const agentName = w => el('span', { className: 'ag ' + w, textContent: AGENT[w] });
-function openHelper() { helperMsg = ''; paintHelper(true); $('helper').showModal(); }
+function openHelper(job) {
+  job = job === 'scpl' ? 'scpl' : 'free';
+  delete helperDone.claude; delete helperDone.codex;  // each opening is a fresh go: a new run, carrying on, or the other job
+  helperJob = job; helperMsg = ''; paintHelper(true); $('helper').showModal(); }
 $('helperClose').onclick = () => $('helper').close();
 $('helper').onclick = e => { if (e.target === $('helper')) $('helper').close(); };
 const kbd = t => el('kbd', { textContent: t });
 const ext = (text, href) => el('a', { className: 'btn', href, target: '_blank', rel: 'noopener', textContent: text });
 function helperAct(btn, who, then) {
   btn.disabled = true; helperMsg = '';
-  call('/api/agent', { who }).then(() => { then(); paintHelper(); })
+  call('/api/agent', { who, job: helperJob }).then(() => { then(); paintHelper(); })
     .catch(e => { btn.disabled = false; helperMsg = e.message; paintHelper(); });
 }
 // Repainted only when something it shows changes, so the 3-second refresh never moves the keyboard focus.
 function paintHelper(force) {
   const s = last; if (!s || !(force || $('helper').open)) return;
-  const agents = s.agents || [], n = s.buy.filter(t => !live(t) && !waiting(t) && t.free && !notFree(t)).length;
+  const agents = s.agents || [], scpl = helperJob === 'scpl';
+  const n = scpl ? (s.scpl || {}).left || 0 : s.buy.filter(t => !live(t) && !waiting(t) && t.free && !notFree(t)).length;
   const who = helperWho || bestAgent(s), has = agents.includes(who);
-  const key = JSON.stringify([agents, s.claudeInChrome, s.codexInChrome, s.chrome, n, who, helperDone, helperMsg]);
+  const key = JSON.stringify([agents, s.claudeInChrome, s.codexInChrome, s.chrome, n, who, helperDone, helperMsg, helperJob]);
   if (key === helperKey && !force) return;
   helperKey = key;
   const b = t => el('b', { textContent: t });
-  const answer = { title: 'Answer its one question', how: ['Say what it may do, like ', el('i', { textContent: 'follow and like are fine' }), '.'] };
+  const answer = scpl ? { title: 'Check the ones it isn\'t sure of', how: ['They wait under ', b('Needs a look'), ' on its list.'] }
+    : { title: 'Answer its one question', how: ['Say what it may do, like ', el('i', { textContent: 'follow and like are fine' }), '.'] };
   const chrome = { title: 'Get Google Chrome', done: s.chrome, acts: [ext('Get Chrome ↗', GET_CHROME)], how: ['Both assistants work in Chrome.'] };
   const list = [chrome, ...(who === 'claude' ? [
     { title: 'Install Claude', done: has, acts: helperDone.installing ? [] : [el('button', { textContent: 'Install Claude',
@@ -658,14 +676,15 @@ function paintHelper(force) {
   ])];
   // Later steps wait for the one before (nothing to open before it's installed), so only the current step has buttons.
   const next = list.findIndex(x => !x.done);
-  $('helperHead').replaceChildren('Get them with ', agentName('claude'), ' or ', agentName('codex'));
+  $('helperHead').replaceChildren(scpl ? 'Make them with ' : 'Get them with ', agentName('claude'), ' or ', agentName('codex'));
   $('helperBody').replaceChildren(
     el('div', { className: 'pick' }, ...['claude', 'codex'].map(w => {
       const p = el('button', { className: 'ghost ag ' + w, textContent: AGENT[w],
         onclick: () => { helperWho = w; helperMsg = ''; try { localStorage.setItem('crateAgent', w); } catch (e) {} paintHelper(); } });
       if (!agents.includes(w)) p.append(el('small', { textContent: 'not installed' }));
       p.setAttribute('aria-pressed', w === who); return p; })),
-    el('p', { className: 'lead' }, agentName(who), ` downloads your ${n} free song${n === 1 ? '' : 's'} in Chrome for you.`),
+    el('p', { className: 'lead' }, agentName(who), scpl ? ` adds your ${n} song${n === 1 ? '' : 's'} to private SoundCloud playlists in Chrome.`
+      : ` downloads your ${n} free song${n === 1 ? '' : 's'} in Chrome for you.`),
     ...list.map((x, i) => el('div', { className: 'step' + (x.done ? ' done' : '') + (i === next ? ' next' : '') },
       el('span', { className: 'tick', ariaHidden: 'true', textContent: x.done ? '✓' : i + 1 }),
       el('div', { className: 't' }, el('b', { textContent: x.title }), el('span', { className: 'sr', textContent: x.done ? ' (done)' : '' }),
@@ -836,7 +855,7 @@ function draw() {
       step('3', 'The Crate checks it, moves it into your music and ticks it off here. Nothing to tidy up.'),
       // Claude or Codex can do the clicking: the button opens a short guide, set up for what this Mac has.
       ...(freeAll.length ? [el('div', { className: 'agents' }, el('button', { className: 'ghost',
-        onclick: openHelper }, '✨ Have ', agentName('claude'), ' or ', agentName('codex'), ' download them'))] : [])]));
+        onclick: () => openHelper('free') }, '✨ Have ', agentName('claude'), ' or ', agentName('codex'), ' download them'))] : [])]));
   const BY = { claude: 'Claude', codex: 'Codex', you: 'you' };
   const missRow = t => { const [k, txt, chip, by] = why(t, s); return el('li', { className: 'shop' },
     nameEl(t), el('span', { className: 'why' + (k ? ' ' + k : '') }, ...(k === 'wait' || k === 'work' ? [el('span', { className: 'spin' })] : []),
@@ -883,7 +902,7 @@ function paintSetup(s) {
     x.setAttribute('aria-label', 'Remove ' + p.title);
     x.onclick = () => call('/api/forget', { url: p.url }).then(() => say('urlNote', 'Removed ' + p.title + '. Its files stay on your Mac.')).catch(e => say('urlNote', e.message, true));
     const c = el('span', { className: 'chip' }); c.append(b, x); return c;
-  }));
+  }), ...(s.liked ? [likedChip(s.liked)] : []));
   $('lists').replaceChildren(...s.playlists.map(p => {
     const b = el('button', { textContent: p.title }); b.setAttribute('aria-pressed', p.url === s.playlist);
     b.onclick = () => pick(p, 'profNote');
@@ -977,8 +996,9 @@ player.onerror = () => {
 async function call(path, body) {
   const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
   const j = await r.json();
-  if (!r.ok) throw new Error(j.error || 'Something went wrong.');
-  render(j); return j;
+  if (!r.ok) throw Object.assign(new Error(j.error || 'Something went wrong.'), { reply: j });
+  if (j && Array.isArray(j.have)) render(j);  // the Library Manager's buttons reply with its own state, not this page's
+  return j;
 }
 let urlSaid = 0;  // when the playlist box last reported something (its usual hint waits a bit after)
 function say(id, text, bad, hint) {
@@ -992,12 +1012,20 @@ function busyBtn(b, on, label) {
 }
 // One box for everything: a playlist link from any of the three, or the songs copied from the Spotify app.
 const SONGS = /open\.spotify\.com\/(intl-[a-z-]+\/)?track\/|spotify:track:/;
-function addSongs(text) {
+function addSongs(text, to) {
   busyBtn($('saveUrl'), true, 'Adding'); say('urlNote', 'Saving the songs…');
-  call('/api/spotify-songs', { text })
-    .then(s => { $('url').value = ''; say('urlNote', s.likedPasted ? `Saved as your Liked Songs: ${s.likedPasted} songs, EDM first (see Spotify Liked Songs).`
+  call('/api/spotify-songs', { text, to })
+    .then(s => { $('url').value = ''; say('urlNote', s.likedPasted ? `Saved as your Liked Songs: ${s.likedPasted} songs, EDM first. They show as ♥ Liked Songs below.`
       : `Got all ${s.pasted} songs. Reading them now (see Getting now).`); })
-    .catch(e => say('urlNote', e.message, true)).finally(() => busyBtn($('saveUrl'), false, 'Add'));
+    .catch(e => e.reply && e.reply.ask ? askWhere(text, e.reply.playlist) : say('urlNote', e.message, true)).finally(() => busyBtn($('saveUrl'), false, 'Add'));
+}
+function askWhere(text, playlist) {  // the pasted songs could be his Liked Songs or the chosen playlist: he picks
+  urlSaid = Date.now() + 600000;  // stays until he answers
+  const go = to => () => { urlSaid = 0; addSongs(text, to); };
+  $('urlNote').className = 'note';
+  $('urlNote').replaceChildren('Are these your Liked Songs, or all the songs in ' + playlist + '? ',
+    el('button', { className: 'ghost', textContent: 'Liked Songs', onclick: go('liked') }), ' ',
+    el('button', { className: 'ghost', textContent: playlist, onclick: go('playlist') }));
 }
 $('url').onpaste = e => {  // a pasted song list keeps its line breaks this way (the box itself is one line)
   const text = e.clipboardData.getData('text');
@@ -1005,6 +1033,8 @@ $('url').onpaste = e => {  // a pasted song list keeps its line breaks this way 
 };
 $('saveUrl').onclick = () => {
   if (SONGS.test($('url').value)) return addSongs($('url').value);
+  if (/open\.spotify\.com\/collection\/tracks/.test($('url').value)) return say('urlNote', "Spotify doesn't share Liked Songs as a link. "
+    + 'Open Liked Songs in Spotify, click the newest song, Shift-click the oldest you want, press ⌘C and paste here.', true);
   busyBtn($('saveUrl'), true, 'Adding'); say('urlNote', 'Reading the playlist…');
   const slow = setTimeout(() => say('urlNote', 'Still reading. Big playlists can take a minute.'), 6000);
   call('/api/playlist', { url: $('url').value.trim() })
@@ -1012,30 +1042,92 @@ $('saveUrl').onclick = () => {
       (s.service === 'apple' ? ' Apple Music reads up to 300 songs a playlist.' : '')); })
     .catch(e => say('urlNote', e.message, true)).finally(() => { clearTimeout(slow); busyBtn($('saveUrl'), false, 'Add'); });
 };
-function addLiked(text) {
-  busyBtn($('likedAdd'), true, 'Adding'); say('likedNote', 'Saving the songs…');
-  call('/api/liked', { text })
-    .then(s => { $('liked').value = ''; render(s); likedSaid = Date.now(); say('likedNote', `Got ${s.likedPasted} songs. Sorting EDM from the rest now; the next sync starts on them.`); })
-    .catch(e => say('likedNote', e.message, true)).finally(() => busyBtn($('likedAdd'), false, 'Add'));
-}
-$('liked').onpaste = e => { const t = e.clipboardData.getData('text'); if (SONGS.test(t)) { e.preventDefault(); addLiked(t); } };
-$('likedAdd').onclick = () => addLiked($('liked').value);
-$('likedForget').onclick = () => call('/api/liked/forget', {}).then(s => { render(s); likedSaid = Date.now(); say('likedNote', 'Cleared. Songs already on your Mac stay.'); });
-var likedSaid = 0, LIKED_HOW = $('likedNote').textContent;
+var likedSaid = 0;
 // Liked Songs' Options save as soon as one changes; songs already on the Mac stay where they are.
-const likedOpt = body => call('/api/liked/settings', body).then(s => { render(s); likedSaid = Date.now(); say('likedNote', 'Saved. Applies to the next songs.'); }, e => alert(e.message));
+const likedOpt = body => call('/api/liked/settings', body).then(() => { likedSaid = Date.now(); say('likedNote', 'Saved. Applies to the next songs.'); }, e => alert(e.message));
 $('loFolder').onchange = () => likedOpt({ folder: $('loFolder').value });
 $('loOrder').onchange = () => likedOpt({ order: $('loOrder').value });
 $('loFloor').onchange = () => likedOpt({ floorGb: $('loFloor').value });
+function likedChip(l) {  // Liked Songs is one more list here: tap it for its options, × to stop
+  const b = el('button', { textContent: '♥ Liked Songs', title: (l.total || 0).toLocaleString() + ' songs: tap for options' });
+  b.onclick = () => { $('likedOpts').open = !$('likedOpts').open; };
+  const x = el('button', { className: 'x', textContent: '×', title: 'Stop getting Liked Songs' });
+  x.setAttribute('aria-label', 'Remove Liked Songs');
+  x.onclick = () => confirm('Stop getting your Liked Songs? Songs already on your Mac stay.') && call('/api/liked/forget', {})
+    .then(() => say('urlNote', 'Liked Songs removed. Songs already on your Mac stay.')).catch(e => say('urlNote', e.message, true));
+  const c = el('span', { className: 'chip' }); c.append(b, x); return c;
+}
+
+// USB to SoundCloud: the USB's folders (and rekordbox playlists) to tick, its Options, and how far a run is.
+let scpl = null, scplVols = '', scplSaid = 0;
+const scplPicked = new Set();
+async function loadScpl() {
+  try { const r = await fetch('/api/scpl'); if (r.ok) scpl = await r.json(); } catch (e) { return; }
+  paintScpl();
+}
+function paintScpl() {
+  if (!scpl) return;
+  const usbs = Object.keys(scpl.usbs || {}), sel = $('scplUsb'), was = sel.value;
+  sel.replaceChildren(...(usbs.length ? usbs : ['']).map(u => el('option', { value: u, textContent: u || 'No USB with songs plugged in' })));
+  sel.value = usbs.includes(was) ? was : usbs[0] || '';
+  sel.disabled = !usbs.length;
+  const src = (scpl.usbs || {})[sel.value] || [];
+  const all = el('input', { type: 'checkbox', checked: src.length && src.every(([i]) => scplPicked.has(i)),
+    onchange: e => { src.forEach(([i]) => e.target.checked ? scplPicked.add(i) : scplPicked.delete(i)); paintScpl(); } });
+  $('scplPicks').replaceChildren(...(src.length > 1 ? [el('label', {}, all, el('b', { textContent: 'Select all' }))] : []),
+    ...src.map(([i, name, n]) => el('label', {}, el('input', { type: 'checkbox', checked: scplPicked.has(i),
+      onchange: e => { e.target.checked ? scplPicked.add(i) : scplPicked.delete(i); paintScpl(); } }),
+      el('span', { textContent: name }), el('small', { textContent: n.toLocaleString() }))));
+  const st = scpl.settings || {};
+  $('scplMode').value = st.mode || 'each';
+  if (document.activeElement !== $('scplName')) $('scplName').value = st.name || '';
+  $('scplNameRow').hidden = $('scplMode').value !== 'one';
+  $('scplGo').disabled = !src.some(([i]) => scplPicked.has(i));
+  scplLine(last, true);
+}
+function scplLine(s, force) {
+  if (!s) return;
+  // a plugged-in or pulled-out USB: read what it offers again
+  const vols = JSON.stringify(s.volumes || []);
+  if (vols !== scplVols) { const first = !scplVols; scplVols = vols; if (!first) loadScpl(); }
+  if (Date.now() - scplSaid < 8000) return;
+  const r = s.scpl || {}, n = x => (x || 0).toLocaleString(), box = $('scplNote');
+  const key = JSON.stringify([r, scpl && Object.keys(scpl.usbs || {})]);
+  if (box.dataset.k === key && !force) return;
+  box.dataset.k = key; box.className = 'note';
+  if (!r.songs) return box.replaceChildren(scpl && Object.keys(scpl.usbs || {}).length
+    ? 'Tick the folders to make into playlists.' : 'Plug in a USB to make SoundCloud playlists from its folders.');
+  box.replaceChildren(`${n(r.added)} of ${n(r.songs)} added to ${r.lists.length} playlist${r.lists.length === 1 ? '' : 's'}`
+    + (r.unsure ? ` · ${n(r.unsure)} need a look` : '') + (r.none ? ` · ${n(r.none)} not on SoundCloud` : '') + '. ',
+    el('a', { href: '/to-soundcloud', target: '_blank', rel: 'noopener', textContent: 'Open the list ↗' }),
+    ...(r.left ? [' ', el('button', { className: 'ghost', style: 'padding:4px 10px;font-size:13px', textContent: 'Carry on',
+      onclick: () => openHelper('scpl') })] : []));
+}
+$('scplUsb').onchange = paintScpl;
+const scplOpt = body => fetch('/api/scpl/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  .then(async r => { if (!r.ok) throw new Error((await r.json()).error); scplSaid = Date.now(); say('scplNote', 'Saved. Applies to the next playlists you make.'); loadScpl(); })
+  .catch(e => { scplSaid = Date.now(); say('scplNote', e.message, true); });
+$('scplMode').onchange = () => { $('scplNameRow').hidden = $('scplMode').value !== 'one'; scplOpt({ mode: $('scplMode').value }); };
+$('scplName').onchange = () => scplOpt({ name: $('scplName').value });
+$('scplGo').onclick = async () => {
+  const b = $('scplGo'), src = ((scpl || {}).usbs || {})[$('scplUsb').value] || [];
+  busyBtn(b, true, 'Reading songs');
+  try {
+    await call('/api/scpl/start', { usb: $('scplUsb').value, ids: src.map(([i]) => i).filter(i => scplPicked.has(i)) });
+    openHelper('scpl');
+  } catch (e) { scplSaid = Date.now(); say('scplNote', e.message, true); }
+  busyBtn(b, false, 'Make playlists');
+};
+loadScpl();
 function likedLine(l) {
-  if (Date.now() - likedSaid < 12000) return;
-  if (!l) return say('likedNote', LIKED_HOW);
+  $('likedNote').hidden = $('likedOpts').hidden = !l;
+  if (!l || Date.now() - likedSaid < 12000) return;
   const n = x => (x || 0).toLocaleString();
   const parts = [`${n(l.total)} songs`, l.edm != null ? `${n(l.edm)} EDM` : '', l.other ? `${n(l.other)} other` : '', l.have ? `${n(l.have)} on your Mac` : ''].filter(Boolean);
   const next = l.reading ? l.reading
     : l.paused ? `Paused: only ${l.freeGb} GB free on your Mac. Free up space and it carries on.`
     : l.queued ? `${n(l.queued)} being looked for now.` : 'The next sync starts on them.';
-  say('likedNote', parts.join(' · ') + '. ' + next, !!l.paused);
+  say('likedNote', 'Liked Songs: ' + parts.join(' · ') + '. ' + next, !!l.paused);
 }
 let slskEdit = false;
 $('slskChange').onclick = () => { slskEdit = true; tick(); };
