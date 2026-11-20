@@ -181,6 +181,10 @@ def mixes(s):
     return {w for m in MIX.findall(s or "") for w in low(m)} - {"mix", "edit", "version", "the", "a", "and", "x"}
 
 
+KINDS = {"club", "radio", "extended", "original", "dub", "instrumental", "acapella", "vip", "short", "long", "clean",
+         "dirty", "intro", "outro", "festival", "live", "acoustic", "slowed", "sped"}  # which cut, not who made it
+
+
 DASH = re.compile(r"\s[-\u2013\u2014]\s([^-\u2013\u2014()\[\]]*\b(?:mix|edit|version|remix|bootleg|flip|rework|refix|vip"
                   r"|mashup|dub)\b)\s*$", re.I)
 
@@ -228,8 +232,9 @@ def doubt(artist, title, song, rel, cur, peer=""):
     if got and want and not got & want:
         return "it says it's another version: " + " ".join(sorted(got))
     wm, gm = mixes(dashed(title)), mixes(dc) | mixes(ds) | mixes(dp)
-    if wm and gm and not wm & gm:  # ("Club Mix" asked, "Radio Edit" got: words version_words leaves out)
-        return "it says it's another cut: " + " ".join(sorted(gm - wm))
+    wk, gk = wm & KINDS, gm & KINDS  # (the cut's kind on its own: "Alpha Club Mix" and "Alpha Radio Edit" share "alpha")
+    if (wm and gm and not wm & gm) or (wk and gk and not wk & gk):  # ("Club Mix" asked, "Radio Edit" got)
+        return "it says it's another cut: " + " ".join(sorted((gk - wk) or (gm - wm)))
     other = cuts(title, cur[1], stem, peer)
     if other:  # ("Song" asked, "Song (Instrumental)" got: neither check above sees it)
         return "it says it's another recording: " + " ".join(sorted(other))
