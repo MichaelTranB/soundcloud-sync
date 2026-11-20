@@ -73,8 +73,15 @@ def rename(dir, src):
                 print(f'"{f}" couldn\'t be renamed ({e.strerror})', file=sys.stderr)
                 continue
             done.append((os.path.relpath(a, src), os.path.relpath(b, src)))
-    if not done:
-        return done
+    if done:
+        noted(dir, src, done, "a USB can't hold some signs in a name")
+    return done
+
+
+def noted(dir, src, done, why):
+    """These songs were renamed inside the music folder ([(old, new), ...], names inside it): every note about each
+    follows it (dj-moved.tsv, so its copy on the USB and its rows in the decks' libraries follow too; the safety
+    check's pass; Soulseek's, friend's and the decks' notes; a genre picked by hand), and usb.log says why."""
     with open(os.path.join(dir, usb_tidy.MOVES), "a") as fh:
         fh.writelines(f"{a}\t{b}\n" for a, b in done)
     passed(dir, done)
@@ -98,8 +105,7 @@ def rename(dir, src):
         print(f"the genres picked for a renamed song couldn't follow it ({e})", file=sys.stderr)
     stamp = time.strftime("%F %R")
     with open(os.path.join(dir, "usb.log"), "a") as fh:
-        fh.writelines(f'{stamp}  renamed "{a}" to "{b}" (a USB can\'t hold some signs in a name)\n' for a, b in done)
-    return done
+        fh.writelines(f'{stamp}  renamed "{a}" to "{b}" ({why})\n' for a, b in done)
 
 
 def passed(dir, done):
