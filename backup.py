@@ -428,8 +428,10 @@ def restore(dir, usb, src, name, day):
     if fail:  # never a repair over something that isn't kept
         return (f'BACKUP PROBLEM: "{here}" was not repaired: what is on it now could not be backed up first '
                 f"({fail[0]}). Nothing on it was changed.")
-    whole = not (kept or {}).get("skipped")  # (songs only on it were left out of that backup: none is replaced)
-    done = {"lib": 0, "song": 0}
+    # A song on it now is replaced only when that backup holds it as it is: one left out of it ("Back up songs that
+    # are only on the USB" is off, or this Mac was short of room) stays as it is. A song that is gone is put back.
+    now = files_of(dir, here, kept["id"]) if kept and kept.get("id") else {}
+    done = {"lib": 0, "song": 0, "left": 0}
     with open(os.path.join(dir, ".backup.lock"), "w") as lock, open(os.path.join(dir, ".dj.lock"), "w") as deck:
         fcntl.flock(lock, fcntl.LOCK_EX)
         fcntl.flock(deck, fcntl.LOCK_EX)  # no deck library is written under it
@@ -442,8 +444,13 @@ def restore(dir, usb, src, name, day):
                 if not os.path.isfile(a):
                     continue
                 have = usb_tidy.size(b)
-                if (have != row[0] and (have < 0 or whole)) if row[2] == "song" else not same(a, b):
+                if row[2] != "song":
+                    if not same(a, b):
+                        todo.append((rel, row, a, b))
+                elif have < 0 or (have != row[0] and now.get(rel, [-1])[0] == have):
                     todo.append((rel, row, a, b))
+                elif have != row[0]:
+                    done["left"] += 1
             need = sum(row[0] - max(usb_tidy.size(b), 0) for _, row, _, b in todo)
             if need > shutil.disk_usage(usb).free:
                 return f'BACKUP PROBLEM: "{here}" has no room for its backup ({need // 1024 ** 2} MB more is needed).'
@@ -477,7 +484,11 @@ def restore(dir, usb, src, name, day):
     return (f'backup: "{here}" put back from the backup of {stamp}'
             + (f' of "{name}"' if name != here else "")
             + f" ({done['lib']} library {'file' if done['lib'] == 1 else 'files'}, {done['song']} "
-            f"{'song' if done['song'] == 1 else 'songs'}). Your library's songs and playlists follow now.")
+            f"{'song' if done['song'] == 1 else 'songs'})."
+            + (f" {done['left']} {'song' if done['left'] == 1 else 'songs'} on it that this Mac has no backup of "
+               f"{'was' if done['left'] == 1 else 'were'} left as {'it is' if done['left'] == 1 else 'they are'}."
+               if done["left"] else "")
+            + " Your library's songs and playlists follow now.")
 
 
 def status(dir):
