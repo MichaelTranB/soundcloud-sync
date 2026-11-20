@@ -164,6 +164,22 @@ def old(by, s, now, there):
     return ""
 
 
+def same(by, have, songs, spell, there):
+    """The Crate's folder itself moved on the USB (place.py): each song's row at the same place under a root the
+    folder had before, {rel: row}. Those rows leave by, so old() never hands one to another song that only shares
+    its file name. spell(song): the paths that row could have."""
+    out = {}
+    for s in songs:
+        for p in spell(s):
+            if p in have and not there(p):
+                out[s["rel"]] = p
+                names = by.get(cf(p.rsplit("/", 1)[-1]), [])
+                if p in names:
+                    names.remove(p)
+                break
+    return out
+
+
 def empty(path):
     try:
         return all(f in LEFT for f in os.listdir(path))

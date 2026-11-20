@@ -117,7 +117,9 @@ straight into your decks' libraries, with no dragging and no clicks:
   write: before a gig on those, export once from rekordbox (drag your playlists onto the USB under *Devices*).
 - **Serato:** the USB also gets Serato crates (*The Crate*, with a crate per playlist inside it), which Serato
   shows when the USB is plugged in. They point at the same files; nothing is copied.
-- **One folder, each song once:** all of The Crate's music sits in The Crate's own folder on the USB (*SoundCloud Sync*), and
+- **One folder, each song once:** all of The Crate's music sits in The Crate's own folder on the USB (*SoundCloud Sync* at its top,
+  or inside a folder you already keep music in: Library Manager > USB folders > Change; only that one folder moves, and
+  the decks' lists follow with their cues), and
   every library above points at those same files. A USB that already had some of the songs (a friend's, or one
   filled by hand) gets no doubles: a file that is another download of a song is swapped for your library's, the
   same song as another kind of file is taken off, and the songs you threw back leave it too. Those go to the
