@@ -362,8 +362,11 @@ def _run(dir, usb, src, name, keep, fail):
         return last
     low = {r.lower() for r in files}
     why = sorted(set(bad.values()))
-    why += [f"its {lib} library is gone" for lib in dict.fromkeys(lib for lib, p in MAIN
-            if p in {r.lower() for r in before} and p not in low) if f"its {lib} library is damaged" not in why]
+    # gone: a library's main file was there and isn't, or (Serato has no one main file) every file of it is gone
+    gone = [lib for lib, p in MAIN if p in {r.lower() for r in before} and p not in low]
+    gone += [lib for lib, _ in LIBS if any(v[2] == lib for v in before.values())
+             and not any(v[2] == lib for v in files.values())]
+    why += [f"its {lib} library is gone" for lib in dict.fromkeys(gone) if f"its {lib} library is damaged" not in why]
     if unread:
         why.append(f"{len(unread)} {'file' if len(unread) == 1 else 'files'} on it could not be read")
     libs = [n for n, _ in LIBS if any(v[2] == n for v in files.values())]
@@ -478,11 +481,18 @@ def restore(dir, usb, src, name, day):
                     todo.append((rel, row, a, b))
                 elif have != row[0]:
                     done["left"] += 1
-            # (a file that is set aside first stays on the USB, in its Trash: it frees no room)
-            need = sum(row[0] - (max(usb_tidy.size(b), 0) if row[2] == "song" or held(rel, b) else 0)
-                       for rel, row, _, b in todo)
-            if need > shutil.disk_usage(usb).free:
-                return f'BACKUP PROBLEM: "{here}" has no room for its backup ({need // 1024 ** 2} MB more is needed).'
+            # Room is checked before anything on it is changed, file by file in the order they go back: each one is
+            # written whole beside the one it replaces first, and a file that is set aside stays on the USB, in its
+            # Trash. So a repair never stops half way for want of room, with libraries from two different days.
+            room = short = shutil.disk_usage(usb).free
+            for rel, row, _, b in todo:
+                room -= row[0]
+                short = min(short, room)
+                if row[2] == "song" or held(rel, b):
+                    room += max(usb_tidy.size(b), 0)
+            if short < 0:
+                return (f'BACKUP PROBLEM: "{here}" has no room for its backup ({-short // 1024 ** 2 + 1} MB more is '
+                        "needed). Nothing on it was changed.")
             for i, (rel, row, a, b) in enumerate(todo):
                 progress(dir, len(todo) + i, len(todo) * 2, "restore")
                 try:
