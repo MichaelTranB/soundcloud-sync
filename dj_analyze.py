@@ -174,7 +174,9 @@ def third(path):
     d = d[(d > 0.2) & (d < 1.5)]
     if len(d) < 8:
         return 0
-    bpm = 60 / float(np.median(d))
+    m = float(np.median(d))
+    d = d[np.abs(d - m) < 0.1 * m]  # its beats sit on a 20 ms grid: the mean of the steady gaps, not the median
+    bpm = 60 / float(d.mean())
     while bpm < 90:
         bpm *= 2
     while bpm >= 180:
