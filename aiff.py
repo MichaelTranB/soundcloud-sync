@@ -3,7 +3,8 @@
 FLAC). Unlike WAV, an AIFF keeps the song's details and cover.
 
   how      macOS's own converter (afconvert) writes the AIFF, the details and cover are copied across, and the sound
-           in the new file is then compared with the old one, sample for sample (the FLAC's own checksum);
+           in the new file is then compared with the old one, sample for sample (the FLAC's own checksum). A FLAC
+           afconvert can't read exactly is written again by ffmpeg, when the Mac has it, and held to the same check;
   clean    the AIFF passes the safety check like any new file, and only then does the original go to the Trash
            (never deleted). No song is ever there twice;
   follows  every note kept per file goes along (where it came from, tempo and key, playlists copied from another
@@ -327,6 +328,24 @@ def narrow(path, info, out=None):
     return n // info["channels"], cut.hexdigest(), full.hexdigest()
 
 
+def again_with_ffmpeg(path, out, info):
+    """The AIFF written once more by ffmpeg, for a FLAC macOS's own converter can't read exactly (some encoders write
+    frames it trips on). Only a FLAC carrying its own checksum: that checksum is what the new file is held to, so a
+    damaged FLAC never passes. True when ffmpeg wrote one (it's still checked by the caller)."""
+    if not path.lower().endswith(".flac") or not info.get("md5", "").strip("0") or not ffmpeg():
+        return False
+    if os.path.exists(out):
+        os.remove(out)
+    r = subprocess.run([ffmpeg(), "-v", "error", "-nostdin", "-y", "-i", path, "-map", "0:a:0", "-map_metadata", "-1",
+                        "-c:a", f"pcm_s{info['bits']}be", "-f", "aiff", out], capture_output=True, stdin=subprocess.DEVNULL)
+    if r.returncode or not os.path.isfile(out):
+        if os.path.exists(out):
+            os.remove(out)
+        return False
+    details(path, out, info)
+    return True
+
+
 def convert(path, out, tmp, cut=False):
     """Writes path's AIFF at out. Raises Problem, leaving nothing behind, unless the sound in it is the very same
     (cut: a 32-bit song's is its top 24 bits, checked as closely). True when it was cut to 24-bit."""
@@ -360,9 +379,13 @@ def convert(path, out, tmp, cut=False):
         r = subprocess.run(["/usr/bin/afconvert", "-f", "AIFF", "-d", f"BEI{info['bits']}", path, out],
                            capture_output=True, text=True)
         if r.returncode or not os.path.isfile(out):
-            raise Problem("the converter couldn't read it" + (": " + r.stderr.strip().splitlines()[-1][:120] if r.stderr.strip() else ""), True)
-        details(path, out, info)
+            if not again_with_ffmpeg(path, out, info):
+                raise Problem("the converter couldn't read it" + (": " + r.stderr.strip().splitlines()[-1][:120] if r.stderr.strip() else ""), True)
+        else:
+            details(path, out, info)
         was, now = sound(path), sound(out)
+        if (was != now or not now[4]) and again_with_ffmpeg(path, out, info):
+            now = sound(out)  # macOS's converter didn't read it exactly; ffmpeg did (checked the same way, below)
         if not was[4]:  # a FLAC without its checksum: read once more, another way, and compare that
             again = os.path.join(tmp, f"{os.getpid()}-again.wav")
             try:

@@ -35,7 +35,9 @@ OLD = "From Soulseek"  # the folder inside the music folder that Soulseek files 
 MOVED = "soulseek-moved.tsv"  # each file flatten() moved: where it was, where it is now
 BETTER = "better.tsv"  # songs you asked a better copy of (friend.py): looked for like the to-get list
 USB_THROWN = "usb-thrown.tsv"  # each file you threw back on the page: where it was, its bytes (usb_tidy.py)
-CHECKED = "soulseek-checked.json"  # each kept file, looked at once: file -> [bytes, time, why it looks wrong or ""]
+CHECKED = "soulseek-checked.json"  # each kept file, looked at once: file -> [bytes, time, why it looks wrong or "",
+#   1 once a FLAC was also played through to its end (damaged)]
+DAMAGED = "the file is damaged: parts of it don't play"  # thrown back by itself, never only marked
 STRIKES, STRIKE_DAYS = 3, 30  # 3 wrong files in a row for one track: Soulseek has only other songs by that name
 # Words that don't say which song it is.
 FILLER = set("the and with feat featuring free download remix flip edit bootleg vip rework mashup refix original mix "
@@ -395,19 +397,59 @@ def mmss(secs):
     return f"{int(secs) // 60}:{int(secs) % 60:02d}"
 
 
-def judge(path, name, secs, remote="", thrown=()):
+def damaged(path):
+    """A FLAC whose sound doesn't match its own checksum: a frame in it is broken (a transfer that went wrong, or the
+    sharer's copy was), so a deck stutters or stops there and no converter can make an AIFF of it. Played through
+    with ffmpeg. False: it plays through as it should, or there's no saying for good (another kind of file, a FLAC
+    with no checksum). None: no saying this time (no ffmpeg, or it failed): looked at again on a later run."""
+    if not path.lower().endswith(".flac"):
+        return False
+    import hashlib
+    import aiff  # (here, not at the top: aiff reads this file)
+    try:
+        info, ff = aiff.flac_info(path), aiff.ffmpeg()
+    except Exception:
+        return False
+    if info["bits"] not in (16, 24, 32) or not info["md5"].strip("0"):
+        return False
+    if not ff:
+        return None
+    import tempfile
+    m = hashlib.md5()
+    with tempfile.TemporaryFile() as said:
+        try:
+            p = subprocess.Popen([ff, "-v", "error", "-nostdin", "-i", path, "-map", "0:a:0", "-f", f"s{info['bits']}le", "-"],
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=said)
+        except OSError:
+            return None
+        with p.stdout:
+            for chunk in iter(lambda: p.stdout.read(1 << 20), b""):
+                m.update(chunk)
+        if p.wait():  # ffmpeg itself failed (can't read FLAC, was stopped): no saying yet, the file stays
+            return None
+        said.seek(0)
+        broken = b"decod" in said.read(1 << 16).lower()  # what ffmpeg says about a broken frame ("decode_frame() failed")
+    # damaged only when both say so: ffmpeg met a frame it couldn't decode, and the sound isn't what the file's own
+    # checksum says
+    return broken and m.hexdigest() != info["md5"]
+
+
+def judge(path, name, secs, remote="", thrown=(), damage=None):
     """Is this file the playlist's song? "" when it is, else why not, in plain words. name: "Uploader - Title" as on
     the playlist; secs: the playlist song's length (0 = unknown, or the upload is only a clip); remote: the file's
     name on the peer's computer; thrown: the sizes of files already thrown back for this track.
       - more than 15 s longer or shorter: another song or version, or a download that stopped halfway;
       - 5 to 15 s off: only kept when the song named inside the file is this one;
       - a different song named inside: wrong, whatever the length;
-      - "(A Remix)" asked for, "(B Remix)" in the file's name: another version."""
+      - "(A Remix)" asked for, "(B Remix)" in the file's name: another version;
+      - a FLAC that doesn't play through as its own checksum says: damaged (DAMAGED)."""
     try:
         if os.path.getsize(path) in thrown:
             return "the same file that was thrown back before"
     except OSError:
         return ""
+    if damage if damage is not None else damaged(path):  # (damage: already looked at by the caller)
+        return DAMAGED
     real, artist, title = inside(path)
     asked = name.partition(" - ")[2] or name
     # edit words ("Slowed + Reverb", "Nightcore") never count: another song in the same edit shares them. Half the
@@ -585,17 +627,24 @@ def check_all(d, slsk):
     """Looks once at every Soulseek file already kept (the ones from before this check, and any that changed). A file
     that doesn't look like its playlist song is only marked: the page shows it and asks before it's thrown back."""
     seen, secs, came, out = load_checked(d), lengths(d), load_from(d), {}
+    import aiff
+    ff = aiff.ffmpeg()
     for link, name, path in load_got(d):
         try:
             st = os.stat(path)
         except OSError:
             continue
+        flac = path.lower().endswith(".flac")
         old = seen.get(path)
-        if isinstance(old, list) and old[:2] == [st.st_size, int(st.st_mtime)]:
+        if isinstance(old, list) and old[:2] == [st.st_size, int(st.st_mtime)] and \
+                (len(old) > 3 or not flac or not ff):  # (a FLAC looked at before damage was: looked at once more)
             out[path] = old
         else:
+            hurt = damaged(path) if flac and ff else None
             out[path] = [st.st_size, int(st.st_mtime),
-                         judge(path, name, length_of(secs, link, name), came.get(path, ("", ""))[1])]
+                         judge(path, name, length_of(secs, link, name), came.get(path, ("", ""))[1], damage=bool(hurt))]
+            if hurt is not None:  # (looked at to its end: not again while the file stays the same)
+                out[path].append(1)
     if out != seen:
         dump(d, CHECKED, out)
     return out
@@ -624,7 +673,7 @@ def sounds_wrong(d):
 def suspects(d):
     """file -> why, for the kept files that don't look like, or don't sound like, their playlist song."""
     out = sounds_wrong(d)
-    out.update({p: v[2] for p, v in load_checked(d).items() if isinstance(v, list) and len(v) == 3 and v[2]})
+    out.update({p: v[2] for p, v in load_checked(d).items() if isinstance(v, list) and len(v) >= 3 and v[2]})
     return {p: why for p, why in out.items() if os.path.exists(p)}
 
 
@@ -748,12 +797,14 @@ def bad_other(d, path, ytdlp):
     return 1, ([(link, name, secs)] if link else [])
 
 
-def bad(d, slsk, file="", ytdlp="yt-dlp"):
+def bad(d, slsk, file="", ytdlp="yt-dlp", damaged_only=False):
     """From the page: one song on the Mac is the wrong song or a bad file (file: where it is inside the music
     folder), or, with no file, every Soulseek file the check marked. Each goes to the Trash, is never taken again,
     its track is back on the to-get list, and its copy on the USB goes too (USB_THROWN; usb_tidy.py).
     Returns how many went (or a sentence saying why one must stay)."""
     marked, secs, kept, back = suspects(d), lengths(d), [], []
+    if damaged_only:  # (by itself, after a sync: only the damaged ones; the others wait for you on the page)
+        marked = {p: why for p, why in marked.items() if why == DAMAGED}
     root = os.path.normpath(slsk)
     want = os.path.normpath(os.path.join(root, file)) if file else ""
     if file and (not want.startswith(root + os.sep) or not want.lower().endswith(AUDIO) or not os.path.isfile(want)):
@@ -828,6 +879,8 @@ def record(d, slsk):
         except OSError:
             pass
     check_all(d, slsk)
+    if any(why == DAMAGED for why in suspects(d).values()):  # a damaged file already kept: thrown back by itself and
+        print(f"thrown back, damaged: {bad(d, slsk, damaged_only=True)} file(s), looked for again")  # looked for anew
 
 
 # sockseek's per-track log lines ("[004] SongJob: failed [No search results]: Artist - Title"), in plain words.
