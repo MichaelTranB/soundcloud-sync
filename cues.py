@@ -13,7 +13,7 @@ MP3 and M4A cues are kept between rekordbox and the USB only, never sent to or f
 rekordbox start MP3/AAC time at different points (an offset of 0-52 ms that depends on the file's encoder, with no
 published rule); beat grids are not carried (each app keeps its own).
 
-Only Crate songs (in the USB's "SoundCloud Sync" folder, matched by their place inside it) are read or touched;
+Only Crate songs (in The Crate's own folder on the USB, place.py, matched by their place inside it) are read or touched;
 every other row and file stays exactly as it is. A place that isn't there (no USB, no Engine library, no rekordbox)
 is skipped and catches up next run. rekordbox's files (the Mac's library and the USB's) are written only while
 rekordbox is closed; while it is open they are read, and written next run. Before each write the file is copied to
@@ -24,9 +24,8 @@ Runs on the private Python (pyrekordbox, for rekordbox's locked libraries). From
 ({"dir", "src", "usb", "rels"?, "undo"?}), one line out."""
 import calendar, json, os, shutil, sqlite3, struct, sys, time, unicodedata, uuid, zlib
 
-import layout
+import layout, place
 
-MUSIC = "SoundCloud Sync"
 LETTERS = "ABCDEFGH"
 NOT_ENGINE = (".mp3", ".m4a", ".mp4", ".aac")  # their time starts differently in Engine and rekordbox
 KIND = {0: 1, 1: 2, 2: 3, 3: 5, 4: 6, 5: 7, 6: 8, 7: 9}  # rekordbox's Kind for hot cue A..H (4 is an active loop)
@@ -240,12 +239,13 @@ def engine_read(usb, rels):
         info = con.execute("SELECT schemaVersionMajor FROM Information").fetchone()
         if not info or info[0] != 3:
             raise RuntimeError(f"Engine library version {info[0] if info else '?'}; this knows version 3")
-        at = layout.places(os.path.join(usb, MUSIC), rels)  # the folder each song sits in on this USB
-        want = {nfc(f"../{MUSIC}/{at[r]}"): r for r in rels}
+        music = place.web(usb)
+        at = layout.places(place.folder(usb), rels)  # the folder each song sits in on this USB
+        want = {nfc(f"../{music}/{at[r]}"): r for r in rels}
         out, waiting = {}, []
         for tid, path, done, edited, td, qc, lp in con.execute(
                 "SELECT t.id, t.path, t.isAnalyzed, t.lastEditTime, p.trackData, p.quickCues, p.loops FROM Track t "
-                "LEFT JOIN PerformanceData p ON p.trackId = t.id WHERE t.path LIKE ?", (f"../{MUSIC}/%",)):
+                "LEFT JOIN PerformanceData p ON p.trackId = t.id WHERE substr(t.path, 1, ?) = ?", (len(music) + 4, f"../{music}/")):
             rel = want.get(nfc(path))
             if rel is None or os.path.splitext(rel)[1].lower() in NOT_ENGINE:
                 continue
@@ -436,14 +436,14 @@ def usb_db(usb):
     return os.path.join(usb, "PIONEER", "rekordbox", "exportLibrary.db")
 
 
-def usbdb_read(lib, rels, at=None):
+def usbdb_read(lib, rels, at=None, music=place.NAME):
     """{rel: {"id", "anlz", "cues", "rows"}} for the Crate songs in the USB's library."""
     from sqlalchemy import text
     q = lambda sql, **p: lib.session.execute(text(sql), p).fetchall()
-    want = {"/" + MUSIC + "/" + nfc((at or {}).get(r) or r).replace(os.sep, "/"): r for r in rels}
+    want = {"/" + music + "/" + nfc((at or {}).get(r) or r).replace(os.sep, "/"): r for r in rels}
     out = {}
-    for cid, path, anlz in q("SELECT content_id, path, analysisDataFilePath FROM content WHERE path LIKE :p",
-                             p="/" + MUSIC + "/%"):
+    for cid, path, anlz in q("SELECT content_id, path, analysisDataFilePath FROM content WHERE substr(path, 1, :n) = :p",
+                             n=len(music) + 2, p="/" + music + "/"):
         rel = want.get(nfc(path))
         if rel is not None:
             out[rel] = {"id": cid, "anlz": anlz or "", "cues": {}, "rows": {}, "times": {}}
@@ -705,7 +705,7 @@ def gather(src, usb, rels, mac_db, is_open, problems):
                 import rekordbox_usb
                 lib = rekordbox_usb.opened(usb_db(usb))
                 closers.append(lib.close)
-                have = usbdb_read(lib, rels, layout.places(os.path.join(usb, MUSIC), rels))
+                have = usbdb_read(lib, rels, layout.places(place.folder(usb), rels), place.web(usb))
                 places.append(Place("usbdb@" + label, "usbdb", have, shut))
                 places[-1].lib = lib
                 places.append(Place("usbanlz@" + label, "usbanlz", anlz_read(usb, have), shut))

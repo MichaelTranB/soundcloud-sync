@@ -73,6 +73,11 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   (`layout.arrange`, only on a stick past the ask-first gate); every deck library keeps the song's row and is
   re-pointed, so cues and analysis stay. The page previews (`GET /api/dj/layout?mode=`, nothing touched) and
   switches only on "Use this" (`POST /api/dj/layout`). Not yet tried on a real stick or deck.
+- **Where The Crate's folder sits on a USB (`place.py`, `usb-place.json`, "Change" on the USB folders card):**
+  `SoundCloud Sync` at the top unless he picks a parent folder and a name. Every module asks `place.folder(usb)` /
+  `place.web(usb)`, never a fixed name. A new pick renames only that one folder (`usb.sh`, `dj.once()`, both after
+  the `usb_ask` gate); deck rows at a former place (`place.others`) follow with the same ids. A folder counts as
+  The Crate's only if it is the default one or carries the `.thecrate` mark: a user's folder is never taken.
 - **Waveform and Open in rekordbox (`waveform.py`, the player on `/dj`):** `afconvert` reads the file at 8 kHz
   mono into 600 slices (loudest point and average), kept in `.waves/`; `/wave?f=` serves it, music folder only.
   `POST /api/dj/rekordbox` runs `open -a <rekordbox.app> <file>` (not while the libraries are being written);

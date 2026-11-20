@@ -12,12 +12,14 @@ which Serato reads through its Files panel.)
 Only The Crate's own crates are written ("The Crate" and the ones inside it); every other crate, and Serato's own
 database on the drive, is left alone. A crate that already lists the same songs in the same order is left as it
 is, so the columns and the sorting you set in Serato stay. The songs stay in their one folder on the USB
-("SoundCloud Sync"); nothing is copied or moved. Standard library only.
+("SoundCloud Sync", or where place.py says); nothing is copied or moved. Standard library only.
 
   write(usb, songs, lists)    usb: where the USB is mounted; songs and lists as dj.py makes them"""
 import os, struct, unicodedata
 
-MUSIC, FOLDER = "SoundCloud Sync", "The Crate"
+import place
+
+FOLDER = "The Crate"
 HEAD = "1.0/Serato ScratchLive Crate"
 COLUMNS = ("song", "artist", "bpm", "key", "album", "length", "comment")
 KINDS = (".mp3", ".m4a", ".mp4", ".flac", ".wav", ".aif", ".aiff", ".ogg", ".alac")  # what Serato plays
@@ -56,10 +58,11 @@ def safe(name):
 
 def write(usb, songs, lists):
     """Returns what it did, or "" when the crates were already in step."""
-    path = lambda rel: MUSIC + "/" + unicodedata.normalize("NFC", rel).replace(os.sep, "/")
+    music = place.web(usb)  # The Crate's folder on this USB (place.py)
+    path = lambda rel: music + "/" + unicodedata.normalize("NFC", rel).replace(os.sep, "/")
     at = {s["rel"]: s.get("at") or s["rel"] for s in songs}  # the folder each sits in on this USB (layout.py)
     there = {s["rel"] for s in songs if s["rel"].lower().endswith(KINDS)
-             and os.path.isfile(os.path.join(usb, MUSIC, at[s["rel"]]))}
+             and os.path.isfile(os.path.join(place.folder(usb), at[s["rel"]]))}
     folder = os.path.join(usb, "_Serato_", "Subcrates")
     want = {FOLDER + ".crate": [path(at[s["rel"]]) for s in songs if s["rel"] in there]} if there else {}
     for name, items in lists if there else []:
