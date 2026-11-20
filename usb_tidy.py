@@ -53,16 +53,21 @@ def shadow(p):
     return os.path.join(os.path.dirname(p), "._" + os.path.basename(p))
 
 
-def trash(dest, p):
-    """Into the USB's own Trash (what Finder shows as the Trash while the USB is in), or a folder of its own on the
-    USB when that can't be made. Returns where it went, or "" when it couldn't be moved."""
+def bins(dest):
+    """The two places trash() puts things: the USB's own Trash, and a folder of its own on the USB."""
     root = os.path.abspath(dest)
     while not os.path.ismount(root) and os.path.dirname(root) != root:
         root = os.path.dirname(root)
     if root == os.path.dirname(root):  # (not on a drive of its own: a test, or a folder picked by hand)
         root = os.path.dirname(os.path.abspath(dest))
+    return os.path.join(root, ".Trashes", str(os.getuid())), os.path.join(root, "Thrown back by The Crate")
+
+
+def trash(dest, p):
+    """Into the USB's own Trash (what Finder shows as the Trash while the USB is in), or a folder of its own on the
+    USB when that can't be made. Returns where it went, or "" when it couldn't be moved."""
     name, ext = os.path.splitext(os.path.basename(p))
-    for folder in (os.path.join(root, ".Trashes", str(os.getuid())), os.path.join(root, "Thrown back by The Crate")):
+    for folder in bins(dest):
         try:
             os.makedirs(folder, exist_ok=True)
             to = os.path.join(folder, os.path.basename(p))

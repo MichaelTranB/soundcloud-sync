@@ -606,8 +606,11 @@ def _run(dir, usb, src, name, keep, fail):
     os.rename(part, os.path.join(at, day))
     twin(dir, name, day, up)
     prune(dir, name, keep)
+    # (songs that went up before and haven't left this Mac yet still count: after() sends them off, with or without
+    # new songs to go up)
+    here = (note(dir, name).get("up") or {}).get("here") or 0
     note(dir, name, checked=int(time.time()), size=weigh(at), cloud=lifted(dir, name),
-         up={"left": len(waiting), "here": 0, "why": "", "at": int(time.time())} if up else None)
+         up={"left": len(waiting), "here": here, "why": "", "at": int(time.time())} if up else None)
     good = next((s for s in snaps(dir, name) if s.get("ok")), None)
     if why and good and not note(dir, name).get("repair"):
         # it stays "to repair" until a backup is put back or you say it's fine: a USB you erased gets new, empty
@@ -722,21 +725,25 @@ def _songs(dir, usb, name, skip, turn=20):
         a = os.path.join(usb, *rel.split("/"))
         try:
             st = os.stat(a)
+            moved = [st.st_size, st.st_mtime_ns] != row[:2]
         except (FileNotFoundError, NotADirectoryError):
-            if not os.path.isdir(usb):
-                why = "unplugged"
-                break
-            got[rel] = None  # gone from the USB since: nothing to keep
-            continue
+            moved = True
         except OSError:
             if not os.path.isdir(usb):
                 why = "unplugged"
                 break
             skip.add(rel)  # it is there but can't be read now: it stays on the list, tried again at the next plug-in
             continue
-        if [st.st_size, st.st_mtime_ns] != row[:2]:
-            got[rel] = None  # changed since: the next backup lists it anew
-            continue
+        if moved:
+            if not os.path.isdir(usb):
+                why = "unplugged"
+                break
+            # Gone or changed since the backup listed it. The copy to the USB does that (the library's own file in
+            # its place, a double taken off): what was there is in the USB's Trash then, and is kept from there.
+            a = binned(usb, rel, row)
+            if not a:
+                got[rel] = None  # nothing of it left to keep: the next backup lists what is there now
+                continue
         if left is not None and left - row[0] < 1024 ** 3:
             why = "full"
             break
@@ -779,6 +786,26 @@ def _songs(dir, usb, name, skip, turn=20):
          **({"cloud": lifted(dir, name)} if got else {}))
     can = 0 if why in ("unplugged", "full") else sum(1 for r in waiting if r not in skip)
     return bool(got or freed), can + (here if freed is not None else 0)
+
+
+def binned(usb, rel, row):
+    """A song that waited to go up, and that the copy to the USB has put in the USB's Trash since (the library's own
+    file took its place, or it was a double): where it is in there now, told by its name, size and time. "" if not."""
+    stem, ext = os.path.splitext(os.path.basename(rel))
+    for folder in usb_tidy.bins(usb):
+        try:
+            found = sorted(os.listdir(folder))
+        except OSError:
+            continue
+        for f in found:
+            if f == stem + ext or (f.startswith(stem + " ") and f.endswith(ext)):
+                try:
+                    st = os.stat(os.path.join(folder, f))
+                except OSError:
+                    continue
+                if [st.st_size, st.st_mtime_ns] == row[:2]:
+                    return os.path.join(folder, f)
+    return ""
 
 
 def after(dir, usb, src):
