@@ -207,6 +207,9 @@ def tidy(d, src, dest):
             if not b:
                 continue
         pa = os.path.join(dest, layout.spot(spots, a))
+        if size(pa) < 0:  # converted before it moved (the USB still has its FLAC): the move takes that one
+            stem = os.path.splitext(a)[0]
+            pa = next((p for p in (os.path.join(dest, layout.spot(spots, stem + e)) for e in AUDIO) if size(p) >= 0), pa)
         pb = os.path.join(dest, os.path.splitext(b)[0] + os.path.splitext(pa)[1])  # (the USB's file keeps its own kind)
         if size(pa) < 0 or os.path.lexists(pb):
             continue
