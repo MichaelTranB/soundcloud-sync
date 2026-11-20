@@ -13,12 +13,13 @@ FLAC). Unlike WAV, an AIFF keeps the song's details and cover.
   when     FLACs that arrive from now on are converted by themselves at each deck update (dj.py). The ones already
            there the first time wait for your pick on the page, and so do WAVs (they play everywhere; an AIFF only
            adds details and cover);
-  32-bit   no club deck plays a 32-bit file (24-bit is the most), so one is never converted by itself: "Make a
-           24-bit copy" on its row writes a 24-bit AIFF (each sample's lowest 8 bits are dropped: far below
-           anything you can hear), checked against the original, which goes to the Trash like any other. A 32-bit
-           FLAC is beyond macOS's own reader: that one needs ffmpeg on the Mac.
+  32-bit   no club deck plays a 32-bit file (24-bit is the most), so one that arrives becomes a 24-bit AIFF by
+           itself, FLAC or WAV (each sample's lowest 8 bits are dropped: far below anything you can hear), checked
+           against the original, which goes to the Trash like any other. One already there the first time has
+           "Make a 24-bit copy" on its row. A 32-bit FLAC is beyond macOS's own reader: that one needs ffmpeg on
+           the Mac.
 
-  aiff.py auto DIR SRC     the new FLACs (dj.py runs this)
+  aiff.py auto DIR SRC     the new FLACs, and any 32-bit song that isn't one you brought back (dj.py runs this)
   aiff.py pick DIR SRC     the songs named on stdin (a JSON list of names inside the music folder), then the decks
   aiff.py deep DIR SRC     the same, and a 32-bit song among them gets its 24-bit copy
   aiff.py undo DIR SRC     the same, back: the original returns from the Trash and the AIFF goes there
@@ -53,7 +54,8 @@ def load(dir):
     except (OSError, ValueError):
         rec = {}
     rec = rec if isinstance(rec, dict) else {}
-    return {"auto": rec.get("auto", True) is not False, "before": rec.get("before"), "skip": rec.get("skip") or {}}
+    return {"auto": rec.get("auto", True) is not False, "before": rec.get("before"), "skip": rec.get("skip") or {},
+            "wavs": rec.get("wavs") is True}
 
 
 def save(dir, rec):
@@ -459,7 +461,8 @@ def follow(dir, src, old, new):
             os.replace(os.path.join(dir, "dj-analysis.json.tmp"), os.path.join(dir, "dj-analysis.json"))
     except (OSError, ValueError, Problem):
         pass
-    import details, naming
+    import details, naming, tempo
+    tempo.moved(dir, old, new, st.st_size, int(st.st_mtime))  # the tempo it goes by: the sound is the same
     details.moved(dir, old, new)  # a cover or details filled in before stay undoable
     naming.moved(dir, old, new)  # and so does a name that was fixed
 
@@ -577,18 +580,37 @@ def run(dir, src, rels, back=False, show=False, cut=None):
     return done, why
 
 
+def deep_wavs(src, rels):
+    """The WAVs among rels no club deck plays as they are (32-bit or floating-point, up to 96 kHz)."""
+    out = []
+    for r in rels:
+        if r.lower().endswith(".wav"):
+            try:
+                info = wav_info(os.path.join(src, r), True)
+            except (Problem, OSError, ValueError, struct.error):
+                continue
+            if deep(info) and info["rate"] <= 96000:
+                out.append(r)
+    return out
+
+
 def waiting(dir, src):
-    """The FLACs to convert by themselves now: the ones that arrived after the first look."""
+    """The songs to convert by themselves now: the FLACs that arrived after the first look, and the 32-bit WAVs
+    (no club deck plays one) that aren't ones you brought back."""
     rec = load(dir)
-    flacs = [r for r in usb_tidy.checked(dir, src) if r.lower().endswith(".flac")]
+    checked = usb_tidy.checked(dir, src)
+    flacs = [r for r in checked if r.lower().endswith(".flac")]
     if rec["before"] is None:  # the first look: what is already here is yours to pick on the page
-        rec["before"] = flacs
+        rec["before"], rec["wavs"] = flacs + deep_wavs(src, checked), True
         save(dir, rec)
         return []
+    if not rec["wavs"]:  # (a list from before 32-bit WAVs were looked at: the ones already here stay yours to pick)
+        rec["before"], rec["wavs"] = rec["before"] + [r for r in deep_wavs(src, checked) if r not in rec["before"]], True
+        save(dir, rec)
     if not rec["auto"]:
         return []
     kept = set(rec["before"]) | set(rec["skip"])
-    return [r for r in flacs if r not in kept]
+    return [r for r in flacs + deep_wavs(src, checked) if r not in kept]
 
 
 def say(done, why, back=False, cut=()):
@@ -635,9 +657,10 @@ if __name__ == "__main__":
     how, dir, src = sys.argv[1:]
     if how == "auto":
         safe(dir, src)  # a song that just arrived is checked first, so it is converted before it reaches the USB
-        got = run(dir, src, waiting(dir, src))
+        cut = []  # (a 32-bit one among them gets its 24-bit copy: nothing else of it plays on a club deck)
+        got = run(dir, src, waiting(dir, src), cut=cut)
         if got:
-            log(dir, say(*got))
+            log(dir, say(*got, cut=cut))
     else:
         names = [r for r in json.load(sys.stdin) if isinstance(r, str) and not os.path.isabs(r) and ".." not in r.split(os.sep)]
         cut = [] if how == "deep" else None

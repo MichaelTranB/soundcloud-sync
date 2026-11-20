@@ -8,7 +8,7 @@ import glob, json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, 
 import audio, freedl, links, playlists, safety, soulseek, tour
 import aiff, club, details, dj, friend, genres, layout, liked, recognise, scplaylists, usb_ask, waveform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import backup, naming, place
+import backup, naming, place, tempo
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.expanduser("~/Music/SoundCloud Sync")
@@ -1126,6 +1126,7 @@ def dj_state():
     lib = dj.library(DIR, OUT)
     looked = {r[6] for r in friend.wanted(DIR)}  # songs a better copy is being looked for
     songs = [{"key": s["key"], "title": s["title"], "artist": s["artist"], "bpm": s["bpm"], "tone": s["musical_key"],
+              "bpmFrom": tempo.SOURCES.get(s["bpm_from"], ""),
               "genres": s["genres"], "from": s["from"], "heard": s["heard"], "playlist": s["playlist"],
               "sounds": s["sounds_like"], "file": s["rel"], "kbps": kbps_of(s), "low": low_song(s),
               "lists": s["lists"], "friend": s["friend"], "better": s["rel"] in looked,
@@ -1963,6 +1964,8 @@ if __name__ == "__main__":
     threading.Thread(target=rekordbox_closes, daemon=True).start()
     # Soulseek files kept before the right-song check existed are looked at once (the page marks the odd ones).
     threading.Thread(target=soulseek.check_all, args=(DIR, SLSK), daemon=True).start()
+    if os.path.exists(dj.PY) and not os.path.exists(os.path.join(DIR, tempo.NOTE)):
+        dj_run(5)  # the tempos have never been settled here (tempo.py): done once now, with no button
     if os.path.exists(AGAIN):  # a file thrown back just before the page restarted still gets its search
         search_again(new=False)
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

@@ -43,7 +43,9 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   notice (off when `usb-keep.txt` exists; the page's switch). An original the safety check blocks is added to
   `blocked-originals.txt` so it counts as not got.
 - **DJ library (`dj.py`, page `/dj`):** after every sync and USB copy, every safety-checked track gets tempo and key
-  (`dj_analyze.py`: Essentia, cached in `dj-analysis.json`) and its genres (`genres.py`: his pick in `genres.json`
+  (`dj_analyze.py`: Essentia, cached in `dj-analysis.json`; the tempo shown and written is settled by `tempo.py`
+  into `dj-tempo.json`: rekordbox's beat grid, else the analysis a song came with, else Engine's deck analysis,
+  else The Crate's own count only when its second count agrees, else none) and its genres (`genres.py`: his pick in `genres.json`
   wins, then the file's tag, SoundCloud's genre, what it sounds like, SoundCloud's tags, a genre word in the title;
   else "No genre yet"), and is
   written into the Engine DJ library on the USB (`engine.py`, plain sqlite3: Denon Prime and other Engine OS decks;
@@ -121,8 +123,9 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   compared with the FLAC's own checksum, the AIFF passes the safety check, and only then the FLAC goes to the
   Trash; every per-file record and the decks' rows follow, so cues and grids stay. New FLACs convert by
   themselves (`usb.sh`, `dj.py`; switch in `aiff.json`); FLACs already there the first time, and WAVs, are his
-  pick on `/dj`. `aiff.py undo` brings the original back. A 32-bit song (or float WAV) is never converted by
-  itself: `aiff.py deep` (the "Make a 24-bit copy" link on its row, `club.deep`) writes its top 24 bits as an
+  pick on `/dj`. `aiff.py undo` brings the original back. A new 32-bit song (FLAC, WAV or float WAV) is converted by
+  itself too (`aiff.waiting`); for one already there, `aiff.py deep` (the "Make a 24-bit copy" link on its row,
+  `club.deep`) does it: its top 24 bits as an
   AIFF in our own code, checked against the FLAC's checksum and read back; a 32-bit FLAC is read through
   `ffmpeg` when the Mac has it (never installed by us), and above 96 kHz nothing is made.
 - **Cover and details (`details.py`):** fills only EMPTY fields (cover of 500 px or more, title, artist, album,

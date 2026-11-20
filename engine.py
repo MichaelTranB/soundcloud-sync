@@ -4,8 +4,9 @@ they show up there by artist, tempo, key and genre, with The Crate's playlists, 
 The library is the SQLite file <USB>/Engine Library/Database2/m.db that the deck itself made. What this does to it:
   - adds a row for every Crate track on the USB that the library doesn't know yet, marked "not analysed", so the
     deck draws its own beat grid and waveform the first time the track is loaded (as it does for any new file);
-  - on rows the deck has not analysed yet, keeps title, artist, tempo, key and genre up to date; on analysed rows
-    only the genre (the deck's own tempo, key, grid, cues and loops are never touched);
+  - on rows the deck has not analysed yet, keeps title, artist, tempo, key and genre up to date (the tempo is
+    rekordbox's where it has analysed the song, else a count The Crate is sure of, else none: tempo.py); on
+    analysed rows only the genre (the deck's own tempo, key, grid, cues and loops are never touched);
   - keeps one playlist folder, "The Crate", in step. Nothing outside that folder is read or changed.
 Never touches the music files, and never takes a track out, with one exception: a row in The Crate's own folder
 whose file has left the USB (a song you threw back), which a deck would only show as missing. Before any change
@@ -142,7 +143,8 @@ def write(usb, songs, lists, backups):
                 old = con.execute(f"SELECT {', '.join(cols)} FROM Track WHERE id=?", (tid,)).fetchone()
                 fixed = naming.follows(s, old[cols.index("title")], old[cols.index("artist")])
                 diff = {c: r[c] for c, o in zip(cols, old) if r[c] != o and not (r[c] in (None, "") and o in (None, ""))
-                        and not (c != "genre" and r[c] in (None, ""))
+                        and not (c not in ("genre", "bpm", "bpmAnalyzed") and r[c] in (None, ""))  # (a tempo
+                        # The Crate isn't sure of any more is taken back: the deck finds its own on load)
                         and not (done and c in EMPTY and o not in (None, "", 0) and c not in fixed)}
                 if diff:
                     con.execute(f"UPDATE Track SET {', '.join(c + '=?' for c in diff)} WHERE id=?", (*diff.values(), tid))

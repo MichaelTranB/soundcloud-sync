@@ -23,7 +23,7 @@ Never deletes a track. Only when rekordbox is closed (it would write over the ch
 change waits for the next run. Before any change the library file is copied to dj-backups/ (the last 20 kept)."""
 import json, os, shutil, subprocess, sys, time, unicodedata
 
-import naming
+import naming, tempo
 
 FOLDER = "The Crate"
 KINDS = (".mp3", ".m4a", ".mp4", ".flac", ".wav", ".aiff")  # what rekordbox plays and pyrekordbox can add
@@ -179,6 +179,27 @@ def sync(db, job, models, running, db_file):
     # a name fixed on the page (naming.py): the row follows only where it still shows the old one
     rename = [(s, f) for s in songs for c in [have.get(nfc(path[s["rel"]]))] if c is not None
               for f in [naming.follows(s, c.Title, c.Artist.Name if c.Artist is not None else "")] if f]
+    # The tempo in rekordbox's list is the one in its own beat grid (what plays when the song is loaded). A song
+    # The Crate added showed The Crate's count there, and kept showing it after rekordbox analysed the song and
+    # found another: such a row is put right. A song rekordbox hasn't analysed shows the tempo settled for it
+    # (tempo.py), or none. A grid whose tempo changes along the song is rekordbox's to sum up: left alone.
+    file = db_file or str(db.engine.url.database)
+    grids, retempo = os.environ.get("REKORDBOX_SHARE") or os.path.join(os.path.dirname(file), "share"), []
+    for s in songs:
+        c = have.get(nfc(path[s["rel"]]))
+        if c is None:
+            continue
+        dat = grids + c.AnalysisDataPath if c.AnalysisDataPath else ""
+        if dat and os.path.isfile(dat):
+            b = tempo.grid(dat, steady=True)
+            if not b:
+                continue
+        elif not c.Analysed:
+            b = int(round(float(s.get("bpm") or 0) * 100))
+        else:
+            continue
+        if b != (c.BPM or 0):
+            retempo.append((c, b))
     wanted = [(nfc(n), [r for r in rels if r in path and os.path.isfile(path[r])]) for n, rels in job["lists"]]
     wanted = [(n, r) for n, r in wanted if r]
     top = db.get_playlist(Name=FOLDER, ParentID="root", Attribute=1).first()
@@ -195,11 +216,10 @@ def sync(db, job, models, running, db_file):
     # covers: tracks whose file carries one and whose row has none yet
     arts = {s["rel"]: a for s in songs if not getattr(have.get(nfc(path[s["rel"]])), "ImagePath", "")
             for a in [art(path[s["rel"]])] if a}
-    if not new and not regenre and same_lists and not stale and not arts and not moved and not rename:
+    if not new and not regenre and same_lists and not stale and not arts and not moved and not rename and not retempo:
         return ""
     if running():
         return "rekordbox is open, so its library was left alone; it catches up when you close it"
-    file = db_file or str(db.engine.url.database)
     # Covers for tracks already in the library are made first: a picture that can't be read drops out here, so it
     # never counts as something to do (no backup and no write, run after run, for nothing).
     share, covers = os.path.join(os.path.dirname(file), "share"), {}
@@ -208,7 +228,7 @@ def sync(db, job, models, running, db_file):
         where = cover(share, str(c.UUID), arts.pop(rel)) if c.UUID else ""
         if where:
             covers[rel] = where
-    if not new and not regenre and same_lists and not stale and not covers and not moved and not rename:
+    if not new and not regenre and same_lists and not stale and not covers and not moved and not rename and not retempo:
         return ""
     saved = backup(file, job["backups"])
 
@@ -254,6 +274,8 @@ def sync(db, job, models, running, db_file):
             have[nfc(path[s["rel"]])] = c
         for s in regenre:
             have[nfc(path[s["rel"]])].GenreID = named(db.get_genre, db.add_genre, s["genres"][0])
+        for c, b in retempo:
+            c.BPM = b
         for s, f in rename:
             c = have[nfc(path[s["rel"]])]
             if "title" in f:
@@ -301,6 +323,8 @@ def sync(db, job, models, running, db_file):
         said += f"; {len(covers)} cover{'s' if len(covers) != 1 else ''} added"
     if rename:
         said += f"; {len(rename)} name{'s' if len(rename) != 1 else ''} put right"
+    if retempo:
+        said += f"; {len(retempo)} tempo{'s' if len(retempo) != 1 else ''} put right"
     if skipped:
         said += f"; {skipped} left out (a file type rekordbox doesn't play)"
     return said

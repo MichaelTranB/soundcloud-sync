@@ -606,6 +606,11 @@ def _after(d, src, rel):
     except Exception:
         pass  # then the analyser reads the file again: slower, never wrong
     try:
+        import tempo
+        tempo.touched(d, rel, st.st_size, int(st.st_mtime))
+    except Exception:
+        pass  # then the tempo is settled again from its sources
+    try:
         import soulseek
         seen = soulseek.load_checked(d)
         if isinstance(seen.get(path), list):

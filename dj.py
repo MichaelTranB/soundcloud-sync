@@ -13,7 +13,7 @@ Standard library only. Tempo and key need the private Python dj-setup.sh sets up
 still reach the decks, which then analyse them on load."""
 import fcntl, json, os, re, subprocess, sys, time, unicodedata
 
-import friend, genres, layout, liked, naming, recognise, usb_ask, usb_tidy
+import friend, genres, layout, liked, naming, recognise, tempo, usb_ask, usb_tidy
 import place as fold  # (place() here marks where each song sits; fold is The Crate's folder on a USB)
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
@@ -192,6 +192,7 @@ def follow(dir, src):
     relist("aiff.json", ("before", "skip"))
     relist("details.json", ("seen",), lambda r: os.path.splitext(r)[0])
     rename(CACHE)
+    rename(tempo.NOTE)
     rename(recognise.FILE)
     rename(WRITTEN, inner=True)
     # a name that was fixed stays fixed, with its undo (naming.py)
@@ -280,6 +281,7 @@ def library(dir, src):
     g = genres.load(dir)
     table = genres.lookup(g["list"])
     named = naming.was(dir)  # the names a song went by before its name was fixed (naming.py)
+    settled = tempo.load(dir)  # the tempo each song is shown and written with (tempo.py)
     came, lists_of = friend.load(dir), {}  # what was copied in from another USB (friend.py)
     for n, l in came["lists"].items():
         for r in l.get("rels", []):
@@ -295,7 +297,7 @@ def library(dir, src):
                 "album": a.get("album", ""), "year": a.get("year", ""), "label": a.get("label", ""),
                 "remixer": a.get("remixer", ""), "comment": a.get("comment", ""),
                 "length": a.get("length", 0), "bitrate": a.get("bitrate", 0), "rate": a.get("rate", 0),
-                "bpm": a.get("bpm", 0), "musical_key": a.get("key", ""),
+                "own_bpm": a.get("bpm", 0), "bpm2": a.get("bpm2", 0), "musical_key": a.get("key", ""),
                 "tag_genre": a.get("genre", ""), "sc_genre": (row or {}).get("genre", ""),
                 "mb_genres": (known.get(rel) or {}).get("genres") or [],
                 "sounds_like": " - ".join(x for x in ((known.get(rel) or {}).get("names") or [["", ""]])[0] if x),
@@ -311,6 +313,8 @@ def library(dir, src):
             song["size"], song["mtime"] = st.st_size, int(st.st_mtime)
         except OSError:
             song["size"], song["mtime"] = 0, 0
+        # rekordbox's or a deck's analysis, or The Crate's own count where its second count agrees: never a guess
+        song["bpm"], song["bpm_from"] = tempo.said(settled, song)
         song["genres"], song["from"] = genres.decide(song, g, table)
         song["heard"] = genres.heard(song)
         if rel in fav or (home and rel.startswith(home + os.sep)):  # one of your Spotify Liked Songs
@@ -380,8 +384,32 @@ def analyse(dir, src):
     done = [l for l in r.stdout.splitlines() if re.match(r"\d+/\d+ ", l)]
     if done:
         log(dir, f"listened to {len(done)} new track{'s' if len(done) != 1 else ''} (tempo and key)")
+    again = [l for l in r.stdout.splitlines() if re.match(r"again \d+/\d+ ", l)]
+    if again:
+        log(dir, f"counted the tempo a second time on {len(again)} track{'s' if len(again) != 1 else ''}")
     if r.returncode:
         log(dir, "ANALYSER PROBLEM: " + (r.stderr.strip().splitlines() or ["stopped"])[-1][:300])
+
+
+def settle(dir, src, songs, stick):
+    """Each song's tempo, from the best source there is (tempo.py, through the private Python: rekordbox's library
+    needs pyrekordbox), put onto the songs here. Without the private Python nothing has counted a tempo at all."""
+    if not os.path.exists(PY):
+        return
+    job = {"dir": dir, "src": src, "usb": stick, "songs": songs}
+    try:
+        r = subprocess.run([PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tempo.py")],
+                           input=json.dumps(job), capture_output=True, text=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        log(dir, "TEMPO PROBLEM: took over 15 minutes and was stopped; the tempos are as they were")
+        return
+    if r.returncode:
+        log(dir, "TEMPO PROBLEM: " + (r.stderr.strip().splitlines() or ["stopped"])[-1][:300])
+    elif r.stdout.strip():
+        log(dir, r.stdout.strip().splitlines()[-1])
+    note = tempo.load(dir)
+    for s in songs:
+        s["bpm"], s["bpm_from"] = tempo.said(note, s)
 
 
 def run(dir, src, volumes="/Volumes", wait=False):
@@ -502,6 +530,7 @@ def once(dir, src, volumes):
     analyse(dir, src)
     songs = library(dir, src)
     place(dir, songs, stick)  # where each sits on the USB now: its library there is read by that
+    settle(dir, src, songs, stick)  # whose tempo each song goes by: rekordbox's, a deck's, or an agreed count
     there = seen(dir, src, songs, stick)
     if adopt(dir, songs, there):  # a genre you changed on the decks' side is now your pick
         songs = library(dir, src)

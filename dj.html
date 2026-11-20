@@ -779,7 +779,8 @@ function row(song) {
   box.onchange = () => { box.checked ? picks.add(song.file) : picks.delete(song.file); draw(); };
   if ((view === ' cover' || view === ' details') && song.lacks) name.lastChild.textContent += ' · missing ' + song.lacks.join(', ') + (song.none ? ' (nothing found yet)' : '');
   const top = el('div', { className: 'top' }, box, play, name, gs,
-    el('span', { className: 'tag bpm', textContent: song.bpm ? String(Math.round(song.bpm * 10) / 10) : '—', title: 'Tempo (beats a minute)' }),
+    el('span', { className: 'tag bpm', textContent: song.bpm ? String(Math.round(song.bpm * 10) / 10) : '—',
+      title: song.bpm ? 'Tempo (beats a minute)' + (song.bpmFrom ? ': ' + song.bpmFrom : '') : 'No tempo yet: your decks work it out when they load the song' }),
     el('span', { className: 'tag', textContent: song.tone ? song.tone + (WHEEL[song.tone] ? ' · ' + WHEEL[song.tone] : '') : '—', title: 'Key, and its number on the mixing wheel' }),
     el('span', { className: 'tag' + (song.low ? ' low' : ''), textContent: song.low ? song.kind + ' ' + song.kbps : song.kind,
       title: song.low ? 'Below gig quality: ' + song.kbps + ' kbps' : '' }), edit);

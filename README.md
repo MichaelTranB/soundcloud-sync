@@ -169,10 +169,10 @@ straight into your decks' libraries, with no dragging and no clicks:
   same sound (compared sample for sample), with its details and cover. Only once the AIFF is checked does the
   FLAC go to the Trash, so no song is ever there twice, and its playlists and cues follow the new file. FLACs you
   already had, and WAVs, are your pick in the song list. **Undo** brings the original back.
-- **32-bit songs:** no club deck plays a 32-bit file, so its row says so and offers **Make a 24-bit copy**: a
-  24-bit AIFF with no difference you can hear, the original in the Trash, **Undo** to bring it back. It is never
-  done by itself, because the copy isn't bit for bit the same file. A 32-bit FLAC needs `ffmpeg` on the Mac to be
-  read (The Crate doesn't install it); a song above 96 kHz is only pointed out.
+- **32-bit songs:** no club deck plays a 32-bit file, so a new one becomes a 24-bit AIFF by itself: no difference
+  you can hear, the original in the Trash, **Undo** to bring it back. One you already had says so on its row and
+  offers **Make a 24-bit copy**. A 32-bit FLAC needs `ffmpeg` on the Mac to be read (The Crate doesn't install
+  it); a song above 96 kHz is only pointed out.
 - **Cover and details:** a song missing its cover, title, artist, album, genre or year gets them filled in. Only
   empty fields are filled; nothing already there is changed. It writes by itself only when the song's own
   SoundCloud page says so or two sources agree, and the length matches within 3 seconds; anything less sure is
@@ -227,6 +227,9 @@ straight into your decks' libraries, with no dragging and no clicks:
 
 Tempo and key come from a free listening tool (Essentia) that The Crate sets up by itself the first time (about
 a 100 MB download, kept in your home folder). Until then the songs still reach your decks, which analyse them on load.
+
+Where rekordbox or a deck has already analysed a song, that tempo is the one shown and written everywhere. The
+Crate's own count is used only when two separate counts agree; otherwise the tempo stays blank for the deck to fill.
 
 ## Safety
 
