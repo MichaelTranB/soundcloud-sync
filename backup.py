@@ -638,22 +638,31 @@ def twin(dir, name, day, up):
             pass
 
 
-def alive(dir):
-    """The songs are on their way up to iCloud Drive right now (songs below is at work)."""
+def alive(dir, name=None):
+    """This USB's songs (any USB's, with no name) are on their way up to iCloud Drive right now: songs below is at
+    work. Each USB has a pass of its own (.backup-songs-<USB>), so a second USB never waits for the first one's."""
     try:
-        with open(os.path.join(dir, ".backup-songs")) as f:
-            os.kill(int(f.read()), 0)
-        return True
-    except (OSError, ValueError):
+        mark = ".backup-songs-" + (safe(name) if name else "")
+        found = [mark] if name else [n for n in os.listdir(dir) if n.startswith(mark)]
+    except OSError:
         return False
+    for n in found:
+        try:
+            with open(os.path.join(dir, n)) as f:
+                os.kill(int(f.read()), 0)
+            return True
+        except (OSError, ValueError):
+            pass
+    return False
 
 
 def songs(dir, usb, src=""):
     """iCloud Drive only: the songs that are only on the USB go up after its libraries, in short turns (_songs), so a
     backup at plug-in or a repair never waits long for it. It ends when every song is in iCloud and off this Mac,
     when the USB is unplugged (it carries on at the next plug-in), or after a day in which nothing moved."""
-    name, p = os.path.basename(os.path.normpath(usb)), os.path.join(dir, ".backup-songs")
-    if alive(dir):
+    name = os.path.basename(os.path.normpath(usb))
+    p = os.path.join(dir, ".backup-songs-" + safe(name))
+    if alive(dir, name):
         return
     with open(p, "w") as f:
         f.write(str(os.getpid()))
@@ -761,7 +770,7 @@ def after(dir, usb, src):
     or wait to leave this Mac once they are up."""
     name = os.path.basename(os.path.normpath(usb))
     last = (snaps(dir, name) or [None])[0]
-    if load(dir)["place"] != "icloud" or not last or last.get("place") != "icloud" or alive(dir):
+    if load(dir)["place"] != "icloud" or not last or last.get("place") != "icloud" or alive(dir, name):
         return
     if not last.get("waiting") and not (note(dir, name).get("up") or {}).get("here"):
         return
@@ -942,7 +951,7 @@ def status(dir):
             st = note(dir, n)
             sticks.append({"name": got[0].get("name") or n, "size": st.get("size", 0), "checked": st.get("checked", 0),
                            "repair": st.get("repair"), "fine": st.get("fine"), "cloud": st.get("cloud", 0),
-                           "up": st.get("up") if got[0].get("place") == "icloud" else None,
+                           "up": st.get("up") if got[0].get("place") == "icloud" else None, "going": alive(dir, n),
                            "snaps": [{k: s.get(k) for k in ("id", "when", "ok", "why", "libs", "songs", "bytes", "skipped",
                                                             "place", "waiting")} for s in got]})
     return {"songs": cfg["songs"], "place": cfg["place"], "free": room() if cfg["place"] == "icloud" else None,

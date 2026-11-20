@@ -46,6 +46,7 @@ usb-backup.json
 .backup.lock
 .backup-progress
 .backup-progress.tmp
+.backup-songs-*
 .originals
 .archive-have
 blocked-originals.txt

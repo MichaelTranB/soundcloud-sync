@@ -108,7 +108,7 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   With `"place": "icloud"` in `usb-backup.json` the files go to `<iCloud Drive>/The Crate/USB backups/<USB>/<day>/files/`
   (`CRATE_ICLOUD` overrides the folder for tests) and only the lists stay on the Mac; a manifest row then ends with
   the day whose folder holds the file (no hard links there). Plug-in copies the libraries only; `backup.py songs`
-  (started detached by `after()`, pid in `.backup-songs`) sends the USB-only songs up in short turns under
+  (started detached by `after()`, one per USB, pid in `.backup-songs-<USB>`) sends the USB-only songs up in short turns under
   `.backup.lock`, never below the reserve, and evicts each from the Mac once iCloud has it. iCloud Drive not to be
   opened: the libraries are kept on the Mac that time and the log says so. `sweep()` only ever empties day folders
   this Mac itself pruned.
