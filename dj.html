@@ -376,8 +376,10 @@
     <button class="q" data-help="hFolders" aria-expanded="false" aria-label="How USB folders work">?</button></div>
   <div class="help" id="hFolders" hidden>
     <p><b>By genre</b> files each song under its first genre, like EDM/Dubstep or Other/Hip Hop. A song with any EDM genre counts as EDM. New songs are filed by themselves.</p>
+    <p><b>All songs:</b> with folders, turn this on for one more folder holding a copy of every song, so any app finds everything in one place. It needs room for the copies (the USB keeps 5 GB free) and your decks still list each song once.</p>
+    <p><b>Any device:</b> names a USB can't hold (with : or ?) get a look-alike sign, and the hidden "._" files a Mac leaves are taken off, so phones and other computers open the folder cleanly.</p>
     <p><b>Where it sits:</b> at the top of the USB, or inside a folder you already keep music in, so all your songs are in one part of the USB. Changing it moves only The Crate's folder.</p>
-    <p><b>Never:</b> touches anything outside The Crate's own folder, copies a song twice, or deletes one. Playlists and cues follow.</p>
+    <p><b>Never:</b> touches anything outside The Crate's own folder or deletes a song. Playlists and cues follow.</p>
     <p><b>Undo:</b> pick <b>One folder</b> and every song goes back.</p>
   </div>
   <div class="folders" id="folders"></div>
@@ -597,6 +599,10 @@ function drawFolders() {
     no.onclick = () => { lay = null; draw(); };
     box.append(el('div', { className: 'btns' }, yes, no));
   } else box.append(el('div', { className: 'say', textContent: lay ? 'Counting…' : now[L.mode] }));
+  // With folders, an "All songs" folder of copies can sit beside them: everything in one place too (layout.py).
+  if ((lay ? lay.mode : L.mode) !== 'flat') box.append(el('div', { className: 'rest' },
+    L.all ? 'Also "All songs": a copy of every song in one folder.' : 'Also an "All songs" folder with every song in it? Off.',
+    link(L.all ? 'Turn off' : 'Turn on', async () => { if (await post('/api/dj/layout', { all: !L.all })) say(L.all ? 'Off. The copies come off your USB in a moment.' : 'On. Your USB gets it in a moment.'); })));
   drawPlace(box);
   if (typing && $(typing)) { const i = $(typing); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
   const rest = el('div', { className: 'rest' }, 'Not EDM: ' + (L.other.join(', ') || 'nothing') + '.', link(restOpen ? 'Done' : 'Change', () => { restOpen = !restOpen; draw(); }));

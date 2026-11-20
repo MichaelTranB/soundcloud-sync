@@ -1425,9 +1425,11 @@ def dj_post(path, body):
         return None
     if path == "/api/dj/layout":  # how the songs sit inside The Crate's folder on the USB (layout.py: one folder, or
         mode, other = body.get("mode"), body.get("other")  # by genre), and which genres aren't EDM. The run files them.
-        if (mode is not None and mode not in layout.MODES) or (other is not None and not isinstance(other, list)):
+        every = body.get("all")  # an "All songs" folder of copies beside them, or not
+        if (mode is not None and mode not in layout.MODES) or (other is not None and not isinstance(other, list)) or \
+                (every is not None and not isinstance(every, bool)):
             return "That isn't one of the folder layouts."
-        layout.save(DIR, mode, other)
+        layout.save(DIR, mode, other, every)
         dj_run(0)
         return None
     if path == "/api/dj/place":  # where The Crate's folder sits on a USB, and its name (place.py). The run moves

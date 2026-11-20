@@ -137,6 +137,22 @@ def follow(dir, src):
                 if os.path.isfile(os.path.join(src, new)) and not os.path.lexists(os.path.join(src, old))})
     if not was:
         return was
+    # a song can be converted and renamed between two looks here (Song?.flac -> Song?.aiff -> Song？.aiff): followed
+    # back along every step to the name its notes are kept under
+    try:
+        known = json.load(open(os.path.join(dir, CACHE)))
+    except (OSError, ValueError):
+        known = {}
+    if isinstance(known, dict):
+        step = dict(turned)
+        step.update({b: a for a, b in usb_tidy.rows(dir, usb_tidy.MOVES)})  # {a name: the one before it}
+        for new, old in was.items():
+            seen, at = {new}, old
+            while at not in known and at in step and step[at] not in seen and not os.path.lexists(os.path.join(src, at)):
+                seen.add(at)
+                at = step[at]
+            if at in known:
+                was[new] = at
 
     def rename(name, inner=False):
         try:
@@ -441,6 +457,9 @@ def place(dir, songs, stick, usb="", file=False):
             cfg = layout.load(dir)
             moved, stuck, twice, at = layout.arrange(dest, songs, cfg)
             said = layout.say(moved, stuck, twice, cfg["mode"] == "flat")
+            if said:
+                log(dir, f'USB "{usb}": {said}')
+            said = layout.all_songs(dest, at, cfg)[2]  # the "All songs" folder of copies, when it's ticked
             if said:
                 log(dir, f'USB "{usb}": {said}')
         else:

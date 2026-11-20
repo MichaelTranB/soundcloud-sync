@@ -73,6 +73,16 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   (`layout.arrange`, only on a stick past the ask-first gate); every deck library keeps the song's row and is
   re-pointed, so cues and analysis stay. The page previews (`GET /api/dj/layout?mode=`, nothing touched) and
   switches only on "Use this" (`POST /api/dj/layout`). Not yet tried on a real stick or deck.
+- **"All songs" folder (`layout.all_songs`, `"all": true` in `usb-layout.json`, the toggle on the same card):** with
+  `group`/`genre`, `CRATE/All songs/` holds a copy of every song (made after `arrange` in `dj.place`, re-made when the
+  file changes, taken off when the song leaves or the toggle goes off). It keeps 5 GB free (`layout.ROOM`) or skips the
+  copies and logs a PROBLEM. `where()`, `missing`, `doubles()`, `sweep` never look in it; deck libraries list each song
+  once, from its own folder; `backup.py` matches the copies to the library by name and size.
+- **USB-safe names and junk (`usbsafe.py`, run by `usb.sh`):** `names` renames a Mac song whose name has
+  `\ : * ? " < > |` to the fullwidth look-alike (`：` `？`...), noted in `dj-moved.tsv` (so `usb_tidy` renames the
+  USB copy and `dj.follow` the records and deck rows), `aiff.follow`, and the `safety-ok.tsv` row. `clean` takes off
+  macOS's AppleDouble `._` files (magic `00 05 16 07`) inside The Crate's folder and its own `._<folder>` at the USB's
+  top after each copy: djay on iPhone called the folder "not a valid directory" with them there.
 - **Where The Crate's folder sits on a USB (`place.py`, `usb-place.json`, "Change" on the USB folders card):**
   `SoundCloud Sync` at the top unless he picks a parent folder and a name. Every module asks `place.folder(usb)` /
   `place.web(usb)`, never a fixed name. A new pick renames only that one folder (`usb.sh`, `dj.once()`, both after
