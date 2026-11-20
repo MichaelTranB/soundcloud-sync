@@ -191,10 +191,12 @@ def doubt(artist, title, song, rel, cur, peer=""):
         return f'its name has little of "{title}" in it'
     if not credited(artist, title, f"{cur[0]} {cur[1]} {stem}", cur[0]):
         return f"it says it's by {cur[0] or 'someone else'}, the playlist's is by {artist}"
-    want, got = soulseek.version_words(title), soulseek.version_words(stem) | soulseek.version_words(cur[1])
+    # (the version the peer's name gave stays evidence even when the tags name the song)
+    want = soulseek.version_words(title)
+    got = soulseek.version_words(stem) | soulseek.version_words(cur[1]) | soulseek.version_words(peer)
     if got and want and not got & want:
         return "it says it's another version: " + " ".join(sorted(got))
-    if want and not got and ORIGINAL.search(f"{cur[1]} {stem}"):  # ("Original Mix" holds no version words)
+    if want and not got and ORIGINAL.search(f"{cur[1]} {stem} {peer}"):  # ("Original Mix" holds no version words)
         return "it says it's the original, the playlist's is a version: " + " ".join(sorted(want))
     if got and not want and got - soulseek.words(artist) - soulseek.words(title):
         return "it says it's a version of the song, the playlist's isn't: " + " ".join(sorted(got))
@@ -295,6 +297,7 @@ def tidy(d, src, rels=()):
                                       "to": [way["artist"], way["title"]],
                                       **({"rename": True} if t["rename"] else {})}
             rec["asis"].pop(t["link"], None)
+            _still_kept(rec, t["link"], os.path.join(src, rel))
             save(d, rec)
         n += 1
     renames(d, src)
@@ -399,6 +402,16 @@ def asis(d, src, rel, lib=None):
     return True
 
 
+def _still_kept(rec, link, path):
+    """"It's the right song" holds while the file is the same: a name written by this list changes its size, not
+    the song."""
+    if link in rec["keep"]:
+        try:
+            rec["keep"][link] = os.path.getsize(path)
+        except OSError:
+            pass
+
+
 def back_tags(d, src, rel, was):
     """The title and artist the file held just before it was tidied, and the Library Manager's undo note as it was
     then. A name changed since (by you, in another app) stays."""
@@ -439,6 +452,7 @@ def undo(d, src, rel):
     with locked(d):
         rec = load(d)
         rec["done"].pop(link, None)
+        _still_kept(rec, link, os.path.join(src, rel))
         try:
             now = naming._tags(details._open(os.path.join(src, rel)))[1]
             rec["asis"][link] = naming.sig(text(now.get("artist")), text(now.get("title")))
