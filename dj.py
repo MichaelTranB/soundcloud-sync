@@ -178,6 +178,8 @@ def follow(dir, src):
     rename(CACHE)
     rename(recognise.FILE)
     rename(WRITTEN, inner=True)
+    # a name that was fixed stays fixed, with its undo (naming.py)
+    naming.moved(dir, {new: old for new, old in was.items() if not os.path.lexists(os.path.join(src, old))})
     return was
 
 
