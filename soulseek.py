@@ -4,7 +4,7 @@
   soulseek.py prepare DIR SLSK   writes DIR/soulseek.csv (Artist,Title,Length for every track still to get) and
                                  removes a Soulseek copy once the artist's own file has landed in the music folder
   soulseek.py record  DIR SLSK   updates DIR/soulseek.tsv (SoundCloud link, name, file) from sockseek's index
-  soulseek.py missed  DIR SLSK   after both passes: notes each track Soulseek had nothing for (soulseek-missed.tsv)
+  soulseek.py missed  DIR SLSK [LOG...]  after both passes: notes each track Soulseek had nothing for (soulseek-missed.tsv)
   soulseek.py banned  DIR SLSK   prints sockseek's options that keep thrown-back files from being taken again
 
 Every file sockseek brings is looked at before it counts (judge): its real length and the song named inside it must
@@ -46,6 +46,10 @@ AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus", ".al
 CUT = re.compile(r"\b(?:clip|preview|snippet|teaser)\b", re.I)
 # Promo text uploaders put in titles; Soulseek files never carry it, so it only hurts the search.
 PROMO = re.compile(r"\s*[(\[][^)\]]*\b(?:free|download|dl|out now|premiere|buy|preview|clip|exclusive|support)\b[^)\]]*[)\]]", re.I)
+# The kind of edit, not the song: "Slowed + Reverb", "Super Slowed", "Nightcore", "Sped Up". Two different songs in
+# the same kind of edit share these words, so they never count toward a file being the playlist's song.
+EDITS = set("slowed reverb reverbed sped speed nightcore daycore super ultra chopped screwed bass boosted phonk "
+            "tiktok".split())
 VERSION = re.compile(r"[(\[][^)\]]*\b(?:remix|flip|edit|bootleg|vip|rework|mashup|refix)\b[^)\]]*[)\]]", re.I)
 PREFIX = re.compile(r"^\s*(?:premiere|free download|free dl|out now)\s*[:|\-]\s*", re.I)
 
@@ -172,8 +176,46 @@ def flatten(d, music):
     return moved
 
 
+def follow(d, slsk):
+    """A got song whose file moved inside the music folder (the Library Manager notes each move in dj-moved.tsv:
+    where it was, where it is, both inside the folder) keeps its record: it isn't fetched again, and Wrong or bad
+    file still finds it. Returns how many records followed."""
+    try:
+        with open(os.path.join(d, "dj-moved.tsv"), errors="replace") as f:
+            moves = [p for p in (l.rstrip("\n").split("\t") for l in f) if len(p) == 2 and all(p)]
+    except OSError:
+        return 0
+    base = os.path.realpath(slsk)
+    to = {}
+    for a, b in moves:
+        pa, pb = os.path.join(slsk, a), os.path.join(slsk, b)
+        if all(os.path.realpath(p).startswith(base + os.sep) for p in (pa, pb)):
+            to[os.path.normpath(pa)] = os.path.normpath(pb)
+
+    def where(p):  # the file's place now, following moves made one after another; None when it's gone
+        p, seen = os.path.normpath(p), set()
+        while p in to and not os.path.exists(p) and p not in seen:
+            seen.add(p)
+            p = to[p]
+        return p if os.path.isfile(p) else None
+
+    n = 0
+    with locked(d):
+        got = load_got(d)
+        for row in got:
+            new = None if os.path.exists(row[2]) else where(row[2])
+            if new:
+                row[2], n = new, n + 1
+        if n:
+            came = load_from(d)
+            save_got(d, got)
+            save_from(d, {(p if os.path.exists(p) else where(p) or p): v for p, v in came.items()})
+    return n
+
+
 def prepare(d, slsk):
     flatten(d, slsk)  # files from the time Soulseek had a folder of its own join the rest, once
+    follow(d, slsk)  # a got song the Library Manager moved (into the Liked Songs folder, say) keeps its record
     record(d, slsk)  # a track sockseek got in a run that stopped early counts before anything is searched again
     rows = to_get(d)
     wanted = {link for link, *_ in rows}
@@ -263,20 +305,25 @@ def outcomes(d, log):
     return out
 
 
-def missed(d, slsk):
+def missed(d, slsk, *logs):
     """After this sync's passes: a track whose every search came back empty is counted as missed (looked for
-    again later, see WAIT_DAYS); one found, or there but not downloaded, is searched again every sync."""
+    again later, see WAIT_DAYS); one found, or there but not downloaded, is searched again every sync. With logs
+    (one per pass), a track only counts as missed once each of those passes searched it: a pass stopped by the time
+    limit leaves the rest as they were, and the next sync searches them first."""
     rows = {link: query(artist, title) for link, name, artist, title, _ in to_get(d)}
     old, now = load_missed(d), time.time()
     new = {}
     res = outcomes(d, "soulseek-run.log")
+    each = [outcomes(d, log) for log in logs]
+    empty = {("failed", "no search results")}
     for link, q in rows.items():
-        if link in res:
-            if res[link] == {("failed", "no search results")}:
-                n = old[link][1] + 1 if link in old and old[link][0] == q else 1
-                new[link] = (q, n, now)
+        if link in res and res[link] != empty:
+            continue  # found, or there but not downloaded: searched again every sync
+        if link in res and all(link in o for o in each):
+            n = old[link][1] + 1 if link in old and old[link][0] == q else 1
+            new[link] = (q, n, now)
         elif link in old:
-            new[link] = old[link]  # not searched this sync (still waiting): kept as it was
+            new[link] = old[link]  # not searched by every pass this sync: kept as it was
     tmp = os.path.join(d, "soulseek-missed.tsv.tmp")
     with open(tmp, "w") as f:
         f.write(SEARCH)
@@ -362,10 +409,17 @@ def judge(path, name, secs, remote="", thrown=()):
     except OSError:
         return ""
     real, artist, title = inside(path)
-    want = words(name.partition(" - ")[2] or name)
+    asked = name.partition(" - ")[2] or name
+    # edit words ("Slowed + Reverb", "Nightcore") never count: another song in the same edit shares them. Half the
+    # name's words must be inside the file, and half of its main name too (outside brackets), so another song in the
+    # same remix ("(Kryd Hoodtrap Mylancore)") isn't taken for it; brackets that are part of the title
+    # ("Sweet Dreams (Are Made of This)") still count in the first check
+    want = (words(asked) - EDITS) or words(asked)
+    main = words(re.sub(r"[(\[{][^)\]}]*[)\]}]", " ", asked)) - EDITS
     named = None  # nothing written inside: no say
     if want and words(title):
-        named = len(want & words(artist + " " + title)) * 2 >= len(want)
+        got = words(artist + " " + title)
+        named = len(want & got) * 2 >= len(want) and len(main & got) * 2 >= len(main)
     if secs and real:
         off = abs(real - secs)
         if off > 15 or (off > 5 and not named):
@@ -849,9 +903,11 @@ def progress(d, live):
     return out
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4 or sys.argv[1] not in ("prepare", "record", "missed", "banned"):
+    if len(sys.argv) < 4 or sys.argv[1] not in ("prepare", "record", "missed", "banned") or (len(sys.argv) > 4 and sys.argv[1] != "missed"):
         sys.exit(__doc__)
     if sys.argv[1] == "banned":
         print("\n".join(banned(sys.argv[2])))
+    elif sys.argv[1] == "missed":
+        missed(sys.argv[2], sys.argv[3], *sys.argv[4:])
     else:
         {"prepare": prepare, "record": record, "missed": missed}[sys.argv[1]](sys.argv[2], sys.argv[3])

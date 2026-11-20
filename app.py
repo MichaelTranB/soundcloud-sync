@@ -1336,6 +1336,22 @@ def fix_post(path, body):
     return None
 
 
+def paste_goes_to(url, text):
+    """Where a song list pasted in the one box goes: "liked" (his Liked Songs: no Spotify playlist is chosen),
+    "playlist" (plainly the chosen Spotify playlist: the whole of what Spotify shows for it, and little else) or
+    "ask" (anything else: he picks, so neither list is ever replaced by a guess)."""
+    if playlists.service(url) != "spotify":
+        return "liked"
+    got = set(playlists.SONG.findall(text))
+    try:
+        shown = [t["link"].rpartition("/")[2] for t in playlists.spotify(url)["tracks"]]
+    except Exception:
+        return "ask"  # Spotify didn't answer
+    if shown and len(shown) < playlists.SPOTIFY_CAP and all(i in got for i in shown) and len(got) <= len(shown) + 10:
+        return "playlist"
+    return "ask"
+
+
 def dj_post(path, body):
     """The DJ library page's buttons. Returns an error line, or None when done."""
     if path == "/api/dj/recognise":  # the AcoustID key for recognising songs by their sound; "" switches it off
@@ -1634,10 +1650,16 @@ class Handler(BaseHTTPRequestHandler):
                                                 "Share link (it ends in /s-…)."})
             remember(url, title)
         elif self.path == "/api/spotify-songs":
-            url = read("playlist.txt")
-            if playlists.service(url) != "spotify":  # no Spotify playlist chosen: these are his Liked Songs
-                return self.liked(str(body.get("text", "")))
-            n = playlists.paste(DIR, url, str(body.get("text", "")))
+            url, text = read("playlist.txt"), str(body.get("text", ""))
+            to = body.get("to") if body.get("to") in ("liked", "playlist") else paste_goes_to(url, text)
+            if to == "playlist" and playlists.service(url) != "spotify":
+                to = "liked"
+            if to == "ask":
+                return self.send(409, {"ask": True, "playlist": title_of(url) or "this playlist",
+                                       "error": "Are these your Liked Songs, or all the songs in the playlist?"})
+            if to == "liked":
+                return self.liked(text)
+            n = playlists.paste(DIR, url, text)
             if not n:
                 return self.send(400, {"error": "No Spotify song links in that. In Spotify, click one song, press "
                                                 "⌘A then ⌘C, and paste here."})
