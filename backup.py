@@ -33,16 +33,25 @@ USB goes wrong.
   is asked of macOS itself (look()), never assumed: the page and each backup's about.json say how much is in iCloud
   and how much still waits on this Mac.
 
+  Or the person's own cloud (OneDrive, Dropbox or pCloud, owncloud.py, through rclone): laid out as in iCloud Drive,
+  with no copy on this Mac at all. The libraries pass through a small folder on this Mac (usb-backups/<USB>/.up), are
+  checked there and leave it once they are up; the songs go straight from the USB. Each file's sha256 is in the
+  backup's sums.json, so a song on the USB that went bad (same size and time, other bytes) is still found (the songs
+  pass checks the USB against it once per backup, slowly) and Repair puts the good copy back. A full cloud is said
+  on the page, and the songs wait for room. "Off": no backup at plug-in.
+
   backup.py run DIR USB SRC                at plug-in, and the page's "Back up now"
-  backup.py songs DIR USB SRC              started by run: the USB-only songs go up to iCloud Drive
+  backup.py songs DIR USB SRC              started by run: the USB-only songs go up to iCloud Drive or the own cloud
   backup.py restore DIR USB SRC NAME DAY   the page's "Repair": the backup DAY of the USB called NAME, onto USB
 
 Standard library only."""
 import errno, fcntl, hashlib, json, os, re, shutil, sqlite3, subprocess, sys, threading, time, unicodedata, urllib.parse
 
-import usb_ask, usb_tidy
+import owncloud, usb_ask, usb_tidy
 
 ROOT, SET, KEEP, BAD = "usb-backups", "usb-backup.json", 10, 2
+PLACES, FAR = ("mac", "icloud", "own", "off"), ("icloud", "own")  # FAR: kept away from this Mac
+WHERE = {"icloud": "iCloud Drive", "own": "your own cloud", "mac": "this Mac"}
 RESERVE = int(os.environ.get("CRATE_BACKUP_RESERVE") or 20 * 1024 ** 3)  # the room that always stays free on this Mac
 LIBS = (("rekordbox", "pioneer"), ("Engine DJ", "engine library"), ("Serato", "_serato_"))
 MAIN = (("rekordbox", "pioneer/rekordbox/export.pdb"), ("rekordbox", "pioneer/rekordbox/exportlibrary.db"),
@@ -91,16 +100,17 @@ def write(path, data):
 
 def load(dir):
     """The two settings, both on the page: songs that are only on the USB are kept too (on unless switched off), and
-    the place the backups are kept: "mac", or "icloud" (the person's own iCloud Drive)."""
+    the place the backups are kept: "mac", "icloud" (the person's own iCloud Drive), "own" (their own cloud,
+    owncloud.py) or "off" (no backup at plug-in; a repair still keeps what is on the USB first, on this Mac)."""
     cfg = read(os.path.join(dir, SET), {})
     cfg = cfg if isinstance(cfg, dict) else {}
-    return {"songs": cfg.get("songs", True) is not False, "place": "icloud" if cfg.get("place") == "icloud" else "mac"}
+    return {"songs": cfg.get("songs", True) is not False, "place": cfg.get("place") if cfg.get("place") in PLACES else "mac"}
 
 
 def save(dir, songs=None, place=None):
     cfg = load(dir)
     write(os.path.join(dir, SET), {"songs": cfg["songs"] if songs is None else bool(songs),
-                                   "place": cfg["place"] if place is None else "icloud" if place == "icloud" else "mac"})
+                                   "place": cfg["place"] if place is None else place if place in PLACES else "mac"})
 
 
 def log(dir, text):
@@ -137,11 +147,30 @@ def cloud(wait=8):
     return got[0] if got else ""
 
 
+def far(dir, place):
+    """Where backups kept away from this Mac go now ("": nowhere, this time): The Crate's folder in iCloud Drive, or in
+    the person's own cloud as rclone names it (owncloud.root)."""
+    return cloud() if place == "icloud" else owncloud.root(dir) if place == "own" else ""
+
+
+def has(dir, up, path, n):
+    """A file a backup lists is where it is kept: in your own cloud, asked of the cloud (its size must be n); in iCloud
+    Drive or on this Mac, the file is there (iCloud-only ones included)."""
+    return owncloud.size(dir, path) == n if owncloud.ours(up) else os.path.isfile(path)
+
+
+def sums_of(dir, name, day):
+    """Your own cloud: the sha256 of each file a backup holds itself ({path on the USB: sha256}), taken from the USB as
+    it went up. A song on the USB is checked against it (check), and a file had back for a repair."""
+    got = read(os.path.join(home(dir, name), day, "sums.json"), {})
+    return got if isinstance(got, dict) else {}
+
+
 def spot(dir, name, day, rel, row, up=""):
     """Where a backup keeps one file. On this Mac: in its own day's folder. In iCloud Drive (a row with a fourth part,
     the day that holds the file): in that day's folder there."""
     if len(row) > 3:
-        return os.path.join(up or os.path.join(CLOUD, *INSIDE), safe(name), row[3], "files", *rel.split("/"))
+        return "/".join([up or os.path.join(CLOUD, *INSIDE), safe(name), row[3], "files", rel])
     return os.path.join(home(dir, name), day, "files", *rel.split("/"))
 
 
@@ -484,8 +513,9 @@ def prune(dir, name, keep=""):
         good, bad = good + bool(s.get("ok")), bad + (not s.get("ok"))
         if s["id"] not in keep and (good > KEEP if s.get("ok") else bad > BAD):
             shutil.rmtree(os.path.join(home(dir, name), s["id"]), ignore_errors=True)
-            out += [s["id"]] if s.get("place") == "icloud" else []
-    sweep(dir, name, out)
+            out += [(s.get("place"), s["id"])]
+    sweep(dir, name, [d for p, d in out if p == "icloud"])
+    sweep_own(dir, name, [d for p, d in out if p == "own"])
 
 
 def sweep(dir, name, out=()):
@@ -529,6 +559,37 @@ def sweep(dir, name, out=()):
     note(dir, name, old=left or None)
 
 
+def sweep_own(dir, name, out=()):
+    """sweep() for your own cloud: a pushed-out backup's files leave it, each that no kept backup still counts on, asked
+    of the cloud itself; never while the cloud can't be asked or a kept backup's list can't be read."""
+    old = sorted(d for d in set(note(dir, name).get("old_own") or []) | set(out) if isinstance(d, str) and when(d))
+    if not old:
+        return
+    up, used, nfc = far(dir, "own"), set(), lambda t: unicodedata.normalize("NFC", t)
+    sure = bool(up)
+    for s in snaps(dir, name):
+        if s.get("place") == "own":
+            rows = files_of(dir, name, s["id"])
+            sure = sure and (bool(rows) or not s.get("files"))
+            used |= {(row[3], nfc(rel)) for rel, row in rows.items() if len(row) > 3}
+    there = owncloud.listing(dir, os.path.join(up, safe(name)), fresh=True) if sure else None
+    if there is None:
+        note(dir, name, old_own=old)
+        return
+    left = []
+    for day in old:
+        pre = "/".join([up, safe(name), day]) + "/"
+        mine = [p for p in there if p.startswith(pre)]
+        stay = [p for p in mine if p.startswith(pre + "files/") and (day, nfc(p[len(pre) + 6:])) in used]
+        if owncloud.drop(dir, [p for p in mine if p not in stay]) or stay:
+            left.append(day)  # a kept backup still counts on files in it (or one could not go): looked at next time
+    note(dir, name, old_own=left or None)
+
+
+SAID = {"full": "your own cloud is full: make room there (or get more), and the backup carries on by itself",
+        "signin": "your own cloud needs you to sign in again (Options, My own cloud)",
+        "net": "your own cloud could not be reached (is this Mac online?): tried again later"}
+
 _ASKED = {}
 
 
@@ -546,13 +607,18 @@ def tally(dir, name, up, pool, lists, free=True, every=300):
         for rel, row in lists[s["id"]].items():
             if len(row) > 3:
                 size[spot(dir, name, s["id"], rel, row, up)] = row[0]
-    said = look(dir, list(size), free=free)
+    own = owncloud.ours(up)
+    if own:  # your own cloud: what its own listing shows, at the size the backup lists ("u"), or not yet ("w")
+        there = owncloud.listing(dir, os.path.join(up, safe(name)), fresh=True)
+        said = {p: "?" if there is None else "u" if there.get(owncloud.nfc(p)) == n else "w" for p, n in size.items()}
+    else:
+        said = look(dir, list(size), free=free)
     if size and all(v == "?" for v in said.values()):
         return None  # macOS can't be asked now: what was said last stands
     got = {"sent": sum(size[p] for p, v in said.items() if v in "cue"), "freed": sum(v == "e" for v in said.values()),
            "unsent": sum(size[p] for p, v in said.items() if v not in "cue"),
            "out": sum(size[p] for p, v in said.items() if v == "x"),
-           "here": sum(v not in "ce" for v in said.values()), "asked": int(time.time())}
+           "here": 0 if own else sum(v not in "ce" for v in said.values()), "asked": int(time.time())}
     # ("here" counts every file not yet off this Mac, one iCloud hasn't registered yet ("-") or couldn't say ("?")
     # included: the songs job keeps asking until each is up and gone from here, or a day passes with no change)
     for s in pool:
@@ -568,10 +634,10 @@ def tally(dir, name, up, pool, lists, free=True, every=300):
 
 
 def lifted(dir, name):
-    """How much of a USB's backups is kept in iCloud Drive (a file kept once counts once)."""
-    seen = {}
-    for s in snaps(dir, name):
-        if s.get("place") == "icloud":
+    """How much of a USB's backups is kept in the cloud the newest one went to (a file kept once counts once)."""
+    seen, got = {}, snaps(dir, name)
+    for s in got:
+        if s.get("place") in FAR and s.get("place") == got[0].get("place"):
             seen.update({(row[3], rel): row[0] for rel, row in files_of(dir, name, s["id"]).items() if len(row) > 3})
     return sum(seen.values())
 
@@ -602,15 +668,16 @@ def _run(dir, usb, src, name, keep, fail):
     last = got[0] if got else None
     before = files_of(dir, name, last["id"]) if last else {}
     cfg = load(dir)
-    up = cloud() if cfg["place"] == "icloud" else ""  # (iCloud Drive chosen but not to be opened: this Mac, this time)
-    far, tail = os.path.join(up, safe(name)) if up else "", "icloud" if up else "mac"
-    if up:
+    up = far(dir, cfg["place"])  # (iCloud Drive or your own cloud chosen but not to be had now: this Mac, this time)
+    own = owncloud.ours(up)
+    top, tail = os.path.join(up, safe(name)) if up else "", cfg["place"] if up else "mac"
+    if up and not own:
         heal(dir, up, name)
     # A backup builds on the newest one kept in the same place: what didn't change since is shared with it
     base = next((s for s in got if (s.get("place") or "mac") == tail), None)
     # In iCloud Drive a file is kept once, by the backup that first held it: every backup kept there is looked at, so
     # a song that was away for one backup (or put back by a repair) doesn't go up a second time
-    pool, old, was = [s for s in got if s.get("place") == "icloud"] if up else [base] if base else [], {}, {}
+    pool, old, was = [s for s in got if s.get("place") == tail] if up else [base] if base else [], {}, {}
     for s in reversed(pool):  # (the newest one's word counts)
         rows = before if s is last else files_of(dir, name, s["id"])
         old.update(rows)
@@ -619,13 +686,14 @@ def _run(dir, usb, src, name, keep, fail):
     if not seen and not last:
         return None  # an empty USB with no backup yet: nothing to keep
     held = lambda rel, row: (rel in old and old[rel][:2] == row[:2]
-                             and os.path.isfile(spot(dir, name, base["id"], rel, old[rel], up)))
+                             and has(dir, up, spot(dir, name, base["id"], rel, old[rel], up), old[rel][0]))
     new = lambda rows: sum(v[0] for r, v in rows.items() if old.get(r, [])[:2] != v[:2])
     skipped, waiting, free = [], {}, shutil.disk_usage(dir).free
-    if cfg["place"] == "icloud" and not up:
-        # (its songs wait for iCloud Drive: they are the room this Mac is spared)
+    if cfg["place"] in FAR and not up:
+        # (its songs wait for the cloud: they are the room this Mac is spared)
         seen = {r: v for r, v in seen.items() if v[2] != "song"}
-        skipped.append("iCloud Drive could not be opened: this backup is on this Mac, without the songs that are "
+        skipped.append(("iCloud Drive could not be opened" if cfg["place"] == "icloud" else
+                        "your own cloud is not signed in") + ": this backup is on this Mac, without the songs that are "
                        "only on the USB")
     if up:
         # iCloud Drive: only the libraries now (they are small, and they hold the cues). The songs that are only on
@@ -644,19 +712,22 @@ def _run(dir, usb, src, name, keep, fail):
     # Nothing on it changed since the last backup: that one stands. Unless a file could not be read then: it is
     # tried again every time, so a read that only failed once doesn't leave the backup short for good.
     if (last and base is last and last.get("seen") == mark and not last.get("unread")
-            and (not up or os.path.isdir(os.path.join(far, last["id"])))):
+            and (not up or (owncloud.isdir(dir, os.path.join(top, last["id"])) if own
+                            else os.path.isdir(os.path.join(top, last["id"]))))):
         note(dir, name, checked=int(time.time()))
         return last
     t = int(time.time())
     stamp = lambda: time.strftime("%Y-%m-%d %H%M%S", time.localtime(t))
-    while os.path.exists(os.path.join(at, stamp())) or (up and os.path.exists(os.path.join(far, stamp()))):
+    while os.path.exists(os.path.join(at, stamp())) or (up and (owncloud.isdir(dir, os.path.join(top, stamp())) if own
+                                                                else os.path.exists(os.path.join(top, stamp())))):
         t += 1  # (two backups within one second: each gets a folder of its own)
     day, part = time.strftime("%Y-%m-%d %H%M%S", time.localtime(t)), os.path.join(at, ".part")
-    # For iCloud Drive the files are gathered on this Mac and moved in whole once they all are (into)
+    # For iCloud Drive the files are gathered on this Mac and moved in whole once they all are (into); for your own
+    # cloud they are sent from there, and leave this Mac as each one is up (owncloud.send)
     box = os.path.join(at, ".up") if up else part
-    for d in {part, box} | ({os.path.join(far, ".part.nosync")} if up else set()):
+    for d in {part, box} | ({os.path.join(top, ".part.nosync")} if up and not own else set()):
         shutil.rmtree(d, ignore_errors=True)  # (what a backup cut short left behind; .part.nosync: an older version's)
-    files, bad, unread = {}, {}, list(stuck)
+    files, bad, unread, sums = {}, {}, list(stuck), {}
     todo = sorted((rel, row) for rel, row in seen.items() if rel not in waiting)
 
     def stands(rel, row):  # the copy the backup before has stands for this one too
@@ -682,12 +753,14 @@ def _run(dir, usb, src, name, keep, fail):
                 raise OSError("cut short")
             files[rel] = row + [day] * bool(up)
             why = wrong(dir, rel, to) if row[2] != "song" else ""
+            sums[rel] = owncloud.sha256(to) if own else None
             if why:  # a library that changed under the copy reads as damaged: once more
                 st = os.stat(os.path.join(usb, *rel.split("/")))
                 row = [st.st_size, st.st_mtime_ns, row[2]]
                 files[rel] = row + [day] * bool(up)
                 copy(os.path.join(usb, *rel.split("/")), to, row[1])
                 why = wrong(dir, rel, to)
+                sums[rel] = owncloud.sha256(to) if own else None
             if why:
                 bad[rel] = why
         except OSError:
@@ -701,7 +774,8 @@ def _run(dir, usb, src, name, keep, fail):
             if os.path.exists(to):
                 os.remove(to)
             files.pop(rel, None)
-            if rel in old and os.path.isfile(spot(dir, name, base["id"], rel, old[rel], up)):
+            sums.pop(rel, None)
+            if rel in old and has(dir, up, spot(dir, name, base["id"], rel, old[rel], up), old[rel][0]):
                 stands(rel, old[rel])  # the last copy that could be read stays in the backup
     if last and base is last and last.get("seen") == mark and sorted(unread) == last.get("unread") and files == before:
         for d in {part, box}:
@@ -728,7 +802,20 @@ def _run(dir, usb, src, name, keep, fail):
     if up:
         write(os.path.join(part, "waiting.json"), waiting)
         os.makedirs(box, exist_ok=True)
-        into(box, os.path.join(far, day))
+        if own:
+            write(os.path.join(part, "sums.json"), {r: h for r, h in sums.items() if h})
+            err = owncloud.send(dir, box, os.path.join(top, day))
+            if err:  # none of it counts: the last backup stands, and what got there is cleared away later (sweep_own)
+                for d in {part, box}:
+                    shutil.rmtree(d, ignore_errors=True)
+                note(dir, name, old_own=sorted(set(note(dir, name).get("old_own") or []) | {day}),
+                     up={**(note(dir, name).get("up") or {}), "why": err.split(":")[0], "said": err, "at": int(time.time())})
+                log(dir, f'BACKUP PROBLEM: "{name}" was not backed up to your own cloud: ' + SAID.get(err.split(":")[0], "")
+                    + f" ({err.split(': ', 1)[-1]})")
+                fail.append("your own cloud could not take it")
+                return last
+        else:
+            into(box, os.path.join(top, day))
     os.rename(part, os.path.join(at, day))
     twin(dir, name, day, up)
     prune(dir, name, keep)
@@ -736,7 +823,8 @@ def _run(dir, usb, src, name, keep, fail):
     # new songs to go up)
     was = note(dir, name).get("up") or {}
     note(dir, name, checked=int(time.time()), size=weigh(at), kept=lifted(dir, name), cloud=None,
-         up={**was, "left": len(waiting), "here": was.get("here") or 0, "why": "", "at": int(time.time())} if up else None)
+         up={**was, "left": len(waiting), "here": was.get("here") or 0, "why": "", "said": "", "at": int(time.time())}
+         if up else None)
     good = next((s for s in snaps(dir, name) if s.get("ok")), None)
     if why and good and not note(dir, name).get("repair"):
         # it stays "to repair" until a backup is put back or you say it's fine: a USB you erased gets new, empty
@@ -751,7 +839,7 @@ def _run(dir, usb, src, name, keep, fail):
                             'to repair it from its last backup." with title "The Crate"'], capture_output=True)
     else:
         n = about["songs"]
-        log(dir, f'backup: "{name}" backed up to {"iCloud Drive" if up else "this Mac"} ({say(libs) or "no DJ library on it"}'
+        log(dir, f'backup: "{name}" backed up to {WHERE[tail]} ({say(libs) or "no DJ library on it"}'
             + (f", {n} {'song' if n == 1 else 'songs'} that {'is' if n == 1 else 'are'} only on it" if n else "")
             + (f", {len(waiting)} more {'song goes' if len(waiting) == 1 else 'songs go'} up next" if waiting else "")
             + (")" if not skipped else "). " + skipped[0].upper() + skipped[1:] + "."))
@@ -759,10 +847,16 @@ def _run(dir, usb, src, name, keep, fail):
 
 
 def twin(dir, name, day, up):
-    """A backup in iCloud Drive carries a copy of its two lists, so its folder there says by itself what it holds."""
-    for f in ("manifest.json", "about.json") if up else ():
+    """A backup in iCloud Drive or your own cloud carries a copy of its lists, so its folder there says by itself what
+    it holds (and, in your own cloud, each file's sha256)."""
+    for f in ("manifest.json", "about.json", "sums.json") if up else ():
+        a = os.path.join(home(dir, name), day, f)
         try:
-            shutil.copyfile(os.path.join(home(dir, name), day, f), os.path.join(up, safe(name), day, f))
+            if owncloud.ours(up):
+                if os.path.isfile(a):
+                    owncloud.put(dir, a, "/".join([up, safe(name), day, f]))
+            elif f != "sums.json":
+                shutil.copyfile(a, os.path.join(up, safe(name), day, f))
         except OSError:
             pass
 
@@ -786,8 +880,9 @@ def alive(dir, name=None):
 
 
 def songs(dir, usb, src=""):
-    """iCloud Drive only: the songs that are only on the USB go up after its libraries, in short turns (_songs), so a
-    backup at plug-in or a repair never waits long for it. It ends when every song is in iCloud and off this Mac,
+    """iCloud Drive or your own cloud: the songs that are only on the USB go up after its libraries, in short turns
+    (_songs), so a backup at plug-in or a repair never waits long for it. It ends when every song is up (and, for
+    iCloud, off this Mac), when your own cloud needs a sign-in again,
     when the USB is unplugged (it carries on at the next plug-in), or after a day in which nothing moved (a full
     iCloud is waited for that long: room made there is seen within minutes, and the songs carry on)."""
     name = os.path.basename(os.path.normpath(usb))
@@ -803,11 +898,13 @@ def songs(dir, usb, src=""):
             up = cloud() if load(dir)["place"] == "icloud" else ""
             if up:
                 heal(dir, up, name)  # (a backup an older version left out of iCloud goes up now)
+        why = ""
         while idle < 2880:
             with open(os.path.join(dir, ".backup.lock"), "w") as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
                 moved, left = _songs(dir, usb, name, skip)
-            if not left:
+            why = (note(dir, name).get("up") or {}).get("why")
+            if not left or why == "signin":  # (a sign-in only you can give: the next plug-in tries again)
                 break
             idle = 0 if moved else idle + 1
             if not moved:
@@ -816,9 +913,12 @@ def songs(dir, usb, src=""):
         if skip and os.path.isdir(usb):
             log(dir, f'BACKUP PROBLEM: "{name}": {len(skip)} {"song" if len(skip) == 1 else "songs"} that '
                 f'{"is" if len(skip) == 1 else "are"} only on it could not be read, so '
-                f'{"it is" if len(skip) == 1 else "they are"} not in iCloud Drive yet. Tried again at the next backup.')
-        if start and end.get("place") == "icloud" and not end.get("waiting"):
-            log(dir, f'backup: "{name}": every song that is only on it is in iCloud Drive now ({end.get("songs", 0)}).')
+                f'{"it is" if len(skip) == 1 else "they are"} not in {WHERE.get(end.get("place"), "the cloud")} yet. '
+                'Tried again at the next backup.')
+        if start and end.get("place") in FAR and not end.get("waiting"):
+            log(dir, f'backup: "{name}": every song that is only on it is in {WHERE[end["place"]]} now ({end.get("songs", 0)}).')
+        if end.get("place") == "own" and not end.get("waiting") and why != "signin":
+            check(dir, usb, name)
     finally:
         try:
             with open(p) as f:
@@ -833,19 +933,25 @@ def _songs(dir, usb, name, skip, turn=20):
     """One short turn of songs(): returns (something moved, how much it can still do)."""
     kept = snaps(dir, name)
     last = kept[0] if kept else None
-    up = cloud() if last and last.get("place") == "icloud" and load(dir)["place"] == "icloud" else ""
+    place = load(dir)["place"]
+    up = far(dir, place) if last and last.get("place") == place else ""
     if not up:
         return False, 0
-    pool = [s for s in kept if s.get("place") == "icloud"]  # (the newest first)
+    own = owncloud.ours(up)
+    pool = [s for s in kept if s.get("place") == place]  # (the newest first)
     lists = {s["id"]: files_of(dir, name, s["id"]) for s in pool}
     # Room first: what macOS says is safely in iCloud leaves this Mac. Every backup kept there is looked through, not
     # just the newest: a song the USB lost since is still in an older one.
     was = note(dir, name).get("up") or {}
     seen = tally(dir, name, up, pool, lists)
     here, freed = (seen["here"], seen["freed"]) if seen else (was.get("here") or 0, 0)
-    why, did, rest, left0, tmp = "", False, 0, 0, os.path.join(home(dir, name), ".up-song")
-    # (a song is copied on this Mac first, into .up-song: the room that counts is the smaller of both disks)
-    free, left, t0 = min(shutil.disk_usage(up).free, shutil.disk_usage(home(dir, name)).free), room(30), time.time()
+    why, said, did, rest, left0, tmp = "", "", False, 0, 0, os.path.join(home(dir, name), ".up-song")
+    if own:  # your own cloud: straight from the USB, nothing of it on this Mac; the room that counts is the cloud's
+        free, left, t0, margin = float("inf"), owncloud.free(dir), time.time(), 0
+    else:
+        # (a song is copied on this Mac first, into .up-song: the room that counts is the smaller of both disks)
+        free, left, t0 = min(shutil.disk_usage(up).free, shutil.disk_usage(home(dir, name)).free), room(30), time.time()
+        margin = 1024 ** 3
     # What iCloud Drive holds by now, by its place on the USB, its size and its time: {...: the day that holds it}
     have = {(rel, row[0], row[1]): row[3] for s in reversed(pool) for rel, row in lists[s["id"]].items() if len(row) > 3}
     # The newest backup's waiting songs go up, and then what an older one kept there still waits for: a song the copy
@@ -854,7 +960,7 @@ def _songs(dir, usb, name, skip, turn=20):
         day, at = s["id"], os.path.join(home(dir, name), s["id"])
         waiting = read(os.path.join(at, "waiting.json"), {})
         waiting = waiting if isinstance(waiting, dict) else {}
-        files, got = lists[day], {}
+        files, got, sums = lists[day], {}, sums_of(dir, name, day) if own else {}
         newest = waiting if not n else newest
         for rel, row in sorted(waiting.items()):
             mark = (day, rel) if n else rel
@@ -865,7 +971,7 @@ def _songs(dir, usb, name, skip, turn=20):
                 continue
             if n:
                 d = have.get((rel, row[0], row[1]))
-                if d and os.path.isfile(spot(dir, name, day, rel, row[:3] + [d], up)):
+                if d and has(dir, up, spot(dir, name, day, rel, row[:3] + [d], up), row[0]):
                     got[rel] = row[:3] + [d]  # a newer backup took it up: kept once, counted on by both
                     continue
             a = os.path.join(usb, *rel.split("/"))
@@ -898,7 +1004,7 @@ def _songs(dir, usb, name, skip, turn=20):
                 if (newest.get(rel) or [])[:2] != row[:2]:
                     got[rel] = None
                 continue
-            if left is not None and left - row[0] < 1024 ** 3:
+            if left is not None and left - row[0] < margin:
                 why = "full"
                 rest += 1
                 continue
@@ -907,6 +1013,29 @@ def _songs(dir, usb, name, skip, turn=20):
                 rest += 1
                 continue
             to = spot(dir, name, day, rel, row + [day], up)
+            if own:
+                try:
+                    if owncloud.size(dir, to) != row[0] or rel not in sums:
+                        sums[rel] = owncloud.sha256(a)  # (read from the USB as it goes up)
+                    err = owncloud.put(dir, a, to) if owncloud.size(dir, to) != row[0] else ""
+                except OSError:
+                    err = "unread"
+                if err == "unread" or (err and not os.path.isdir(usb)):
+                    if not os.path.isdir(usb):
+                        why = "unplugged"
+                        rest += 1
+                    else:
+                        skip.add(mark)
+                    continue
+                if err:  # full, a sign-in to give again, or offline: said on the page, and this turn ends here
+                    why, said = err.split(":")[0], err
+                    rest += 1
+                    continue
+                if left is not None:
+                    left -= row[0]
+                got[rel] = row + [day]
+                have[(rel, row[0], row[1])] = day
+                continue
             try:
                 if os.path.exists(to + ".nosync"):
                     os.remove(to + ".nosync")  # (an older version's copy, cut short: no list counts on it)
@@ -941,12 +1070,16 @@ def _songs(dir, usb, name, skip, turn=20):
             write(os.path.join(at, "manifest.json"), files)
             write(os.path.join(at, "waiting.json"), waiting)
             write(os.path.join(at, "about.json"), about)
+            if own:
+                write(os.path.join(at, "sums.json"), {r: h for r, h in sums.items() if r in files})
             twin(dir, name, day, up)
         if not n:
             left0 = len(waiting)
     why = why or ("unread" if any(r in skip for r in newest) else "")
     keep = {k: v for k, v in (seen or was).items() if k in ("sent", "unsent", "out", "asked")}
-    note(dir, name, up={**keep, "left": left0, "here": here, "why": why, "at": int(time.time())},
+    if why in SAID and why != (was.get("why") or ""):
+        log(dir, f'BACKUP PROBLEM: "{name}": songs wait to go up: {SAID[why]}.' + (f" ({said.split(': ', 1)[-1]})" if said else ""))
+    note(dir, name, up={**keep, "left": left0, "here": here, "why": why, "said": said, "at": int(time.time())},
          **({"kept": lifted(dir, name)} if did else {}))
     # (iCloud full: the songs still wait, and go up by themselves once there is room again; it is asked every few minutes)
     can = 0 if why == "unplugged" else rest
@@ -973,18 +1106,58 @@ def binned(usb, rel, row):
     return ""
 
 
+WEEK = 7 * 86400
+
+
+def check(dir, usb, name):
+    """Your own cloud: at most once a week, each song on the USB that the newest backup holds (same size and time) is
+    read and its sha256 compared with the one taken as it went up. One that went bad on the USB is said on the page,
+    and Repair puts the good copy from the cloud in its place (the bad one goes to the USB's Trash). Only reads."""
+    got = snaps(dir, name)
+    last, was = (got[0] if got else None), note(dir, name).get("sums") or {}
+    if not last or last.get("place") != "own" or time.time() - (was.get("at") or 0) < WEEK and was.get("day") == last["id"]:
+        return
+    rows, by, bad = files_of(dir, name, last["id"]), {}, []
+    for rel, row in sorted(rows.items()):
+        if row[2] != "song" or len(row) < 4:
+            continue
+        if row[3] not in by:
+            by[row[3]] = sums_of(dir, name, row[3])
+        sha = by[row[3]].get(rel)
+        a = os.path.join(usb, *rel.split("/"))
+        try:
+            st = os.stat(a)
+            if not sha or [st.st_size, st.st_mtime_ns] != row[:2]:
+                continue  # (changed since: the next backup holds it as it is)
+            if owncloud.sha256(a) != sha:
+                bad.append(rel)
+        except OSError:
+            if not os.path.isdir(usb):
+                return  # unplugged: checked at the next plug-in
+            bad.append(rel)  # there, the right size, and it can't be read: the good copy is in the cloud
+    note(dir, name, sums={"day": last["id"], "at": int(time.time()), "bad": len(bad)}, damaged=bad or None)
+    if bad:
+        why = f"{len(bad)} {'song' if len(bad) == 1 else 'songs'} on it {'is' if len(bad) == 1 else 'are'} damaged"
+        if not note(dir, name).get("repair"):
+            note(dir, name, repair={"day": last["id"], "why": why, "when": int(time.time())})
+        log(dir, f'BACKUP PROBLEM: "{name}": {why} (not the same as when {"it" if len(bad) == 1 else "they"} went up). '
+            "Repair on the Library Manager page puts the good copy back from your own cloud.")
+
+
 def after(dir, usb, src):
     """Starts songs() on its own, so it outlives the copy that called this: when songs wait to go up to iCloud Drive,
     or wait to leave this Mac once they are up."""
     name = os.path.basename(os.path.normpath(usb))
     last = (snaps(dir, name) or [None])[0]
-    if load(dir)["place"] != "icloud" or not last or last.get("place") != "icloud" or alive(dir, name):
+    place = load(dir)["place"]
+    if place not in FAR or not last or last.get("place") != place or alive(dir, name):
         return
     # (an older backup kept there can still wait for a song too: one the copy to the USB replaced before it went up)
     # (and once after each backup, so macOS is asked what of it is up, and what is gives its room on this Mac back)
     up = note(dir, name).get("up") or {}
-    if (not any(s.get("waiting") for s in snaps(dir, name) if s.get("place") == "icloud")
-            and not up.get("here") and (up.get("asked") or 0) >= last.get("when", 0)):
+    if (not any(s.get("waiting") for s in snaps(dir, name) if s.get("place") == place)
+            and not up.get("here") and (up.get("asked") or 0) >= last.get("when", 0)
+            and (place != "own" or time.time() - ((note(dir, name).get("sums") or {}).get("at") or 0) < WEEK)):
         return
     with open(os.path.join(dir, "dj.log"), "a") as out:
         subprocess.Popen([sys.executable, os.path.abspath(__file__), "songs", dir, usb, src], start_new_session=True,
@@ -1011,13 +1184,17 @@ def restore(dir, usb, src, name, day):
     """Puts the backup DAY of the USB called NAME back onto USB (see the top). Returns a line for the log."""
     here, at = os.path.basename(os.path.normpath(usb)), os.path.join(home(dir, name), day)
     files = files_of(dir, name, day)
-    far = (read(os.path.join(at, "about.json")) or {}).get("place") == "icloud"
-    up = cloud() if far else ""
-    if not files or not os.path.isdir(at if far else os.path.join(at, "files")):
+    place = (read(os.path.join(at, "about.json")) or {}).get("place")
+    place = place if place in FAR else ""  # (kept away from this Mac: in iCloud Drive or your own cloud)
+    up, own = far(dir, place) if place else "", place == "own"
+    if not files or not os.path.isdir(at if place else os.path.join(at, "files")):
         return "BACKUP PROBLEM: that backup is not on this Mac any more."
-    if far and not up:
-        return ("BACKUP PROBLEM: that backup is in iCloud Drive, which can't be opened right now. "
-                "Nothing on the USB was changed.")
+    if place and not up:
+        return ("BACKUP PROBLEM: that backup is in " + ("iCloud Drive, which can't be opened right now. " if not own else
+                "your own cloud, which is not signed in (Options, My own cloud). ") + "Nothing on the USB was changed.")
+    # songs your own cloud's check found damaged on it (check): their good copy goes back, the bad one to its Trash
+    bad = set(note(dir, here).get("damaged") or []) if own and name == here else set()
+    down = os.path.join(home(dir, name), ".down")
     if not os.path.isdir(usb) or not os.access(usb, os.W_OK):
         return f'BACKUP PROBLEM: "{here}" can only be read (locked, or damaged so far that it has to be erased first).'
     for _ in range(900):  # a copy to the USB that is running finishes first
@@ -1039,7 +1216,7 @@ def restore(dir, usb, src, name, day):
     # ("Back up songs that are only on the USB" is off, this Mac was short of room, or it could not be read) stays
     # as it is. A song that is gone is put back.
     now = files_of(dir, here, kept["id"]) if kept and kept.get("id") else {}
-    done = {"lib": 0, "song": 0, "left": 0, "aside": 0, "away": 0}
+    done = {"lib": 0, "song": 0, "left": 0, "aside": 0, "fixed": 0, "away": 0}
 
     def held(rel, b):  # that backup holds this file of the USB as it is now
         try:
@@ -1056,6 +1233,15 @@ def restore(dir, usb, src, name, day):
                     raise OSError(errno.EIO, "a file in the way could not be moved")
                 n += 1
         return n
+
+    def ok(rel, row, path):  # a file had from your own cloud is the one that went up (size, sha256, a sound library)
+        sha = sums_of(dir, name, row[3] if len(row) > 3 else day).get(rel)
+        try:
+            return (os.path.getsize(path) == row[0] and (not sha or owncloud.sha256(path) == sha)
+                    and (row[2] == "song" or not wrong(dir, rel, path)))
+        except OSError:
+            return False
+    shutil.rmtree(down, ignore_errors=True)
     with open(os.path.join(dir, ".backup.lock"), "w") as lock, open(os.path.join(dir, ".dj.lock"), "w") as deck:
         fcntl.flock(lock, fcntl.LOCK_EX)
         fcntl.flock(deck, fcntl.LOCK_EX)  # no deck library is written under it
@@ -1065,17 +1251,24 @@ def restore(dir, usb, src, name, day):
                 if i % 20 == 0:
                     progress(dir, i, len(files) * 2, "restore")
                 a, b = spot(dir, name, day, rel, row, up), os.path.join(usb, *rel.split("/"))
-                if not os.path.isfile(a):
+                if not has(dir, up, a, row[0]):
                     continue
-                # From iCloud Drive every library file is had first, before anything on the USB is changed: a repair
+                # From the cloud every library file is had first, before anything on the USB is changed: a repair
                 # never stops half way because this Mac is offline
-                if far and row[2] != "song" and not fetch(a):
+                if own and row[2] != "song":
+                    to = os.path.join(down, *rel.split("/"))
+                    os.makedirs(os.path.dirname(to), exist_ok=True)
+                    if owncloud.get(dir, a, to) or not ok(rel, row, to):
+                        return (f'BACKUP PROBLEM: "{here}" was not repaired: its backup could not be had whole from '
+                                "your own cloud (is this Mac online, and still signed in?). Nothing on it was changed.")
+                    a = to
+                elif place == "icloud" and row[2] != "song" and not fetch(a):
                     return (f'BACKUP PROBLEM: "{here}" was not repaired: its backup could not be fetched from iCloud '
                             "Drive (is this Mac online?). Nothing on it was changed.")
                 have = usb_tidy.size(b)
                 if row[2] != "song":
                     (stale if same(a, b) else todo).append((rel, row, a, b))
-                elif have < 0 or (have != row[0] and held(rel, b)):
+                elif have < 0 or (have != row[0] and held(rel, b)) or (rel in bad and have == row[0]):
                     todo.append((rel, row, a, b))
                 elif have != row[0]:
                     done["left"] += 1
@@ -1087,7 +1280,7 @@ def restore(dir, usb, src, name, day):
             for rel, row, _, b in todo:
                 room -= row[0]
                 short = min(short, room)
-                if held(rel, b):
+                if held(rel, b) and rel not in bad:  # (a damaged one goes to the USB's Trash: its room stays taken)
                     room += max(usb_tidy.size(b), 0)
             if short < 0:
                 return (f'BACKUP PROBLEM: "{here}" has no room for its backup ({-short // 1024 ** 2 + 1} MB more is '
@@ -1099,20 +1292,27 @@ def restore(dir, usb, src, name, day):
                 return f'BACKUP PROBLEM: "{here}" could not be written ({e.strerror or e}). It may have to be erased first.'
             for i, (rel, row, a, b) in enumerate(todo):
                 progress(dir, len(todo) + i, len(todo) * 2, "restore")
-                back = far and row[2] == "song" and not local(a)  # a song had from iCloud for this leaves this Mac again
+                back = place == "icloud" and row[2] == "song" and not local(a)  # (had from iCloud: leaves this Mac again)
                 if back and not fetch(a):
                     done["away"] += 1
                     continue
                 try:
                     os.makedirs(os.path.dirname(b), exist_ok=True)
-                    copy(a, b + ".crate-tmp", row[1])
-                    if os.path.lexists(b) and not held(rel, b):
+                    if own and row[2] == "song":  # straight from your own cloud onto the USB, checked before it counts
+                        if owncloud.get(dir, a, b + ".crate-tmp") or not ok(rel, row, b + ".crate-tmp"):
+                            if os.path.exists(b + ".crate-tmp"):
+                                os.remove(b + ".crate-tmp")
+                            done["away"] += 1
+                            continue
+                    else:
+                        copy(a, b + ".crate-tmp", row[1])
+                    if os.path.lexists(b) and (not held(rel, b) or rel in bad):
                         # what is there could not be read into that backup (or changed since): it is not written
                         # over, it goes to the USB's Trash, where it can still be got at
                         if not usb_tidy.trash(usb, b):
                             os.remove(b + ".crate-tmp")
                             raise OSError(errno.EIO, "a file that could not be backed up first is in the way")
-                        done["aside"] += 1
+                        done["fixed" if rel in bad else "aside"] += 1
                     os.replace(b + ".crate-tmp", b)
                     os.utime(b, ns=(row[1], row[1]))
                     done["song" if row[2] == "song" else "lib"] += 1
@@ -1124,6 +1324,7 @@ def restore(dir, usb, src, name, day):
                         return f'BACKUP PROBLEM: "{here}" was unplugged before its backup was back on it. Plug it in and repair again.'
                     return f'BACKUP PROBLEM: "{here}" could not be written ({e.strerror or e}). It may have to be erased first.'
         finally:
+            shutil.rmtree(down, ignore_errors=True)
             if os.path.exists(os.path.join(dir, ".backup-progress")):
                 os.remove(os.path.join(dir, ".backup-progress"))
     # your yes for this USB's library stands for the same library put back (usb_ask.py); a USB never allowed still asks
@@ -1133,7 +1334,7 @@ def restore(dir, usb, src, name, day):
             usb_ask.answer(dir, usb, True)
         except OSError:
             pass
-    note(dir, here, repair=None)
+    note(dir, here, repair=None, **({"damaged": None, "sums": None} if bad and not done["away"] else {}))
     stamp = time.strftime("%b %-d, %H:%M", time.localtime(when(day)))
     return (f'backup: "{here}" put back from the backup of {stamp}'
             + (f' of "{name}"' if name != here else "")
@@ -1144,7 +1345,9 @@ def restore(dir, usb, src, name, day):
                if done["left"] else "")
             + (f" {done['aside']} {'file' if done['aside'] == 1 else 'files'} on it that could not be backed up first "
                f"{'is' if done['aside'] == 1 else 'are'} in its Trash." if done["aside"] else "")
-            + (f" {done['away']} {'song' if done['away'] == 1 else 'songs'} could not be fetched from iCloud Drive: "
+            + (f" {done['fixed']} damaged {'song' if done['fixed'] == 1 else 'songs'} replaced with the good copy (the "
+               f"damaged {'one is' if done['fixed'] == 1 else 'ones are'} in its Trash)." if done["fixed"] else "")
+            + (f" {done['away']} {'song' if done['away'] == 1 else 'songs'} could not be fetched from {WHERE[place]}: "
                "repair again when this Mac is online." if done["away"] else "")
             + " Your library's songs and playlists follow now.")
 
@@ -1165,17 +1368,20 @@ def status(dir):
                            "repair": st.get("repair"), "fine": st.get("fine"),
                            # in iCloud: only what macOS said is uploaded ("kept": what the backups' lists hold)
                            "cloud": (st.get("up") or {}).get("sent", 0), "kept": st.get("kept", st.get("cloud", 0)),
-                           "up": st.get("up") if got[0].get("place") == "icloud" else None, "going": alive(dir, n),
+                           "up": st.get("up") if got[0].get("place") in FAR else None, "going": alive(dir, n),
+                           "damaged": len(st.get("damaged") or []),
                            "snaps": [{k: s.get(k) for k in ("id", "when", "ok", "why", "libs", "songs", "bytes", "skipped",
                                                             "place", "waiting", "sent", "unsent")} for s in got]})
-    return {"songs": cfg["songs"], "place": cfg["place"], "free": room() if cfg["place"] == "icloud" else None,
-            "going": alive(dir), "sticks": sticks, "doing": progress(dir)}
+    return {"songs": cfg["songs"], "place": cfg["place"],
+            "free": room() if cfg["place"] == "icloud" else owncloud.free(dir) if cfg["place"] == "own" else None,
+            "own": owncloud.status(dir), "going": alive(dir), "sticks": sticks, "doing": progress(dir)}
 
 
 if __name__ == "__main__":
     a = sys.argv[1:]
-    if len(a) == 4 and a[0] == "run":
-        if os.path.isdir(a[2]):
+    if len(a) in (4, 5) and a[0] == "run":
+        # Backup "Off" in Options: no backup at plug-in; "Back up now" on the page ("now") still makes one, on this Mac
+        if os.path.isdir(a[2]) and (load(a[1])["place"] != "off" or a[4:] == ["now"]):
             run(a[1], a[2], a[3])
             after(a[1], a[2], a[3])
     elif len(a) == 4 and a[0] == "songs":

@@ -119,6 +119,17 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   `.backup.lock`, never below the reserve, and evicts each from the Mac once iCloud has it. iCloud Drive not to be
   opened: the libraries are kept on the Mac that time and the log says so. `sweep()` only ever empties day folders
   this Mac itself pruned.
+- **My own cloud (`owncloud.py`, `"place": "own"`; Options: Backup Off / This Mac / iCloud Drive / My own cloud):**
+  rclone (MIT, pinned v1.76.0 by sha256 into `~/.local/bin` unless Homebrew's is there) signs in on the provider's
+  own page (`config create crate <onedrive|dropbox|pcloud> config_is_local=true`; rclone's shared app, no key of
+  ours; Google Drive left out: rclone's shared Drive client is being retired), token in `rclone.conf` (mode 600,
+  git-ignored). Same layout as iCloud under `crate:The Crate/USB backups/<USB>/<day>/`; libraries go through the
+  small `.up` folder (`rclone move`), songs straight from the USB (`copyto`, checked against the provider's hash);
+  each backup's `sums.json` holds a sha256 per file, so `check()` (weekly) finds a damaged song on the USB and
+  Repair puts the good copy back (bad one to the USB's Trash). What is up is what the cloud's own listing shows;
+  full / sign in again / offline (`SAID`) is said on the card and logged as PROBLEM. `sweep_own()` drops a
+  pushed-out backup's files by name only. "Off": no backup at plug-in; Back up now still makes one on this Mac.
+  Tests use an rclone `alias` remote on a temp folder; never a real sign-in.
 - **FLAC to AIFF (`aiff.py`):** `afconvert` writes the AIFF, Mutagen copies details and cover, the sound is
   compared with the FLAC's own checksum, the AIFF passes the safety check, and only then the FLAC goes to the
   Trash; every per-file record and the decks' rows follow, so cues and grids stay. New FLACs convert by
