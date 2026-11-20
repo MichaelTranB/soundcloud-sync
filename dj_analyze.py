@@ -5,11 +5,19 @@ rest of The Crate stays standard-library only and works without it (tracks then 
     dj_analyze.py <music folder> <cache.json> [relative paths, one per line, on stdin]
 
 Only files that changed since the last run (size or time) are analysed again. The tempo is counted twice, by two
-different counters ("bpm" and "bpm2"): tempo.py shows The Crate's own count only where they agree."""
-import json, os, sys
+different counters ("bpm" and "bpm2"): tempo.py shows The Crate's own count only where they agree.
+
+Each song also gets a full analysis as a deck makes one (beats.py: tempo, beat grid, bars, waveforms), right after
+it's downloaded, whether or not the USB is in: "grid" in the cache, and its rekordbox and Engine DJ files in
+dj-grids/<grid_id>/ beside the cache (anlz.py). The USB's libraries are given them when the song is copied there, so
+rekordbox and the decks show it analysed. Where Beat This is set up (optional), it counts the tempo a third time
+("bpm3"), and a song where it says otherwise goes on the page's "check tempo" list."""
+import json, os, re, shutil, sys, time, uuid
 from multiprocessing import Pool
 
 VERSION = 2  # raise it to listen to everything again after a change to how tempo or key is found
+GRID_VERSION = 1  # raise it to draw every beat grid and waveform again (beats.py, anlz.py)
+GRIDS = "dj-grids"
 FLAT = {"Db": "C#", "D#": "Eb", "Gb": "F#", "G#": "Ab", "A#": "Bb"}
 
 
@@ -138,14 +146,71 @@ def listen(path):
             "key_sure": round(float(strength), 2), "first_beat": round(float(beats[0]), 3) if len(beats) else 0.0}
 
 
+def third(path):
+    """The tempo by Beat This (a neural network, where it's set up: optional), in [90, 180): 0 where it isn't."""
+    try:
+        from beat_this.inference import File2Beats
+    except Exception:
+        return 0
+    import numpy as np
+    beats_, _ = File2Beats(checkpoint_path="small0", device="cpu", dbn=False)(path)
+    d = np.diff(np.asarray(beats_))
+    d = d[(d > 0.2) & (d < 1.5)]
+    if len(d) < 8:
+        return 0
+    bpm = 60 / float(np.median(d))
+    while bpm < 90:
+        bpm *= 2
+    while bpm >= 180:
+        bpm /= 2
+    return round(bpm, 2)
+
+
+def draw(path, rate, home, gid):
+    """The song's beat grid and waveforms (beats.py), and its rekordbox and Engine DJ files written into
+    home/<gid>/ (anlz.py). Returns the cache's part: {"grid", "grid_id"} (and "bpm3" where Beat This is set up)."""
+    import anlz, beats
+    g, W = beats.analyse(path, rate)
+    dat, ext = anlz.files(g, W, path, path)
+    folder = os.path.join(home, gid)
+    os.makedirs(folder, exist_ok=True)
+    for name, data in zip(anlz.NAMES + (anlz.ENGINE,), (dat, ext, anlz.engine_overview(W, g["samples"]))):
+        tmp = os.path.join(folder, name + ".tmp")
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, os.path.join(folder, name))
+    out = {"grid": {**g, "v": GRID_VERSION}, "grid_id": gid}
+    try:
+        b3 = third(path)
+        if b3:
+            out["bpm3"] = b3
+    except Exception as e:
+        out["bpm3_error"] = (str(e) or type(e).__name__)[:200]
+    return out
+
+
+def gridded(c):
+    return isinstance(c.get("grid"), dict) and c["grid"].get("v") == GRID_VERSION and bool(c.get("grid_id"))
+
+
 def one(job):
-    root, rel, had = job
+    root, rel, had, home, gid = job
     path = os.path.join(root, rel)
-    if had:  # listened to before the second count existed: only that is added, nothing else is heard again
-        try:
-            return rel, {**had, "bpm2": second(load(path))}
-        except Exception:
-            return rel, {**had, "bpm2": 0}
+    gid = gid or uuid.uuid4().hex[:16]
+    if had:  # listened to before: only what's missing is added (the second count, the beat grid)
+        out = dict(had)
+        if "bpm" in had and "bpm2" not in had:
+            try:
+                out["bpm2"] = second(load(path))
+            except Exception:
+                out["bpm2"] = 0
+        if not gridded(had):
+            out.pop("grid_error", None)
+            try:
+                out.update(draw(path, had.get("rate", 0), home, gid))
+            except Exception as e:
+                out["grid_error"] = (str(e) or type(e).__name__)[:200]
+        return rel, out
     st = os.stat(path)
     out = {"size": st.st_size, "mtime": int(st.st_mtime), "v": VERSION}
     try:
@@ -162,7 +227,27 @@ def one(job):
             out.update({"key": FLAT.get(key, key) + ("m" if scale == "minor" else ""), "key_sure": round(float(strength), 2)})
         except Exception:
             pass
+    try:
+        out.update(draw(path, out.get("rate", 0), home, gid))
+    except Exception as e:
+        out["grid_error"] = (str(e) or type(e).__name__)[:200]
     return rel, out
+
+
+def throw(home, gid):
+    """A song's grid folder, once the song has left: to the Trash (beside the cache where there's none)."""
+    if not re.fullmatch(r"[0-9a-f]{8,32}", gid or ""):
+        return
+    at = os.path.join(home, gid)
+    if not os.path.isdir(at):
+        return
+    for folder in (os.path.expanduser("~/.Trash"), os.path.join(home, ".thrown")):
+        try:
+            os.makedirs(folder, exist_ok=True)
+            shutil.move(at, os.path.join(folder, f"dj-grid {gid} ({time.strftime('%Y-%m-%d %H%M%S')})"))
+            return
+        except OSError:
+            continue
 
 
 def main():
@@ -172,6 +257,7 @@ def main():
         cache = json.load(open(cache_path))
     except Exception:
         cache = {}
+    home = os.path.join(os.path.dirname(os.path.abspath(cache_path)), GRIDS)
     jobs = []
     for rel in rels:
         try:
@@ -180,22 +266,27 @@ def main():
             continue
         c = cache.get(rel)
         if c and c.get("size") == st.st_size and c.get("mtime") == int(st.st_mtime) and ("bpm" in c or "listen_error" in c) and "tag_error" not in c and c.get("v") == VERSION:
-            if "bpm" not in c or "bpm2" in c:
+            if ("bpm" not in c or "bpm2" in c) and (gridded(c) or "grid_error" in c):
                 continue
-            jobs.append((root, rel, c))
+            jobs.append((root, rel, c, home, c.get("grid_id", "")))
             continue
-        jobs.append((root, rel, None))
-    done, only = 0, {j[1] for j in jobs if j[2]}  # (only: those whose second count alone is added)
+        jobs.append((root, rel, None, home, (c or {}).get("grid_id", "")))  # (a changed file keeps its grid folder)
+    # those only added to: "again" where the second count is added, "grid" where only the beat grid is
+    only = {j[1]: "again" if "bpm" in j[2] and "bpm2" not in j[2] else "grid" for j in jobs if j[2]}
+    done = 0
     with Pool(min(6, os.cpu_count() or 2)) as pool:
         for rel, out in pool.imap_unordered(one, jobs):
             cache[rel] = out
             done += 1
-            print(f"{'again ' if rel in only else ''}{done}/{len(jobs)}  {out.get('bpm', '?')}  {out.get('key', '?')}  {rel}", flush=True)
+            print(f"{only[rel] + ' ' if rel in only else ''}{done}/{len(jobs)}  {out.get('bpm', '?')}  {out.get('key', '?')}  "
+                  f"{(out.get('grid') or {}).get('bpm', '-')}  {rel}", flush=True)
             if done % 10 == 0:
                 save(cache, cache_path)
-    for rel in list(cache):  # a track no longer in the folder leaves the cache
+    for rel in list(cache):  # a track no longer in the folder leaves the cache, and its grid folder the Mac
         if rel not in rels:
-            del cache[rel]
+            gid = cache.pop(rel).get("grid_id", "")
+            if gid and not any(c.get("grid_id") == gid for c in cache.values()):
+                throw(home, gid)
     save(cache, cache_path)
 
 

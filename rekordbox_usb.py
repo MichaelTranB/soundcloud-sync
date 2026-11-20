@@ -226,6 +226,31 @@ def carried(job, known):
     return known
 
 
+def crate(job, known):
+    """The Crate's own analysis of a song (dj_analyze.py: beat grid, waveforms, key) where neither rekordbox on this
+    Mac nor another USB has one for it, so the song is analysed on the USB too, without rekordbox."""
+    for s in job["songs"]:
+        a, g = s.get("grid_anlz") or "", s.get("own_grid") or {}
+        if not a or not os.path.isfile(a) or not g.get("bpm") or (known.get(s["rel"]) or {}).get("anlz"):
+            continue
+        k = known.setdefault(s["rel"], dict(BLANK))
+        k.update(anlz=a, ours=True, bpm=int(round(float(g["bpm"]) * 100)), key=k["key"] or s.get("musical_key") or "")
+    return known
+
+
+def ours(usb, anlz, mine, path):
+    """Is the analysis a USB row has The Crate's own (mine, made for this song), as it was copied there?"""
+    try:
+        with open(mine, "rb") as f:
+            want = repath(f.read(), path)
+        if os.path.getsize(usb + anlz) != len(want):
+            return False
+        with open(usb + anlz, "rb") as f:
+            return f.read() == want
+    except (OSError, ValueError):
+        return False
+
+
 def fresh(db_file, name, master_id):
     """A new, empty library on a USB that has none, laid out as rekordbox 7 makes one."""
     from sqlalchemy import text
@@ -449,11 +474,11 @@ def one(job, master=None, is_open=running):
             return ""
         if is_open():
             return OPEN
-        known = carried(job, mac(job, master))
+        known = crate(job, carried(job, mac(job, master)))
         fresh(db_file, name, max([k["db"] for k in known.values()] or [0]))
         made = True
     if known is None:
-        known = carried(job, mac(job, master))
+        known = crate(job, carried(job, mac(job, master)))
     lib = opened(db_file)
     run = lambda sql, **p: lib.session.execute(text(sql), p)
 
@@ -493,7 +518,15 @@ def one(job, master=None, is_open=running):
         resite = [p for p, o in own.items() if p not in gone and o["anlz"].startswith("/PIONEER/USBANLZ/")
                   and not o["anlz"].startswith(spot(p) + "/") and os.path.isfile(usb + o["anlz"])]
         regenre = [s for s in songs if at[s["rel"]] in own and s.get("genres") and own[at[s["rel"]]]["genre"] != s["genres"][0]]
-        fill = [s for s in songs if at[s["rel"]] in own and not own[at[s["rel"]]]["anlz"] and known.get(s["rel"], {}).get("anlz")]
+        # (a row whose analysis file has gone from the USB shows as not analysed: it is filled in again too)
+        fill = [s for s in songs if at[s["rel"]] in own and known.get(s["rel"], {}).get("anlz")
+                and not (own[at[s["rel"]]]["anlz"] and os.path.isfile(usb + own[at[s["rel"]]]["anlz"]))]
+        # The Crate's analysis on the USB, where rekordbox (on this Mac, or another USB's) has one now: rekordbox's
+        # goes in its place, so what you see in rekordbox and on the decks is rekordbox's own.
+        better = [s for s in songs if at[s["rel"]] in own and own[at[s["rel"]]]["anlz"] and s.get("grid_anlz")
+                  and known.get(s["rel"], {}).get("anlz") and not known[s["rel"]].get("ours")
+                  and ours(usb, own[at[s["rel"]]]["anlz"], s["grid_anlz"], at[s["rel"]])]
+        fill += better
         # The tempo a row shows is the one in its own beat grid on this USB (what a deck plays it at), else the
         # one settled for the song (tempo.py), else none: a row left showing an old guess is put right.
         retempo = []
@@ -617,9 +650,12 @@ def one(job, master=None, is_open=running):
                 if "artist" in f:
                     run("UPDATE content SET artist_id_artist = :a WHERE content_id = :i",
                         a=named("artist", f["artist"], nameForSearch=""), i=own[at[s["rel"]]]["id"])
-            for s in fill:  # rekordbox on this Mac has analysed it since
+            for s in fill:  # analysed since (by rekordbox on this Mac, or The Crate)
                 k, o = known[s["rel"]], own[at[s["rel"]]]
-                o["anlz"] = analysis(usb, k["anlz"], at[s["rel"]])
+                was = o["anlz"]
+                o["anlz"] = analysis(usb, k["anlz"], at[s["rel"]]) or was
+                if was and o["anlz"] != was and was.startswith("/PIONEER/USBANLZ/") and was.count("/") == 5:
+                    junk += [usb + was[:-3] + part for part in PARTS]  # (The Crate's, that rekordbox's replaces)
                 if o["anlz"]:
                     run("UPDATE content SET analysisDataFilePath = :a, analysedBits = 41, bpmx100 = :b, key_id = :k, "
                         "masterDbId = :d, masterContentId = :m, contentLink = :l WHERE content_id = :i", a=o["anlz"],
@@ -684,7 +720,9 @@ def one(job, master=None, is_open=running):
         said = f"{len(there)} track{s(len(there))} in the USB's own library ({len(new)} new), {len(wanted)} " \
                f"playlist{s(len(wanted))} in \"{FOLDER}\""
         if analysed:
-            said += f"; {analysed} carry rekordbox's beat grid and waveform"
+            said += f"; {analysed} analysed (beat grid, waveform, key)"
+        if better:
+            said += f"; {len(better)} given rekordbox's own analysis"
         if moved:
             said += f"; {len(moved)} followed to where their file{'s are' if len(moved) != 1 else ' is'} now"
         if sited:

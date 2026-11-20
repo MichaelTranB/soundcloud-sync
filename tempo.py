@@ -1,12 +1,15 @@
 """Which tempo each song is shown and written with (the note dj-tempo.json).
 
-A deck's or rekordbox's own analysis is the tempo wherever there is one. The Crate's own count is used only when a
-second, different counter agrees with it; otherwise the song has no tempo here and the decks work it out when they
-load it: a guess is never put in front of you as a fact. In this order:
+A deck's or rekordbox's own analysis is the tempo wherever there is one, else The Crate's own beat grid (beats.py),
+which goes onto the USB with the song. In this order:
   1. rekordbox on this Mac: the beat grid in its analysis of the song (what plays, not the number in its list);
   2. the analysis a song brought along from another USB (friend.py);
-  3. Engine DJ on the USB, once a deck has analysed the song there;
-  4. The Crate's own count (dj_analyze.py), when its second count is within 2% of it.
+  3. Engine DJ on the USB, once a deck has analysed the song itself there;
+  4. The Crate's beat grid; where its other counter (dj_analyze.py, or Beat This where it's set up) says another
+     tempo, the song is on the page's "check tempo" list;
+  5. The Crate's first count, when its second count is within 2% of it (a song it couldn't draw a grid for).
+Where rekordbox's grid is the one (1, 2), it's also kept here as The Crate keeps its own, so Engine DJ gets the same
+beats (anlz.rekordbox_grid).
 A source that can't be reached now (the USB is out) keeps what it said for as long as the file is the same one.
 Run by dj.py through the private Python (rekordbox's library is read with pyrekordbox). Reads only; the one file
 it writes is its note.
@@ -16,10 +19,10 @@ import json, os, struct, sys
 from collections import Counter
 
 NOTE = "dj-tempo.json"
-RANK = {"rekordbox": 4, "usb": 3, "engine": 2, "crate": 1}  # whose word counts most
+RANK = {"rekordbox": 5, "usb": 4, "engine": 3, "grid": 2, "crate": 1}  # whose word counts most
 CLOSE = 0.02  # two counts this near each other are the same tempo
 SOURCES = {"rekordbox": "rekordbox's analysis", "usb": "the analysis it came with", "engine": "the deck's analysis",
-           "crate": "counted twice on this Mac"}  # how the page says where a tempo is from
+           "grid": "The Crate's analysis", "crate": "counted twice on this Mac"}  # how the page says where a tempo is from
 
 
 def grid(dat, steady=False):
@@ -67,6 +70,23 @@ def load(dir):
     return got if isinstance(got, dict) else {}
 
 
+def check(song):
+    """Should you check this song's tempo? Where it goes by The Crate's grid and the other counter (Beat This where
+    it's set up, else dj_analyze's) says something else, more than 2% apart (often double or half)."""
+    if song.get("bpm_from") != "grid":
+        return False
+    other = song.get("bpm3") or song.get("own_bpm")
+    return bool(other) and not agreed(song.get("bpm"), other)
+
+
+def grid_said(note, song):
+    """rekordbox's beat grid for a song, as The Crate keeps one, when it's the one the song goes by; else None."""
+    e = note.get(song["rel"])
+    if not isinstance(e, dict) or e.get("size") != song.get("size") or e.get("mtime") != song.get("mtime"):
+        return None
+    return e.get("grid") if isinstance(e.get("grid"), dict) else None
+
+
 def said(note, song):
     """(tempo, whose) for a song from the note, (0, "") when it has none or the file is another one since."""
     e = note.get(song["rel"])
@@ -101,20 +121,15 @@ def save(dir, note):
     os.replace(tmp, os.path.join(dir, NOTE))
 
 
-def decks(usb, songs):
-    """What Engine DJ on the USB found for each song a deck has analysed there: {song: tempo}. Reads only."""
+def decks(usb, songs, dir):
+    """What Engine DJ on the USB found for each song a deck has analysed itself there: {song: tempo}. Reads only.
+    (A row The Crate analysed isn't counted: engine.theirs.)"""
     import sqlite3
     import engine, place
-    db = engine.db_path(usb) if usb else ""
-    if not db or not os.path.isfile(db):
+    if not usb:
         return {}
     try:
-        con = sqlite3.connect(db, timeout=20)
-        try:
-            have = {engine.nfc(p): b for p, b in
-                    con.execute("SELECT path, bpmAnalyzed FROM Track WHERE isAnalyzed = 1") if p and b}
-        finally:
-            con.close()
+        have = {p: b for p, b in engine.theirs(usb, os.path.join(dir, "dj-backups")).items() if b}
     except sqlite3.Error:
         return {}
     out, roots = {}, [place.web(usb)] + place.others(usb)
@@ -132,19 +147,23 @@ def settle(job, master=None):
     dir, songs = job["dir"], job["songs"]
     old = load(dir)
     mac = rekordbox_usb.mac(job, master)
-    deck = decks(job.get("usb") or "", songs)
+    deck = decks(job.get("usb") or "", songs, dir)
+    import anlz
     out = {}
     for s in songs:
-        rel, now = s["rel"], (0, "")
+        rel, now, rb = s["rel"], (0, ""), ""
         m = mac.get(rel)
         if m and m.get("bpm"):
-            now = (m["bpm"] / 100, "rekordbox")
+            now, rb = (m["bpm"] / 100, "rekordbox"), m.get("anlz") or ""
         if not now[0]:
             came = (grid(s["anlz"]) if s.get("anlz") else 0) or int(s.get("friend_bpm") or 0)
             if came:
-                now = (came / 100, "usb")
+                now, rb = (came / 100, "usb"), s.get("anlz") or ""
         if not now[0] and deck.get(rel):
             now = (deck[rel], "engine")
+        g = s.get("own_grid") if isinstance(s.get("own_grid"), dict) else None  # (The Crate's, dj_analyze.py)
+        if not now[0] and g and g.get("bpm"):
+            now = (float(g["bpm"]), "grid")
         if not now[0] and agreed(s.get("own_bpm"), s.get("bpm2")):
             now = (float(s["own_bpm"]), "crate")
         had = said(old, s)
@@ -152,12 +171,17 @@ def settle(job, master=None):
             now = had
         if now[0]:
             out[rel] = {"bpm": round(now[0], 2), "from": now[1], "size": s.get("size"), "mtime": s.get("mtime")}
+            theirs = anlz.rekordbox_grid(rb, g) if rb and g and now[1] in ("rekordbox", "usb") else None
+            if theirs:  # Engine DJ gets the beats rekordbox plays
+                out[rel]["grid"] = theirs
+            elif now == had and isinstance((old.get(rel) or {}).get("grid"), dict):
+                out[rel]["grid"] = old[rel]["grid"]  # (rekordbox's library is out of reach just now)
     line = ""
     if out != old or not os.path.exists(os.path.join(dir, NOTE)):
         save(dir, out)
         n = Counter(e["from"] for e in out.values())
-        parts = [f"{n[k]} from {w}" for k, w in (("rekordbox", "rekordbox"), ("usb", "another USB"), ("engine", "the decks"))
-                 if n[k]]
+        parts = [f"{n[k]} from {w}" for k, w in (("rekordbox", "rekordbox"), ("usb", "another USB"), ("engine", "the decks"),
+                                                 ("grid", "The Crate's analysis")) if n[k]]
         parts += [f"{n['crate']} counted here"] if n["crate"] else []
         left = len(songs) - len(out)
         parts += [f"{left} left for the decks to analyse"] if left else []

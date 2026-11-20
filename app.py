@@ -1187,6 +1187,7 @@ def dj_state():
     looked = {r[6] for r in friend.wanted(DIR)}  # songs a better copy is being looked for
     songs = [{"key": s["key"], "title": s["title"], "artist": s["artist"], "bpm": s["bpm"], "tone": s["musical_key"],
               "bpmFrom": tempo.SOURCES.get(s["bpm_from"], ""),
+              "check": round(float(s.get("bpm3") or s.get("own_bpm") or 0), 1) if s.get("check") else 0,
               "genres": s["genres"], "from": s["from"], "heard": s["heard"], "playlist": s["playlist"],
               "sounds": s["sounds_like"], "file": s["rel"], "kbps": kbps_of(s), "low": low_song(s),
               "lists": s["lists"], "friend": s["friend"], "better": s["rel"] in looked,

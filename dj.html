@@ -513,7 +513,8 @@ const TODO = [[' low', 'Below gig quality', s => s.low, 'Every song is gig quali
   [' cover', 'No cover', s => (s.lacks || []).includes('cover'), 'Every song has its cover.'],
   [' details', 'Missing details', s => (s.lacks || []).some(f => f !== 'cover'), 'No song is missing details.'],
   [' names', 'Names to fix', s => !!(s.name && s.name.kind), 'Every name looks right.'],
-  [' usb', 'Not on USB', s => s.usb === false, 'Every song is on your USB.']];
+  [' usb', 'Not on USB', s => s.usb === false, 'Every song is on your USB.'],
+  [' tempo', 'Check tempo', s => !!s.check, 'Every tempo looks right.']];
 
 function say(text, bad) { const n = $('note'); n.textContent = text || ''; n.className = 'note' + (bad ? ' bad' : ''); }
 
@@ -796,6 +797,8 @@ function row(song) {
     if (own) fix.append(link('Throw away', () => throwAway(song, 'Throw "' + song.title + '" away?\n\nIt goes to the Trash, leaves your decks and your USB, and is never copied in again.', 'In the Trash. It leaves your decks and your USB too.')));
     li.append(fix);
   }
+  if (song.check) li.append(el('div', { className: 'fix' }, 'Check the tempo: ' + song.bpm + ' here, ' + song.check +
+    ' by a second count. If it\'s off, fix the grid in rekordbox or on an Engine DJ deck; The Crate then goes by that.'));
   if (song.back) li.append(el('div', { className: 'fix' }, 'Now an AIFF. The original is in the Trash.',
     link('Undo', () => post('/api/dj/aiff', { undo: [song.file] }))));
   if (song.deep) li.append(el('div', { className: 'fix' }, '32-bit: no club deck plays it.',
