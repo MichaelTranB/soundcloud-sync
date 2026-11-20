@@ -867,6 +867,16 @@ def moved(d, old, new):
         if old in rec:
             rec[new] = rec.pop(old)
             _save(d, name, rec)
+    path = os.path.join(d, CHANGED)  # a tag change still to reach the USB follows too, so its copy there is redone
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        lines = []
+    if any(l.partition("\t")[0] == old for l in lines):
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            f.writelines((new + l[len(old):] if l.partition("\t")[0] == old else l) + "\n" for l in lines)
+        os.replace(path + ".tmp", path)
     a, b = (os.path.join(d, UNDO, hashlib.sha1(r.encode()).hexdigest()[:16]) for r in (old, new))
     if os.path.isdir(a) and not os.path.exists(b):
         os.rename(a, b)

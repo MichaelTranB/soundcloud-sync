@@ -126,6 +126,11 @@ def all_songs(dest, at, cfg, dry=False):
     folder isn't wanted. A copy is only ever taken off while the song's own file is still on the USB (else it goes
     to the USB's Trash, like a song you threw back). Returns (copies made, taken off, said: a line for the log)."""
     home = os.path.join(dest, ALL)
+    if any(cf(w.replace("\\", "/").split("/")[0]) == cf(ALL) for w in at.values()):
+        # songs of their own already sit in a folder of that name (one you picked for your Liked Songs, say): it isn't
+        # The Crate's to fill or clear, so the copies are left off
+        return 0, 0, (f'"{ALL}" is the name of a folder your own songs sit in, so the copies are left off: pick another '
+                      "name for that folder to have them") if copies(cfg) else ""
     want = {}
     if copies(cfg):
         for rel, where in at.items():
@@ -150,7 +155,8 @@ def all_songs(dest, at, cfg, dry=False):
         if dry:
             off += 1
             continue
-        kept = [q for q in at.values() if cf(os.path.basename(q)) == k and usb_tidy.size(os.path.join(dest, q)) >= 0]
+        kept = [q for q in at.values() if cf(os.path.basename(q)) == k and usb_tidy.size(os.path.join(dest, q)) >= 0
+                and not os.path.samefile(os.path.join(dest, q), p)]
         try:
             if kept:
                 os.remove(p)
