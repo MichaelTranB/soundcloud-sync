@@ -40,6 +40,7 @@ usb-place.json.tmp
 names.json
 names.json.tmp
 .naming-progress
+.names.lock
 usb-backups/
 usb-backup.json
 .backup.lock
@@ -155,8 +156,6 @@ liked-state.json
 *.json.tmp
 .waves/
 liked-settings.json
-tour.json
-tour.json.*
 sc-playlists.json
 sc-playlists.json.*.tmp
 .sc-playlists.lock

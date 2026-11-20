@@ -1438,7 +1438,7 @@ def dj_post(path, body):
             new = place.rel(place.check(inside, name))
             if usb and os.path.isdir(at) and place.taken(at, new):  # a folder of yours is never taken for The Crate's
                 return f'"{usb}" already has a "{new.replace(os.sep, "/")}" of yours with things in it. Pick another name.'
-            place.save(DIR, inside, name)
+            place.save(DIR, inside, name, at if usb else "")
         except ValueError as e:
             return str(e)
         dj_run(0)

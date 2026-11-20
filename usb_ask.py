@@ -41,11 +41,7 @@ def save(dir, rec):
 
 def mark(usb):
     """The id The Crate left on this stick when you allowed it ("" when it never was)."""
-    try:
-        with open(os.path.join(place.folder(usb), MARK)) as f:
-            return f.read().strip()[:64]
-    except OSError:
-        return ""
+    return place.note(usb)[0]
 
 
 def paused(usb):
@@ -92,8 +88,7 @@ def answer(dir, usb, yes):
     if yes:
         i = mark(usb) or uuid.uuid4().hex
         os.makedirs(place.folder(usb), exist_ok=True)
-        with open(os.path.join(place.folder(usb), MARK), "w") as f:
-            f.write(i + "\n")
+        place.noted(place.folder(usb), i, place.note(usb)[1])  # (the places the folder had on this USB stay noted)
         rec[i] = {"yes": True, "kinds": KINDS, "name": os.path.basename(os.path.normpath(usb)),
                   "day": time.strftime("%Y-%m-%d")}
         rec.pop(paused(usb), None)

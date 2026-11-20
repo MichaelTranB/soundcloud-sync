@@ -24,14 +24,15 @@ file's name on disk never changes, and a mash-up of two songs keeps the name it 
 Record in DIR: names.json  {"fixed": what each fixed song held before (the undo), "was": the names a song has gone
 by (a deck's row that still shows one of them follows the fix; a name you typed on a deck stays), "ask": the ways
 of a song it wasn't sure of, "fine": the songs you said are fine as they are}. A fixed file keeps its time, tempo
-and key. Runs with the private Python (Mutagen)."""
-import json, os, re, sys, time, unicodedata
+and key. One job writes that record at a time (.names.lock): Fix all names, a row's pick or Undo, and a song's move
+each read, change and save it whole. Runs with the private Python (Mutagen)."""
+import contextlib, fcntl, json, os, re, sys, threading, time, unicodedata
 from difflib import SequenceMatcher
 
 import details
 from details import flat, same_artist, split_title
 
-FILE, PROGRESS = "names.json", ".naming-progress"
+FILE, PROGRESS, LOCK = "names.json", ".naming-progress", ".names.lock"
 STOP = {"the", "and", "for", "you", "feat", "with", "from"}
 SEP = re.compile(r"\s+[-–—]\s+")
 BRACKETS = re.compile(r"[\(\[\{][^\)\]\}]*[\)\]\}]")
@@ -259,6 +260,36 @@ def save(d, rec):
     details._save(d, FILE, rec)
 
 
+_GATE, _HELD = threading.RLock(), {}
+
+
+@contextlib.contextmanager
+def locked(d):
+    """One writer of the record at a time, in this job and across jobs: everything that reads names.json to change
+    it does so in here, from its load() to its save(). Never held while a catalogue is asked or the decks update."""
+    with _GATE:
+        held = _HELD.get(d)
+        if held:
+            held[1] += 1
+        else:
+            f = open(os.path.join(d, LOCK), "w")
+            fcntl.flock(f, fcntl.LOCK_EX)
+            held = _HELD[d] = [f, 1]
+        try:
+            yield
+        finally:
+            held[1] -= 1
+            if not held[1]:
+                del _HELD[d]
+                fcntl.flock(held[0], fcntl.LOCK_UN)
+                held[0].close()
+
+
+def _mark(rec, rel):
+    """What the record holds about one song: a job that looked at a song a while ago can tell you acted on it since."""
+    return json.dumps([rec[k].get(rel) for k in ("fixed", "was", "ask", "fine")], sort_keys=True)
+
+
 def was(d):
     """{rel: {"title": [...], "artist": [...]}}: the names each song has gone by. A deck's row that still shows one
     of them takes the song's name of today."""
@@ -304,23 +335,27 @@ def _went(rec, rel, **names):
                 w[field].append(v)
 
 
-def apply(d, src, song, way, how=""):
-    """Writes this name into the song's file. The name it had is kept for the undo."""
+def apply(d, src, song, way, how="", seen=None):
+    """Writes this name into the song's file. The name it had is kept for the undo. seen: what the record held when
+    a job looked at the song (_mark): if you acted on the song since (a pick, Undo, "It's fine"), yours stays."""
     rel, path = song["rel"], os.path.join(src, song["rel"])
-    with details._same_time(path):
-        before = _set(path, {"title": way["title"], "artist": way["artist"]})
-    rec = load(d)
-    rec["ask"].pop(rel, None)
-    if not before:  # the file already said so (only the list was behind)
+    with locked(d):
+        rec = load(d)
+        if seen is not None and _mark(rec, rel) != seen:
+            return False
+        with details._same_time(path):
+            before = _set(path, {"title": way["title"], "artist": way["artist"]})
+        rec["ask"].pop(rel, None)
+        shown = f"{song.get('artist') or 'Unknown artist'} · {song.get('title') or ''}"
+        if before:  # (else the file already said so: only the list was behind)
+            old = rec["fixed"].get(rel) or {}
+            rec["fixed"][rel] = {"title": [(old.get("title") or [before.get("title")])[0], way["title"]] if "title" in before or "title" in old else None,
+                                 "artist": [(old.get("artist") or [before.get("artist")])[0], way["artist"]] if "artist" in before or "artist" in old else None,
+                                 "shown": old.get("shown") or shown, "at": int(time.time())}
+            _went(rec, rel, title=[song.get("title"), before.get("title")], artist=[song.get("artist"), before.get("artist")])
         save(d, rec)
+    if not before:
         return False
-    old = rec["fixed"].get(rel) or {}
-    shown = f"{song.get('artist') or 'Unknown artist'} · {song.get('title') or ''}"
-    rec["fixed"][rel] = {"title": [(old.get("title") or [before.get("title")])[0], way["title"]] if "title" in before or "title" in old else None,
-                         "artist": [(old.get("artist") or [before.get("artist")])[0], way["artist"]] if "artist" in before or "artist" in old else None,
-                         "shown": old.get("shown") or shown, "at": int(time.time())}
-    _went(rec, rel, title=[song.get("title"), before.get("title")], artist=[song.get("artist"), before.get("artist")])
-    save(d, rec)
     details._after(d, src, rel)
     details.tell(d, f'names: "{shown}" is now "{way["artist"]} · {way["title"]}"{how}')
     return True
@@ -328,17 +363,18 @@ def apply(d, src, song, way, how=""):
 
 def undo(d, src, rel):
     """The name the song had before The Crate fixed it. A name changed since (by you, in another app) stays."""
-    rec = load(d)
-    fixed = rec["fixed"].pop(rel, None)
-    if not fixed:
-        return 0
-    path = os.path.join(src, rel)
-    now = details._now(details._open(path))
-    back = {f: fixed[f][0] for f in ("title", "artist") if fixed.get(f) and (now.get(f) or "") == fixed[f][1]}
-    with details._same_time(path):
-        n = len(_set(path, back))
-    _went(rec, rel, **{f: [fixed[f][1]] for f in back})
-    save(d, rec)
+    with locked(d):
+        rec = load(d)
+        fixed = rec["fixed"].pop(rel, None)
+        if not fixed:
+            return 0
+        path = os.path.join(src, rel)
+        now = details._now(details._open(path))
+        back = {f: fixed[f][0] for f in ("title", "artist") if fixed.get(f) and (now.get(f) or "") == fixed[f][1]}
+        with details._same_time(path):
+            n = len(_set(path, back))
+        _went(rec, rel, **{f: [fixed[f][1]] for f in back})
+        save(d, rec)
     if n:
         details._after(d, src, rel)
         details.tell(d, f"names: {os.path.basename(rel)} has the name it had before again")
@@ -347,22 +383,24 @@ def undo(d, src, rel):
 
 def fine(d, rel, artist, title):
     """You said this name is fine as it is: not asked about again (until the name changes)."""
-    rec = load(d)
-    rec["fine"][rel] = sig(artist, title)
-    rec["ask"].pop(rel, None)
-    save(d, rec)
+    with locked(d):
+        rec = load(d)
+        rec["fine"][rel] = sig(artist, title)
+        rec["ask"].pop(rel, None)
+        save(d, rec)
 
 
 def moved(d, old, new=None):
     """The song goes by another file name now (its FLAC became an AIFF, or came back; it moved into another folder):
     its record follows, so the name stays fixed and can still be put back. old: one name, or {new: old} for several."""
-    rec, hit = load(d), False
-    for new, old in (old if isinstance(old, dict) else {new: old}).items():
-        for k in rec:
-            if old in rec[k]:
-                rec[k][new], hit = rec[k].pop(old), True
-    if hit:
-        save(d, rec)
+    with locked(d):
+        rec, hit = load(d), False
+        for new, old in (old if isinstance(old, dict) else {new: old}).items():
+            for k in rec:
+                if old in rec[k]:
+                    rec[k][new], hit = rec[k].pop(old), True
+        if hit:
+            save(d, rec)
 
 
 # ---------- the jobs ----------
@@ -380,35 +418,40 @@ def _heard(song):
 def one(d, src, song, mine, ask=True):
     """Checks one song and fixes it when sure. "fixed", "ask" (it waits for your pick), or "" (nothing to do)."""
     rec = load(d)
+    seen = _mark(rec, song["rel"])  # (asking a catalogue takes a while: what you do to the song meanwhile stays)
     l = look(song, song["rel"] in mine, rec)
     if not l or l["kind"] == "wrong":
         return ""
     found = l["ways"]
+
+    def keep(field, val):
+        with locked(d):
+            rec = load(d)
+            if _mark(rec, song["rel"]) != seen:
+                return False
+            rec[field][song["rel"]] = val
+            save(d, rec)
+        return True
+
     if l["sure"]:
-        return "fixed" if apply(d, src, song, found[0]) else ""
+        return "fixed" if apply(d, src, song, found[0], seen=seen) else ""
     if l.get("swap") and l["kind"] == "fix":  # swapped in the file's details, or only in its file name?
         now = {"artist": song.get("artist") or "", "title": song.get("title") or ""}
         hit = confirm([found[0], now], _heard(song), ask)
         if hit == 0:
-            return "fixed" if apply(d, src, song, found[0]) else ""
-        rec = load(d)
+            return "fixed" if apply(d, src, song, found[0], seen=seen) else ""
         if hit == 1:  # the details are right as they are: not looked at again
-            rec["fine"][song["rel"]] = sig(now["artist"], now["title"])
-        else:
-            rec["ask"][song["rel"]] = {"sig": sig(now["artist"], now["title"]), "ways": found[:1], "at": int(time.time())}
-        save(d, rec)
-        return "" if hit == 1 else "ask"
+            keep("fine", sig(now["artist"], now["title"]))
+            return ""
+        return "ask" if keep("ask", {"sig": sig(now["artist"], now["title"]), "ways": found[:1], "at": int(time.time())}) else ""
     hit = confirm(found, _heard(song), ask) if l["kind"] == "fix" else None
     old = song.get("artist") or ""
     if hit is not None and (not old or same_artist(old, found[hit]["artist"], found[hit]["title"])):
-        return "fixed" if apply(d, src, song, found[hit]) else ""
+        return "fixed" if apply(d, src, song, found[hit], seen=seen) else ""
     if hit is not None:  # confirmed, but the name it replaces isn't credited in it: yours to say, that way first
         found = [found[hit]] + [w for i, w in enumerate(found) if i != hit]
-    rec = load(d)
-    rec["ask"][song["rel"]] = {"sig": sig(song.get("artist") or "", song.get("title") or ""), "ways": found[:3],
-                               "at": int(time.time())}
-    save(d, rec)
-    return "ask"
+    return "ask" if keep("ask", {"sig": sig(song.get("artist") or "", song.get("title") or ""), "ways": found[:3],
+                                 "at": int(time.time())}) else ""
 
 
 def note(d, done, total):

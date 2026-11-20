@@ -15,7 +15,7 @@ Standard library only."""
 import json, os, sys, unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FILE, NAME, MARK = "usb-place.json", "SoundCloud Sync", ".thecrate"
+FILE, NAME, MARK, WAS = "usb-place.json", "SoundCloud Sync", ".thecrate", "was: "
 # never inside these: the decks' own folders, and a drive's own
 TAKEN = ("pioneer", "engine library", "_serato_", "contents", "system volume information", "$recycle.bin",
          "lost.dir", "found.000")
@@ -65,10 +65,19 @@ def check(inside, name):
     return {"in": os.sep.join(part(p) for p in parts), "name": part(name or NAME)}
 
 
-def save(dir, inside, name):
-    """Your pick on the page (check() says no to a place it can't be)."""
+def save(dir, inside, name, usb=""):
+    """Your pick on the page (check() says no to a place it can't be). usb: the plugged-in USB, when there is one."""
     cfg, new = load(dir), check(inside, name)
-    before = rel(cfg)
+    before, want = rel(cfg), rel(new)
+    # A USB reads capitals as the same name, and the decks' lists hold the spelling a place had: it keeps that one.
+    old = next((r for r in known(dir) if cf(r) == cf(want)), want)
+    if old != want:
+        if old == before:
+            raise ValueError("That is where it is already: a USB reads capitals as the same.")
+        new["in"], new["name"], want = os.path.dirname(old), os.path.basename(old), old
+    now = on(usb, dir) if usb and os.path.isdir(usb) else before
+    if cf(want).startswith(cf(now) + os.sep):
+        raise ValueError("That is inside The Crate's own folder. Pick another one.")
     was = [w for w in cfg["was"] + [before] if cf(w) != cf(rel(new))]
     new["was"] = list(dict.fromkeys(was))[-8:]
     tmp = os.path.join(dir, FILE + ".tmp")
@@ -121,10 +130,33 @@ def web(usb, dir=HERE):
     return unicodedata.normalize("NFC", on(usb, dir)).replace(os.sep, "/")
 
 
+def note(usb, dir=HERE):
+    """The Crate's note in its folder on this USB: (the id you allowed it under, usb_ask.py; the places that folder
+    had on this USB before, move())."""
+    try:
+        with open(os.path.join(folder(usb, dir), MARK)) as f:
+            lines = [x.strip() for x in f.read().splitlines() if x.strip()]
+    except (OSError, ValueError):
+        return "", []
+    return next((x[:64] for x in lines if not x.startswith(WAS)), ""), [x[len(WAS):] for x in lines if x.startswith(WAS)]
+
+
+def noted(at, id, was):
+    """Writes that note in The Crate's folder at this path."""
+    with open(os.path.join(at, MARK), "w") as f:
+        f.write("".join(x + "\n" for x in ([id] if id else []) + [WAS + w for w in was]))
+
+
 def others(usb, dir=HERE):
-    """The other places it has had, as the decks' libraries spell them: a track's row left at one follows to web()."""
-    now = web(usb, dir)
-    return [w for w in (unicodedata.normalize("NFC", r).replace(os.sep, "/") for r in known(dir)) if w != now]
+    """The other places The Crate's folder has had on THIS USB (its own note there lists them, and the first place
+    of all), as the decks' libraries spell them: a track's row left at one follows to web(). Never a place picked
+    while another USB was in, and never one where something is now: a folder of that name here is yours."""
+    now, out = web(usb, dir), []
+    for r in note(usb, dir)[1] + [NAME]:
+        w = unicodedata.normalize("NFC", r)
+        if w != now and w not in out and not os.path.lexists(os.path.join(usb, w.replace("/", os.sep))):
+            out.append(w)
+    return out
 
 
 def tops(usb, dir=HERE):
@@ -149,6 +181,8 @@ def todo(usb, dir=HERE):
     want, now = rel(load(dir)), on(usb, dir)
     if now == want or not os.path.isdir(os.path.join(usb, now)) or taken(usb, want):
         return None
+    if cf(want).startswith(cf(now) + os.sep):  # (a folder can't move inside itself: it stays where it is)
+        return None
     return now, want
 
 
@@ -167,6 +201,10 @@ def move(usb, dir=HERE):
         for f in os.listdir(b):
             os.remove(os.path.join(b, f))
         os.rmdir(b)
+    # Where it was goes in the folder's own note first, and travels with it: the decks' rows follow from there, on
+    # this USB only (others()). A move that then fails changes nothing.
+    id, was = note(usb, dir)
+    noted(a, id, list(dict.fromkeys(was + [step[0].replace(os.sep, "/")]))[-8:])
     os.makedirs(os.path.dirname(b), exist_ok=True)
     os.rename(a, b)
     return f'The Crate\'s folder moved from "{step[0]}" to "{step[1]}"'.replace(os.sep, "/")
