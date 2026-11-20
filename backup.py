@@ -21,7 +21,7 @@
   backup.py restore DIR USB SRC NAME DAY   the page's "Repair": the backup DAY of the USB called NAME, onto USB
 
 Standard library only."""
-import fcntl, hashlib, json, os, re, shutil, sqlite3, subprocess, sys, time, unicodedata, urllib.parse
+import errno, fcntl, hashlib, json, os, re, shutil, sqlite3, subprocess, sys, time, unicodedata, urllib.parse
 
 import usb_ask, usb_tidy
 
@@ -431,7 +431,23 @@ def restore(dir, usb, src, name, day):
     # A song on it now is replaced only when that backup holds it as it is: one left out of it ("Back up songs that
     # are only on the USB" is off, or this Mac was short of room) stays as it is. A song that is gone is put back.
     now = files_of(dir, here, kept["id"]) if kept and kept.get("id") else {}
-    done = {"lib": 0, "song": 0, "left": 0}
+    done = {"lib": 0, "song": 0, "left": 0, "aside": 0}
+
+    def held(rel, b):  # that backup holds this file of the USB as it is now
+        try:
+            st = os.stat(b)
+        except OSError:
+            return False
+        return now.get(rel, [])[:2] == [st.st_size, int(st.st_mtime)]
+
+    def notes(rel, b):  # a database's side notes that aren't in the backup would spoil it: to the USB's Trash
+        n = 0
+        for end in ("-wal", "-shm", "-journal"):
+            if rel.lower().endswith(".db") and os.path.isfile(b + end) and rel + end not in files:
+                if not usb_tidy.trash(usb, b + end):
+                    raise OSError(errno.EIO, "a file in the way could not be moved")
+                n += 1
+        return n
     with open(os.path.join(dir, ".backup.lock"), "w") as lock, open(os.path.join(dir, ".dj.lock"), "w") as deck:
         fcntl.flock(lock, fcntl.LOCK_EX)
         fcntl.flock(deck, fcntl.LOCK_EX)  # no deck library is written under it
@@ -447,11 +463,18 @@ def restore(dir, usb, src, name, day):
                 if row[2] != "song":
                     if not same(a, b):
                         todo.append((rel, row, a, b))
+                    else:
+                        try:  # the same file, with newer side notes beside it: those go, or it isn't put back
+                            done["lib"] += bool(notes(rel, b))
+                        except OSError as e:
+                            return f'BACKUP PROBLEM: "{here}" could not be written ({e.strerror or e}). It may have to be erased first.'
                 elif have < 0 or (have != row[0] and now.get(rel, [-1])[0] == have):
                     todo.append((rel, row, a, b))
                 elif have != row[0]:
                     done["left"] += 1
-            need = sum(row[0] - max(usb_tidy.size(b), 0) for _, row, _, b in todo)
+            # (a file that is set aside first stays on the USB, in its Trash: it frees no room)
+            need = sum(row[0] - (max(usb_tidy.size(b), 0) if row[2] == "song" or held(rel, b) else 0)
+                       for rel, row, _, b in todo)
             if need > shutil.disk_usage(usb).free:
                 return f'BACKUP PROBLEM: "{here}" has no room for its backup ({need // 1024 ** 2} MB more is needed).'
             for i, (rel, row, a, b) in enumerate(todo):
@@ -459,12 +482,17 @@ def restore(dir, usb, src, name, day):
                 try:
                     os.makedirs(os.path.dirname(b), exist_ok=True)
                     copy(a, b + ".crate-tmp", row[1])
+                    if row[2] != "song" and os.path.lexists(b) and not held(rel, b):
+                        # what is there could not be read into that backup (or changed since): it is not written
+                        # over, it goes to the USB's Trash, where it can still be got at
+                        if not usb_tidy.trash(usb, b):
+                            os.remove(b + ".crate-tmp")
+                            raise OSError(errno.EIO, "a file that could not be backed up first is in the way")
+                        done["aside"] += 1
                     os.replace(b + ".crate-tmp", b)
                     os.utime(b, (row[1], row[1]))
                     done["song" if row[2] == "song" else "lib"] += 1
-                    for end in ("-wal", "-shm", "-journal"):  # a database's side notes from before would spoil it
-                        if b.lower().endswith(".db") and os.path.isfile(b + end) and rel + end not in files:
-                            usb_tidy.trash(usb, b + end)
+                    notes(rel, b)
                 except OSError as e:
                     if not os.path.isdir(usb):
                         return f'BACKUP PROBLEM: "{here}" was unplugged before its backup was back on it. Plug it in and repair again.'
@@ -488,6 +516,8 @@ def restore(dir, usb, src, name, day):
             + (f" {done['left']} {'song' if done['left'] == 1 else 'songs'} on it that this Mac has no backup of "
                f"{'was' if done['left'] == 1 else 'were'} left as {'it is' if done['left'] == 1 else 'they are'}."
                if done["left"] else "")
+            + (f" {done['aside']} {'file' if done['aside'] == 1 else 'files'} on it that could not be backed up first "
+               f"{'is' if done['aside'] == 1 else 'are'} in its Trash." if done["aside"] else "")
             + " Your library's songs and playlists follow now.")
 
 
