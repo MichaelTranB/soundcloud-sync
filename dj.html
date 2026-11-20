@@ -250,6 +250,8 @@
     </div>
     <div class="acts">
       <button class="ghost ask" id="faqOpen" aria-haspopup="dialog"><b aria-hidden="true">?</b> How it works</button>
+      <button class="ghost" id="tourOpen">Take the tour</button>
+      <a class="ghost" id="faqLink" href="/faq">FAQ</a>
       <button class="ghost" id="optsOpen" aria-haspopup="dialog">Options</button>
       <a class="ghost lib" href="/">&larr; The Crate</a>
       <button class="ghost go" id="run">Update decks now</button>
@@ -1136,5 +1138,6 @@ $('addName').onkeydown = e => { if (e.key === 'Enter') addGenre(); };
 document.addEventListener('visibilitychange', load);
 load(); setInterval(load, 4000);
 </script>
+<script src="/tour.js" defer></script>
 </body>
 </html>

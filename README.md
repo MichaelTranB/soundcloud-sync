@@ -47,6 +47,12 @@ The page ticks off each step by itself:
 **Questions?** The **? How it works** button on the page explains where tracks come from, the quality, the
 safety check and Full Disk Access.
 
+**Take the tour / FAQ.** The first time you open The Crate and again the first time you open Library Manager, a short
+tour highlights each part of the page (Back, Next, Skip; arrow keys and Esc work). It stays away if you already
+set The Crate up; Library Manager then offers it in one line. **Take the tour** on either page runs it again, and
+**FAQ** (`/faq`) is a searchable list of quick answers by topic, with a link to each answer. What has been shown is
+remembered in `tour.json` in the app's folder (never committed).
+
 ## Where tracks come from, best first
 
 1. The artist's **original upload** on SoundCloud, when downloads are on.
