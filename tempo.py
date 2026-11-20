@@ -5,8 +5,9 @@ which goes onto the USB with the song. In this order:
   1. rekordbox on this Mac: the beat grid in its analysis of the song (what plays, not the number in its list);
   2. the analysis a song brought along from another USB (friend.py);
   3. Engine DJ on the USB, once a deck has analysed the song itself there;
-  4. The Crate's beat grid; where its other counter (dj_analyze.py, or Beat This where it's set up) says another
-     tempo, the song is on the page's "check tempo" list;
+  4. The Crate's beat grid, counted at double or half where the song's main genre is counted so (OCTAVE) or where
+     you tapped x2 or /2 on the page; where its other counter (dj_analyze.py, or Beat This where it's set up) says
+     another tempo, the song is on the page's "check tempo" list;
   5. The Crate's first count, when its second count is within 2% of it (a song it couldn't draw a grid for).
 Where rekordbox's grid is the one (1, 2), it's also kept here as The Crate keeps its own, so Engine DJ gets the same
 beats (anlz.rekordbox_grid).
@@ -19,6 +20,9 @@ import json, os, struct, sys
 from collections import Counter
 
 NOTE = "dj-tempo.json"
+TAPS = "dj-tempo-taps.json"  # your x2, /2 and Keep on the page: {song key: 0.5, 1 or 2 times The Crate's own count}
+# Genres DJs count outside [90, 180), where The Crate's own count lands: its grid is doubled or halved to fit.
+OCTAVE = {"Drum & Bass": (150, 200), "Hip Hop": (60, 160), "R&B": (55, 160)}
 RANK = {"rekordbox": 5, "usb": 4, "engine": 3, "grid": 2, "crate": 1}  # whose word counts most
 CLOSE = 0.02  # two counts this near each other are the same tempo
 SOURCES = {"rekordbox": "rekordbox's analysis", "usb": "the analysis it came with", "engine": "the deck's analysis",
@@ -72,11 +76,14 @@ def load(dir):
 
 def check(song):
     """Should you check this song's tempo? Where it goes by The Crate's grid and the other counter (Beat This where
-    it's set up, else dj_analyze's) says something else, more than 2% apart (often double or half)."""
-    if song.get("bpm_from") != "grid":
+    it's set up, else dj_analyze's) says something else, more than 2% apart (often double or half). Not once you
+    tapped x2, /2 or Keep; and where the genre settled double or half, only a count that is off by more than that."""
+    if song.get("bpm_from") != "grid" or song.get("octave") == "you":
         return False
-    other = song.get("bpm3") or song.get("own_bpm")
-    return bool(other) and not agreed(song.get("bpm"), other)
+    other = float(song.get("bpm3") or song.get("own_bpm") or 0)
+    if not other or agreed(song.get("bpm"), other):
+        return False
+    return not (song.get("octave") == "genre" and any(agreed(song.get("bpm"), other * f) for f in (2, 0.5)))
 
 
 def grid_said(note, song):
@@ -85,6 +92,54 @@ def grid_said(note, song):
     if not isinstance(e, dict) or e.get("size") != song.get("size") or e.get("mtime") != song.get("mtime"):
         return None
     return e.get("grid") if isinstance(e.get("grid"), dict) else None
+
+
+def taps(dir):
+    """{song key: 0.5, 1 or 2}: your taps on the page's "check tempo" list."""
+    try:
+        with open(os.path.join(dir, TAPS)) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in d.items() if v in (0.5, 1, 2)} if isinstance(d, dict) else {}
+
+
+def tap(dir, key, factor):
+    """Keep your tap for a song (None: The Crate decides again)."""
+    d = taps(dir)
+    if factor is None:
+        d.pop(key, None)
+    else:
+        d[key] = factor
+    tmp = os.path.join(dir, TAPS + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(d, f, indent=1, sort_keys=True)
+    os.replace(tmp, os.path.join(dir, TAPS))
+
+
+def fold(g, f):
+    """A beat grid (beats.py) counted twice as fast (f=2) or half as fast (f=0.5), its bars starting where they did."""
+    if not isinstance(g, dict) or not g.get("bpm") or f not in (0.5, 2):
+        return g
+    if f == 2:
+        return {**g, "bpm": round(g["bpm"] * 2, 2), "bar": 2 * g["bar"] % 4}
+    odd = g["bar"] % 2  # (every other beat stays: the ones the bar starts on)
+    return {**g, "bpm": round(g["bpm"] / 2, 2), "first": round(g["first"] + odd * 60 / g["bpm"], 4), "bar": g["bar"] // 2}
+
+
+def octave(song, tapped):
+    """(how many times The Crate's own count the song goes by, why: "you", "genre" or ""). Your tap, else the
+    range its main genre is counted in, else as counted."""
+    t = tapped.get(song.get("key"))
+    if t in (0.5, 1, 2):
+        return t, "you"
+    r = OCTAVE.get((song.get("genres") or [""])[0])
+    b = float((song.get("own_grid") or {}).get("bpm") or 0)
+    if r and b and not r[0] <= b < r[1]:
+        for f in (2, 0.5):
+            if r[0] <= b * f < r[1]:
+                return f, "genre"
+    return 1, ""
 
 
 def said(note, song):

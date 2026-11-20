@@ -106,6 +106,55 @@ class Rules(unittest.TestCase):
         self.assertTrue(tempo.check({"bpm_from": "grid", "bpm": 128.0, "own_bpm": 128.0, "bpm3": 170.0}))
         self.assertFalse(tempo.check({"bpm_from": "rekordbox", "bpm": 128.0, "own_bpm": 64.0}))
 
+    def test_octave_by_genre_and_tap(self):
+        g = {"bpm": 172.0}
+        self.assertEqual(tempo.octave({"genres": ["Hip Hop"], "own_grid": g}, {}), (0.5, "genre"))
+        self.assertEqual(tempo.octave({"genres": ["Drum & Bass"], "own_grid": {"bpm": 87.0}}, {}), (2, "genre"))
+        self.assertEqual(tempo.octave({"genres": ["Drum & Bass"], "own_grid": g}, {}), (1, ""))
+        self.assertEqual(tempo.octave({"genres": ["House"], "own_grid": g}, {}), (1, ""))
+        self.assertEqual(tempo.octave({"key": "k", "genres": ["Hip Hop"], "own_grid": g}, {"k": 1}), (1, "you"))
+        # the genre settled the octave: a second count at half is no reason to check, one off by a third is
+        song = {"bpm_from": "grid", "bpm": 86.0, "own_bpm": 172.0, "octave": "genre"}
+        self.assertFalse(tempo.check(song))
+        self.assertTrue(tempo.check({**song, "own_bpm": 120.0}))
+        self.assertFalse(tempo.check({**song, "own_bpm": 120.0, "octave": "you"}))
+        with tempfile.TemporaryDirectory() as d:
+            tempo.tap(d, "k", 2)
+            self.assertEqual(tempo.taps(d), {"k": 2})
+            tempo.tap(d, "k", None)
+            self.assertEqual(tempo.taps(d), {})
+
+    def test_fold_keeps_the_bars(self):
+        g = {"bpm": 140.0, "first": 0.1, "bar": 3, "lead": 0.0, "secs": 30.0}
+        one = lambda grid: [round(t, 3) for t, n in beats.times(grid) if n == 1]
+        half, double = tempo.fold(g, 0.5), tempo.fold(g, 2)
+        self.assertEqual((half["bpm"], double["bpm"]), (70.0, 280.0))
+        self.assertTrue(set(one(half)) <= set(one(g)))  # every bar of the slow count starts on one of the fast's
+        self.assertLessEqual(abs(len(one(half)) - len(one(g)) / 2), 1)  # (every other one)
+        self.assertTrue(set(one(g)) <= {round(t, 3) for t in one(double)})  # a fast bar starts on each slow one
+        self.assertIs(tempo.fold(g, 1), g)
+
+    def test_grid_swapped_into_our_file(self):
+        g = {"bpm": 87.0, "first": 0.2, "bar": 0, "lead": 0.0, "secs": 20.0, "samples": 20 * 44100, "rate": 44100}
+        dat, _ = anlz.files(g, np.zeros((3000, 5), np.float32), "/Contents/a.wav")
+        g2 = tempo.fold(g, 2)
+        moved = rekordbox_usb.regrid(dat, g2)
+        with tempfile.TemporaryDirectory() as d:
+            mine, usb = os.path.join(d, "mine.DAT"), os.path.join(d, "usb")
+            os.makedirs(usb + "/P")
+            with open(mine, "wb") as f:
+                f.write(dat)
+            with open(usb + "/P/ANLZ0000.DAT", "wb") as f:
+                f.write(rekordbox_usb.repath(dat, "/x/a.wav"))
+            self.assertTrue(rekordbox_usb.ours(usb, "/P/ANLZ0000.DAT", mine, "/x/a.wav"))
+            self.assertFalse(rekordbox_usb.ours(usb, "/P/ANLZ0000.DAT", mine, "/x/a.wav", g2))  # (so it's filled)
+            with open(usb + "/P/ANLZ0000.DAT", "wb") as f:
+                f.write(rekordbox_usb.regrid(rekordbox_usb.repath(dat, "/x/a.wav"), g2))
+            self.assertTrue(rekordbox_usb.ours(usb, "/P/ANLZ0000.DAT", mine, "/x/a.wav"))
+            self.assertTrue(rekordbox_usb.ours(usb, "/P/ANLZ0000.DAT", mine, "/x/a.wav", g2))
+            self.assertEqual(tempo.grid(usb + "/P/ANLZ0000.DAT"), 17400)
+        self.assertEqual(len(moved) - len(dat), 8 * (len(beats.times(g2)) - len(beats.times(g))))
+
     def test_crate_only_where_nothing_else(self):
         with tempfile.NamedTemporaryFile(suffix=".DAT") as f:
             songs = [{"rel": "a.wav", "grid_anlz": f.name, "own_grid": {"bpm": 140.0}, "musical_key": "Dm"},

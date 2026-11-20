@@ -234,21 +234,45 @@ def crate(job, known):
         if not a or not os.path.isfile(a) or not g.get("bpm") or (known.get(s["rel"]) or {}).get("anlz"):
             continue
         k = known.setdefault(s["rel"], dict(BLANK))
-        k.update(anlz=a, ours=True, bpm=int(round(float(g["bpm"]) * 100)), key=k["key"] or s.get("musical_key") or "")
+        k.update(anlz=a, ours=True, grid=g, bpm=int(round(float(g["bpm"]) * 100)), key=k["key"] or s.get("musical_key") or "")
     return known
 
 
-def ours(usb, anlz, mine, path):
-    """Is the analysis a USB row has The Crate's own (mine, made for this song), as it was copied there?"""
+def ours(usb, anlz, mine, path, grid=None):
+    """Is the analysis a USB row has The Crate's own (mine, made for this song), as it was copied there? Its beat
+    grid aside (counted at double or half since, tempo.fold); with grid, also with that beat grid in it."""
     try:
         with open(mine, "rb") as f:
             want = repath(f.read(), path)
-        if os.path.getsize(usb + anlz) != len(want):
-            return False
         with open(usb + anlz, "rb") as f:
-            return f.read() == want
+            have = f.read()
+        if grid:
+            return have == regrid(want, grid)
+        return swap(have, b"PQTZ") == swap(want, b"PQTZ")
     except (OSError, ValueError):
         return False
+
+
+def swap(data, four, part=b""):
+    """An analysis file's bytes with its part named four replaced by part (or, with none, taken out)."""
+    if data[:4] != b"PMAI":
+        raise ValueError("not an analysis file")
+    i = struct.unpack(">I", data[4:8])[0]
+    while i + 12 <= len(data):
+        size = struct.unpack(">I", data[i + 8:i + 12])[0]
+        if size < 12:
+            break
+        if data[i:i + 4] == four:
+            out = data[:i] + part + data[i + size:]
+            return out[:8] + struct.pack(">I", len(out)) + out[12:]
+        i += size
+    return data
+
+
+def regrid(data, grid):
+    """The Crate's analysis file with the beat grid the song goes by now (tempo.fold: your tap, or its genre)."""
+    import anlz
+    return swap(data, b"PQTZ", anlz.pqtz(grid))
 
 
 def fresh(db_file, name, master_id):
@@ -365,16 +389,20 @@ def clear(files):
             pass
 
 
-def analysis(usb, dat, path):
+def analysis(usb, dat, path, grid=None, to=None):
     """rekordbox's analysis of one track (beat grid, waveform, cues), copied from the Mac onto the USB and addressed
-    to the track's place there. Where its first file is, as the library names it; "" when it couldn't be made."""
-    rel, made = free(usb, path), []
+    to the track's place there. Where its first file is, as the library names it; "" when it couldn't be made.
+    grid: The Crate's beat grid for its own analysis, put in as the song goes by it now (regrid). to: the files to
+    write over (the song's own, in rekordbox's folder for it), else the first free name there."""
+    rel, made = to or free(usb, path), []
     try:
         os.makedirs(os.path.dirname(usb + rel), exist_ok=True)
         for part in PARTS:
             if os.path.isfile(dat[:-3] + part):
                 with open(dat[:-3] + part, "rb") as f:
                     data = repath(f.read(), path)
+                if grid and part == "DAT":
+                    data = regrid(data, grid)
                 made.append(usb + rel[:-3] + part)
                 with open(made[-1], "wb") as f:
                     f.write(data)
@@ -527,6 +555,12 @@ def one(job, master=None, is_open=running):
                   and known.get(s["rel"], {}).get("anlz") and not known[s["rel"]].get("ours")
                   and ours(usb, own[at[s["rel"]]]["anlz"], s["grid_anlz"], at[s["rel"]])]
         fill += better
+        # The Crate's analysis on the USB with a beat grid it no longer goes by (you tapped x2 or /2, or its genre
+        # changed): the new grid goes in
+        fill += [s for s in songs if s not in fill and at[s["rel"]] in own and own[at[s["rel"]]]["anlz"]
+                 and known.get(s["rel"], {}).get("ours") and known[s["rel"]].get("grid")
+                 and ours(usb, own[at[s["rel"]]]["anlz"], s["grid_anlz"], at[s["rel"]])
+                 and not ours(usb, own[at[s["rel"]]]["anlz"], s["grid_anlz"], at[s["rel"]], known[s["rel"]]["grid"])]
         # The tempo a row shows is the one in its own beat grid on this USB (what a deck plays it at), else the
         # one settled for the song (tempo.py), else none: a row left showing an old guess is put right.
         retempo = []
@@ -613,7 +647,7 @@ def one(job, master=None, is_open=running):
                 k, p, file = known.get(s["rel"], {}), at[s["rel"]], on(s)
                 year = str(s.get("year") or "")
                 day = time.strftime("%Y-%m-%d", time.localtime(s.get("mtime") or None))
-                anlz = analysis(usb, k["anlz"], p) if k.get("anlz") else ""
+                anlz = analysis(usb, k["anlz"], p, k.get("ours") and k.get("grid")) if k.get("anlz") else ""
                 row = dict.fromkeys(COLUMNS, 0)
                 row.update(
                     title=nfc(s.get("title")) or os.path.splitext(os.path.basename(p))[0], titleForSearch="",
@@ -653,7 +687,8 @@ def one(job, master=None, is_open=running):
             for s in fill:  # analysed since (by rekordbox on this Mac, or The Crate)
                 k, o = known[s["rel"]], own[at[s["rel"]]]
                 was = o["anlz"]
-                o["anlz"] = analysis(usb, k["anlz"], at[s["rel"]]) or was
+                over = was if was.startswith(spot(at[s["rel"]]) + "/") and os.path.isfile(usb + was) else None
+                o["anlz"] = analysis(usb, k["anlz"], at[s["rel"]], k.get("ours") and k.get("grid"), over) or was
                 if was and o["anlz"] != was and was.startswith("/PIONEER/USBANLZ/") and was.count("/") == 5:
                     junk += [usb + was[:-3] + part for part in PARTS]  # (The Crate's, that rekordbox's replaces)
                 if o["anlz"]:

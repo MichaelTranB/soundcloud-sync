@@ -282,6 +282,7 @@ def library(dir, src):
     table = genres.lookup(g["list"])
     named = naming.was(dir)  # the names a song went by before its name was fixed (naming.py)
     settled = tempo.load(dir)  # the tempo each song is shown and written with (tempo.py)
+    tapped = tempo.taps(dir)  # your x2, /2 and Keep on the "check tempo" list
     came, lists_of = friend.load(dir), {}  # what was copied in from another USB (friend.py)
     for n, l in came["lists"].items():
         for r in l.get("rels", []):
@@ -320,10 +321,14 @@ def library(dir, src):
         dat = os.path.join(song["grid_dir"], "ANLZ0000.DAT") if gid else ""
         song["grid_anlz"] = dat if dat and os.path.isfile(dat) else ""
         # rekordbox's or a deck's analysis, else The Crate's: the beat grid tempo.py settled on
+        song["genres"], song["from"] = genres.decide(song, g, table)
+        f, song["octave"] = tempo.octave(song, tapped)  # double or half, by your tap or the main genre
+        song["own_grid"], song["tap"] = tempo.fold(song["own_grid"], f), f
         song["bpm"], song["bpm_from"] = tempo.said(settled, song)
+        if song["bpm_from"] == "grid" and song["own_grid"]:  # (a tap just now: shown at once, before tempo.py runs)
+            song["bpm"] = float(song["own_grid"]["bpm"])
         song["grid"] = tempo.grid_said(settled, song) or song["own_grid"]  # (rekordbox's grid, where it's the one)
         song["check"] = tempo.check(song)
-        song["genres"], song["from"] = genres.decide(song, g, table)
         song["heard"] = genres.heard(song)
         if rel in fav or (home and rel.startswith(home + os.sep)):  # one of your Spotify Liked Songs
             song["liked"] = fav.get(rel, len(fav))

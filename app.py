@@ -1608,6 +1608,19 @@ def dj_post(path, body):
         if not off:
             search_again()
         return None
+    if path == "/api/dj/tempo":  # x2, /2 or Keep on the "check tempo" list (tempo.py): the grid follows on every deck
+        key, by = str(body.get("key", "")), body.get("by")
+        s = next((x for x in dj.library(DIR, OUT) if x["key"] == key), None)
+        if not s:
+            return "That track isn't on your Mac any more."
+        if by not in (0.5, 1, 2):
+            return "Tap x2, /2 or Keep."
+        f = s.get("tap", 1) * by
+        if f not in (0.5, 1, 2):
+            return "That's as far as it goes. Tap the other way, or Keep."
+        tempo.tap(DIR, key, f)
+        dj_run(0)
+        return None
     g = genres.load(DIR)
     if path == "/api/dj/genres":  # your pick for one track: its genres, the first the main one; null = automatic again
         key, picked = str(body.get("key", "")), body.get("genres")

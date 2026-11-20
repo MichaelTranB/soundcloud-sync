@@ -62,6 +62,13 @@ def whole(parts):
     return b"PMAI" + struct.pack(">II", 28, 28 + len(body)) + bytes.fromhex("00000001000100000001000000000000") + body
 
 
+def pqtz(grid):
+    """The beat grid part: one entry a beat (its place in the bar, the tempo x100, its time in ms)."""
+    ticks = beats.times(grid)
+    q = b"".join(struct.pack(">HHI", n, int(round(grid["bpm"] * 100)), int(round(t * 1000))) for t, n in ticks)
+    return section(b"PQTZ", struct.pack(">III", 0, 0x80000, len(ticks)), q)
+
+
 def ppth(path):
     p = path.encode("utf-16-be") + b"\0\0"
     return section(b"PPTH", struct.pack(">I", len(p)), p)
@@ -112,10 +119,6 @@ def files(grid, W, path, file=""):
     W = np.concatenate([np.zeros((shift, 5), np.float32), W]) if shift else W
     if not len(W):
         W = np.zeros((1, 5), np.float32)
-    # the beat grid: one entry a beat (its place in the bar, the tempo x100, its time in ms)
-    ticks = beats.times(grid)
-    q = b"".join(struct.pack(">HHI", n, int(round(grid["bpm"] * 100)), int(round(t * 1000))) for t, n in ticks)
-    pqtz = section(b"PQTZ", struct.pack(">III", 0, 0x80000, len(ticks)), q)
     pvbr = section(b"PVBR", struct.pack(">I", 0), bytes(1600) + struct.pack(">I", mp3_samples(file)))
     # the small overviews: rekordbox's blue one (400 columns) and the oldest decks' (100)
     C = columns(W, 400)
@@ -125,7 +128,7 @@ def files(grid, W, path, file=""):
     C = columns(W, 100)
     pwv2 = section(b"PWV2", struct.pack(">II", 100, 0x10000),
                    bytes(np.clip(np.round(C[:, 1] / (C[:, 1].max() or 1) * 15), 0, 15).astype(np.uint8)))
-    dat = whole([ppth(path), pvbr, pqtz, pwav, pwv2, *cues()])
+    dat = whole([ppth(path), pvbr, pqtz(grid), pwav, pwv2, *cues()])
     # the detail waveforms, one value each 1/150 s: blue, then coloured; and the coloured overview (1200 columns)
     n = len(W)
     w3 = (fit(W, "w3w", 7) << 5 | fit(W, "w3h", 31)).astype(np.uint8)
