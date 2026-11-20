@@ -26,7 +26,8 @@
   button[aria-busy="true"]:disabled { opacity: .8; }  /* working, not unavailable */
   /* One filled red button per section (its main action); everything else stays an outline. */
   button.act { padding: 10px 20px; flex: none; }
-  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 10px 18px; font-weight: 600; }
+  button.ghost, a.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 10px 18px; font-weight: 600; }
+  a.ghost { font: inherit; font-weight: 600; border-radius: 999px; cursor: pointer; text-decoration: none; display: inline-block; }
   .big { font-size: 17px; padding: 18px 34px; }
   /* The way to the Library Manager (tempo, key, genres, the decks): milk white with red words, so it is found at a glance. */
   button.lib { background: var(--lib); color: var(--hot); font-size: 16px; padding: 14px 24px; display: inline-flex; align-items: center; gap: 9px; }
@@ -259,6 +260,8 @@
     <div class="acts">
       <button class="ghost" id="startShow" hidden>Setup <span id="startLeft"></span></button>
       <button class="ghost ask" id="faqOpen" aria-haspopup="dialog"><b aria-hidden="true">?</b> How it works</button>
+      <button class="ghost" id="tourOpen">Take the tour</button>
+      <a class="ghost" id="faqLink" href="/faq">FAQ</a>
       <button class="lib" id="djOpen" title="Your songs, ready for the decks: genres, AIFF, covers, cues and the club check."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 4v16M8 8v12M12 6v14M16 6l4 14"/></svg>Library Manager</button>
       <button class="big" id="sync" title="Gets new songs now, then updates your USB and DJ lists. Deletes nothing.">Sync Now</button>
     </div>
@@ -1178,5 +1181,6 @@ $('q').onkeydown = e => { if (e.key === 'Escape') { e.target.value = ''; draw();
 const tick = () => call('/api/state').catch(() => {});
 tick(); setInterval(tick, 3000);
 </script>
+<script src="/tour.js" defer></script>
 </body>
 </html>
