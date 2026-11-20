@@ -214,14 +214,12 @@ def songs(d, src):
 
 
 def has(src, rel, s):
-    """(artist, title) written inside the file now ("" for one it doesn't hold). The library's notes when it has
-    them; a file the analyser hasn't read yet (just downloaded) is opened."""
-    if s.get("tagged"):
-        return text(s.get("artist")), text(s.get("title"))
-    try:
+    """(artist, title) written inside the file now ("" for one it doesn't hold); the library's notes only when the
+    file can't be opened."""
+    try:  # the file itself: the library fills an empty artist from the file name, which the decks don't show
         now = naming._tags(details._open(os.path.join(src, rel)))[1]
     except Exception:
-        return "", ""
+        return (text(s.get("artist")), text(s.get("title"))) if s.get("tagged") else ("", "")
     return text(now.get("artist")), text(now.get("title"))
 
 
@@ -432,7 +430,8 @@ def undo(d, src, rel):
         back_tags(d, src, rel, was)
     else:  # (tidied before Undo kept its own note)
         naming.undo(d, src, rel)
-    if was.get("was") and was["was"] != os.path.basename(rel) and sources(d, src).get(rel, ("", ""))[1] == "soulseek":
+    stem = lambda n: os.path.splitext(n)[0]  # (converted since, to AIFF say: its kind stays as it is now)
+    if was.get("was") and stem(was["was"]) != stem(os.path.basename(rel)) and sources(d, src).get(rel, ("", ""))[1] == "soulseek":
         moved = renames(d, src, {link: was["was"]})
         if not moved:
             return "Its name is back. Its file name comes back when The Crate isn't busy: try Undo again in a moment."
