@@ -33,8 +33,8 @@ LEFT = (".DS_Store", "._.DS_Store")  # what macOS leaves in a folder: it doesn't
 
 
 def cf(name):
-    """A file's or genre's name, however the drive spells its letters (accents, capitals)."""
-    return unicodedata.normalize("NFC", name).casefold()
+    """A file's or genre's name, however the drive spells its letters (accents, capitals, ":" or "：")."""
+    return unicodedata.normalize("NFC", name).casefold().translate(usb_tidy.LOOK)
 
 
 def load(dir):

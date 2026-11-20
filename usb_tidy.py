@@ -88,9 +88,14 @@ def checked(d, src):
             and r.lower().endswith(AUDIO) and size(os.path.join(src, r)) > 0]
 
 
+SIGNS = {"\\": "＼", ":": "：", "*": "＊", "?": "？", '"': "＂", "<": "＜", ">": "＞", "|": "｜"}
+LOOK = str.maketrans(SIGNS)  # a sign a USB can't hold, and the look-alike usbsafe.py gives it: one name
+
+
 def same(a, b):
-    """Two names for one thing, however the drive spells its letters (accents, capitals)."""
-    return unicodedata.normalize("NFC", a).lower() == unicodedata.normalize("NFC", b).lower()
+    """Two names for one thing, however the drive spells its letters (accents, capitals, ":" or "：")."""
+    return unicodedata.normalize("NFC", a).lower().translate(LOOK) == \
+        unicodedata.normalize("NFC", b).lower().translate(LOOK)
 
 
 def swap(dest, src_file, p):

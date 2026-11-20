@@ -19,13 +19,13 @@ import fcntl, os, sys, time
 
 import usb_tidy
 
-SIGNS = {"\\": "＼", ":": "：", "*": "＊", "?": "？", '"': "＂", "<": "＜", ">": "＞", "|": "｜"}
+SIGNS = usb_tidy.SIGNS  # \\ : * ? " < > | and their look-alikes
 DOUBLE = b"\x00\x05\x16\x07"  # how every "._" file macOS writes begins (AppleDouble)
 
 
 def safe(name):
     """The name with every sign a USB can't hold swapped for its look-alike."""
-    return "".join(SIGNS.get(c, c) for c in name)
+    return name.translate(usb_tidy.LOOK)
 
 
 def names(dir, src):
