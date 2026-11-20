@@ -1187,6 +1187,7 @@ def dj_state():
     looked = {r[6] for r in friend.wanted(DIR)}  # songs a better copy is being looked for
     songs = [{"key": s["key"], "title": s["title"], "artist": s["artist"], "bpm": s["bpm"], "tone": s["musical_key"],
               "bpmFrom": tempo.SOURCES.get(s["bpm_from"], ""),
+              "check": round(float(s.get("bpm3") or s.get("own_bpm") or 0), 1) if s.get("check") else 0,
               "genres": s["genres"], "from": s["from"], "heard": s["heard"], "playlist": s["playlist"],
               "sounds": s["sounds_like"], "file": s["rel"], "kbps": kbps_of(s), "low": low_song(s),
               "lists": s["lists"], "friend": s["friend"], "better": s["rel"] in looked,
@@ -1628,6 +1629,19 @@ def dj_post(path, body):
             friend.save_wanted(DIR, rows)
         if not off:
             search_again()
+        return None
+    if path == "/api/dj/tempo":  # x2, /2 or Keep on the "check tempo" list (tempo.py): the grid follows on every deck
+        key, by = str(body.get("key", "")), body.get("by")
+        s = next((x for x in dj.library(DIR, OUT) if x["key"] == key), None)
+        if not s:
+            return "That track isn't on your Mac any more."
+        if by not in (0.5, 1, 2):
+            return "Tap x2, /2 or Keep."
+        f = s.get("tap", 1) * by
+        if f not in (0.5, 1, 2):
+            return "That's as far as it goes. Tap the other way, or Keep."
+        tempo.tap(DIR, key, f)
+        dj_run(0)
         return None
     g = genres.load(DIR)
     if path == "/api/dj/genres":  # your pick for one track: its genres, the first the main one; null = automatic again

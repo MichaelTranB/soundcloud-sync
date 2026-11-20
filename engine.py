@@ -2,19 +2,22 @@
 they show up there by artist, tempo, key and genre, with The Crate's playlists, without opening Engine DJ.
 
 The library is the SQLite file <USB>/Engine Library/Database2/m.db that the deck itself made. What this does to it:
-  - adds a row for every Crate track on the USB that the library doesn't know yet, marked "not analysed", so the
-    deck draws its own beat grid and waveform the first time the track is loaded (as it does for any new file);
-  - on rows the deck has not analysed yet, keeps title, artist, tempo, key and genre up to date (the tempo is
-    rekordbox's where it has analysed the song, else a count The Crate is sure of, else none: tempo.py); on
-    analysed rows only the genre (the deck's own tempo, key, grid, cues and loops are never touched);
+  - adds a row for every Crate track on the USB that the library doesn't know yet, already analysed: The Crate's
+    beat grid (rekordbox's, where rekordbox on this Mac has analysed the song), key and overview waveform are put in
+    as the deck keeps its own, so the deck loads it ready to play. A song The Crate couldn't analyse goes in marked
+    "not analysed", and the deck draws its own the first time it's loaded;
+  - on rows the deck has not analysed itself, keeps title, artist, tempo, key, genre and that analysis up to date
+    (tempo.py says which tempo); on rows the deck analysed, or where you changed the grid on a deck, only the genre
+    (the deck's own tempo, key, grid, cues and loops are never touched). Which analyses are The Crate's is kept on
+    the Mac (dj-engine-grids.json: a fingerprint of each grid it wrote);
   - keeps one playlist folder, "The Crate", in step. Nothing outside that folder is read or changed.
 Never touches the music files, and never takes a track out, with one exception: a row in The Crate's own folder
 whose file has left the USB (a song you threw back), which a deck would only show as missing. Before any change
 the library file is copied to the Mac (dj-backups/, the last 20 kept). Works only on the library version it knows
 (3.x); anything else is left alone with a line in the log. Standard library only."""
-import os, shutil, sqlite3, time, unicodedata
+import hashlib, json, math, os, shutil, sqlite3, struct, time, unicodedata, zlib
 
-import layout, naming, place
+import beats, layout, naming, place
 
 FOLDER = "The Crate"
 # Engine's numbers for the 24 keys.
@@ -66,6 +69,86 @@ def row(song, usb_file, music):
     }
 
 
+MARK = "dj-engine-grids.json"  # fingerprints of the analyses The Crate wrote (beside dj-backups/)
+LOUD = (0.84, 0.57, 0.46)  # three loudness figures Engine keeps; typical of its own (the decks don't show them)
+
+
+def pack(raw):
+    """A blob as Engine keeps most of them: its length, then the bytes zipped."""
+    return struct.pack(">I", len(raw)) + zlib.compress(raw)
+
+
+def analysed(g, key, overview):
+    """The deck's analysis columns (PerformanceData) for The Crate's beat grid of a song: its length and key, beat
+    grid, overview waveform, and empty cue and loop slots, as Engine 3/4 lay them out. g: the grid (beats.py), on
+    Engine's clock; overview: anlz.engine_overview's bytes ("" for none)."""
+    rate, samples = float(g["rate"]), int(g["samples"])
+    track = struct.pack(">dqi6d", rate, samples, KEYS.get(key or "", 0), *LOUD, 0, 0, 0)
+    ticks = beats.times(g, "engine")
+    P = 60 / g["bpm"] * rate
+    if ticks:
+        t0, n0 = ticks[0][0] * rate, ticks[0][1] - 1  # the first beat on or after the start, and its place in a bar
+        last = n0 + max(1, math.ceil((samples - t0) / P))  # the first beat past the end
+        marks = [(t0 + (-4 - n0) * P, -4, last + 4, 0), (t0 + (last - n0) * P, last, 0, 0)]
+        grid = struct.pack(">q", 2) + b"".join(struct.pack("<dqii", *m) for m in marks)
+        cue = t0
+    else:
+        grid, cue = struct.pack(">q", 0), 0.0
+    beat = struct.pack(">ddB", rate, float(samples), 1) + grid + grid + bytes(9)
+    cues = struct.pack(">q", 8) + (b"\0" + struct.pack(">d", -1) + bytes(4)) * 8 + struct.pack(">dBd", cue, 0, cue)
+    loops = struct.pack("<q", 8) + (b"\0" + struct.pack("<dd", -1, -1) + bytes(6)) * 8
+    return {"trackData": pack(track), "beatData": pack(beat), "overviewWaveFormData": pack(overview) if overview else None,
+            "quickCues": pack(cues), "loops": loops}
+
+
+def print_of(blob):
+    return hashlib.sha1(blob or b"").hexdigest()[:20]
+
+
+def marks(backups):
+    try:
+        with open(os.path.join(os.path.dirname(backups), MARK)) as f:
+            got = json.load(f)
+        return set(got) if isinstance(got, list) else set()
+    except (OSError, ValueError):
+        return set()
+
+
+def remember(backups, kept):
+    p = os.path.join(os.path.dirname(backups), MARK)
+    with open(p + ".tmp", "w") as f:
+        json.dump(sorted(kept), f)
+    os.replace(p + ".tmp", p)
+
+
+def theirs(usb, backups):
+    """The rows a deck analysed itself (or whose grid you changed on a deck): {path: tempo}, read only. A row The
+    Crate analysed isn't one."""
+    db = db_path(usb)
+    if not os.path.isfile(db):
+        return {}
+    mine = marks(backups)
+    con = sqlite3.connect(db, timeout=20)
+    try:
+        return {nfc(p): b for p, b, d in con.execute(
+            "SELECT t.path, t.bpmAnalyzed, p.beatData FROM Track t LEFT JOIN PerformanceData p ON p.trackId = t.id "
+            "WHERE t.isAnalyzed = 1") if p and print_of(d) not in mine}
+    finally:
+        con.close()
+
+
+def grid_of(song):
+    """The Crate's analysis of a song, when it has one: (its grid, its overview waveform's bytes)."""
+    g = song.get("grid")
+    if not isinstance(g, dict) or not g.get("bpm") or not g.get("rate") or not g.get("samples"):
+        return None, b""
+    try:
+        with open(os.path.join(song.get("grid_dir") or "", "engine.bin"), "rb") as f:
+            return g, f.read()
+    except OSError:
+        return g, b""
+
+
 def genres_there(usb, songs):
     """The genre the USB's Engine library shows for each Crate track now: {rel: genre}. None when the USB has no
     Engine library. Reads only."""
@@ -114,8 +197,38 @@ def write(usb, songs, lists, backups):
         con.execute("BEGIN IMMEDIATE")
         before = con.total_changes
         now = int(time.time())
-        have = {nfc(p): (i, a) for i, p, a in con.execute("SELECT id, path, isAnalyzed FROM Track") if p}
-        ids, added, analysed = {}, 0, 0
+        kept = marks(backups)
+        was_kept = set(kept)
+        have, ours = {}, set()  # (ours: the rows whose analysis is The Crate's, not a deck's)
+        for i, p, a, d in con.execute("SELECT t.id, t.path, t.isAnalyzed, p.beatData FROM Track t "
+                                      "LEFT JOIN PerformanceData p ON p.trackId = t.id"):
+            if p:
+                mine = bool(a) and print_of(d) in kept
+                have[nfc(p)] = (i, bool(a) and not mine)
+                if mine:
+                    ours.add(i)
+        ids, added, by_deck, ready = {}, 0, 0, 0
+
+        def analyse(tid, s, fresh):
+            """The Crate's analysis into the row: all of it on a row no deck has analysed, only the grid, length and
+            waveform on one it analysed before (cue points set since stay)."""
+            g, wave = grid_of(s)
+            if not g:
+                return False
+            cols = analysed(g, s.get("musical_key"), wave)
+            kept.add(print_of(cols["beatData"]))
+            if not fresh:
+                cols = {c: v for c, v in cols.items() if c in ("trackData", "beatData", "overviewWaveFormData")}
+                now = con.execute(f"SELECT {', '.join(cols)} FROM PerformanceData WHERE trackId=?", (tid,)).fetchone()
+                cols = {c: v for (c, v), o in zip(cols.items(), now or [None] * len(cols)) if v is not None and v != o}
+            if cols:
+                con.execute(f"INSERT INTO PerformanceData (trackId, {', '.join(cols)}) VALUES (?{', ?' * len(cols)}) "
+                            f"ON CONFLICT(trackId) DO UPDATE SET {', '.join(c + '=excluded.' + c for c in cols)}",
+                            (tid, *cols.values()))
+            if fresh:
+                con.execute("UPDATE Track SET isAnalyzed=1 WHERE id=?", (tid,))
+                ours.add(tid)
+            return True
         # (a row left at a place the folder had before follows its file, the same way)
         by = layout.rows(have, tuple(f"../{m}/" for m in [music] + place.others(usb)))
         there = lambda p: os.path.isfile(os.path.join(usb, p[3:]))
@@ -124,6 +237,9 @@ def write(usb, songs, lists, backups):
             nfc(f"../{m}/{n}") for n in (s.get("at") or s["rel"], s.get("was")) if n for m in place.others(usb)], there)
         for s, usb_file in on_usb:
             r = row(s, usb_file, music)
+            g = grid_of(s)[0]
+            if g:  # the row shows the tempo of the grid it plays with
+                r["bpm"], r["bpmAnalyzed"] = int(round(g["bpm"])), float(g["bpm"])
             old = nfc(f"../{music}/{s['was']}") if s.get("was") else ""
             if r["path"] not in have and old not in have:  # filed into another folder on the USB (layout.py)
                 old = same.get(s["rel"]) or layout.old(by, s, r["path"], there)
@@ -135,7 +251,9 @@ def write(usb, songs, lists, backups):
             if r["path"] in have:
                 tid, done = have[r["path"]]
                 ids[s["rel"]] = tid
-                analysed += 1 if done else 0
+                by_deck += 1 if done else 0
+                if not done:
+                    ready += analyse(tid, s, tid not in ours)
                 # a song the deck has analysed keeps what the deck holds: only its genre follows, and a name, artist,
                 # album or year the library had none of (filled in since: details.py), and a name fixed on the page
                 # (naming.py) where the deck still shows the old one
@@ -161,14 +279,15 @@ def write(usb, songs, lists, backups):
             cur = con.execute(f"INSERT INTO Track ({', '.join(r)}) VALUES ({', '.join('?' * len(r))})", tuple(r.values()))
             ids[s["rel"]] = cur.lastrowid
             added += 1
+            ready += analyse(cur.lastrowid, s, True)
         # A row in The Crate's own folder whose file has left the USB (a song you threw back) goes too, the same as
         # in the USB's rekordbox library: a deck would only show it as a missing file. Only rows of that folder, never
         # a song of your own or a friend's, and only while the folder and some of its songs are seen on the USB.
         gone = 0
         if on_usb and os.path.isdir(place.folder(usb)):
-            kept, inside = set(ids.values()), nfc(f"../{music}/")
+            live, inside = set(ids.values()), nfc(f"../{music}/")
             for p, (tid, _) in list(have.items()):
-                if tid in kept or not p.startswith(inside) or there(p):
+                if tid in live or not p.startswith(inside) or there(p):
                     continue
                 con.execute("DELETE FROM PlaylistEntity WHERE trackId=? AND databaseUuid=?", (tid, uuid))
                 con.execute("DELETE FROM Track WHERE id=?", (tid,))  # (its cues and grid go with it: the schema's own rule)
@@ -218,6 +337,8 @@ def write(usb, songs, lists, backups):
             con.executemany("UPDATE PlaylistEntity SET nextEntityId=? WHERE id=?", zip(new[1:], new[:-1]))
             con.execute("UPDATE Playlist SET lastEditTime=? WHERE id=?", (now, lid))
         changed = con.total_changes - before
+        if kept != was_kept:
+            remember(backups, kept)  # (before the change is kept: a fingerprint too many does no harm, one missing would)
         if not changed:
             con.execute("ROLLBACK")
             os.remove(saved)  # nothing changed: no need for the copy
@@ -237,7 +358,7 @@ def write(usb, songs, lists, backups):
         except OSError:
             pass
         total = len(ids)
-        return (f"{total} tracks in the library ({added} new, {analysed} already analysed by the deck), "
+        return (f"{total} tracks in the library ({added} new, {ready} analysed by The Crate, {by_deck} by the deck), "
                 f"{len(wanted)} playlists in \"{FOLDER}\"" + (f"; {gone} taken out (no longer on the USB)" if gone else ""))
     except Exception:
         if con.in_transaction:

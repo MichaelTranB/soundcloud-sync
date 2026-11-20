@@ -13,7 +13,7 @@ Standard library only. Tempo and key need the private Python dj-setup.sh sets up
 still reach the decks, which then analyse them on load."""
 import fcntl, json, os, re, subprocess, sys, time, unicodedata
 
-import friend, genres, layout, liked, naming, recognise, tempo, usb_ask, usb_tidy
+import dj_analyze, friend, genres, layout, liked, naming, recognise, tempo, usb_ask, usb_tidy
 import place as fold  # (place() here marks where each song sits; fold is The Crate's folder on a USB)
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
@@ -282,6 +282,7 @@ def library(dir, src):
     table = genres.lookup(g["list"])
     named = naming.was(dir)  # the names a song went by before its name was fixed (naming.py)
     settled = tempo.load(dir)  # the tempo each song is shown and written with (tempo.py)
+    tapped = tempo.taps(dir)  # your x2, /2 and Keep on the "check tempo" list
     came, lists_of = friend.load(dir), {}  # what was copied in from another USB (friend.py)
     for n, l in came["lists"].items():
         for r in l.get("rels", []):
@@ -313,9 +314,21 @@ def library(dir, src):
             song["size"], song["mtime"] = st.st_size, int(st.st_mtime)
         except OSError:
             song["size"], song["mtime"] = 0, 0
-        # rekordbox's or a deck's analysis, or The Crate's own count where its second count agrees: never a guess
-        song["bpm"], song["bpm_from"] = tempo.said(settled, song)
+        # The Crate's own analysis (beat grid, waveforms: dj_analyze.py), which goes onto the USB with the song
+        gid = a.get("grid_id", "") if isinstance(a.get("grid"), dict) and a["grid"].get("v") == dj_analyze.GRID_VERSION else ""
+        song.update(own_grid=a["grid"] if gid else None, grid_dir=os.path.join(dir, dj_analyze.GRIDS, gid) if gid else "",
+                    bpm3=a.get("bpm3", 0))
+        dat = os.path.join(song["grid_dir"], "ANLZ0000.DAT") if gid else ""
+        song["grid_anlz"] = dat if dat and os.path.isfile(dat) else ""
+        # rekordbox's or a deck's analysis, else The Crate's: the beat grid tempo.py settled on
         song["genres"], song["from"] = genres.decide(song, g, table)
+        f, song["octave"] = tempo.octave(song, tapped)  # double or half, by your tap or the main genre
+        song["own_grid"], song["tap"] = tempo.fold(song["own_grid"], f), f
+        song["bpm"], song["bpm_from"] = tempo.said(settled, song)
+        if song["bpm_from"] == "grid" and song["own_grid"]:  # (a tap just now: shown at once, before tempo.py runs)
+            song["bpm"] = float(song["own_grid"]["bpm"])
+        song["grid"] = tempo.grid_said(settled, song) or song["own_grid"]  # (rekordbox's grid, where it's the one)
+        song["check"] = tempo.check(song)
         song["heard"] = genres.heard(song)
         if rel in fav or (home and rel.startswith(home + os.sep)):  # one of your Spotify Liked Songs
             song["liked"] = fav.get(rel, len(fav))
@@ -387,6 +400,13 @@ def analyse(dir, src):
     again = [l for l in r.stdout.splitlines() if re.match(r"again \d+/\d+ ", l)]
     if again:
         log(dir, f"counted the tempo a second time on {len(again)} track{'s' if len(again) != 1 else ''}")
+    grid = [l for l in r.stdout.splitlines() if re.match(r"grid \d+/\d+ ", l)]
+    if grid:
+        log(dir, f"drew the beat grid and waveforms of {len(grid)} track{'s' if len(grid) != 1 else ''} (ready for the USB)")
+    unsure = sum(1 for l in r.stdout.splitlines() if re.match(r"(grid )?\d+/\d+  \S+  \S+  -  ", l))
+    if unsure:
+        log(dir, f"ANALYSER PROBLEM: no beat grid for {unsure} track{'s' if unsure != 1 else ''} (the decks analyse "
+                 f"{'them' if unsure != 1 else 'it'} on load)")
     if r.returncode:
         log(dir, "ANALYSER PROBLEM: " + (r.stderr.strip().splitlines() or ["stopped"])[-1][:300])
 
@@ -410,6 +430,8 @@ def settle(dir, src, songs, stick):
     note = tempo.load(dir)
     for s in songs:
         s["bpm"], s["bpm_from"] = tempo.said(note, s)
+        s["grid"] = tempo.grid_said(note, s) or s.get("own_grid")
+        s["check"] = tempo.check(s)
 
 
 def run(dir, src, volumes="/Volumes", wait=False):
