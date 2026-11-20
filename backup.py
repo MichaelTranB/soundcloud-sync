@@ -24,9 +24,14 @@ USB goes wrong.
   list beside each backup says which day holds each file). The small lists stay on this Mac, in usb-backups/, so
   the page never waits for iCloud. At plug-in only the libraries go (they are small, and they hold the cues); the
   songs that are only on the USB follow on their own (songs): a few at a time, only while this Mac keeps RESERVE
-  free, and each one gives its room on this Mac back once it is safely in iCloud. So a full USB fits through a Mac
-  with little room. It carries on at the next plug-in if the USB is unplugged first. iCloud Drive off, or not to be
-  opened: the backup is made on this Mac that time, and says so.
+  free, and each one gives its room on this Mac back once macOS says it is safely in iCloud. So a full USB fits
+  through a Mac with little room. It carries on at the next plug-in if the USB is unplugged first. iCloud Drive off,
+  or not to be opened: the backup is made on this Mac that time, and says so.
+  Everything bound for iCloud Drive is gathered on this Mac first (usb-backups/<USB>/.up) and moved in whole, under
+  its own name: never under a ".nosync" one, since macOS keeps a folder or file made under such a name out of iCloud
+  for good, even after a rename (heal() rebuilds a backup an older version left that way). What is really uploaded
+  is asked of macOS itself (look()), never assumed: the page and each backup's about.json say how much is in iCloud
+  and how much still waits on this Mac.
 
   backup.py run DIR USB SRC                at plug-in, and the page's "Back up now"
   backup.py songs DIR USB SRC              started by run: the USB-only songs go up to iCloud Drive
@@ -38,7 +43,7 @@ import errno, fcntl, hashlib, json, os, re, shutil, sqlite3, subprocess, sys, th
 import usb_ask, usb_tidy
 
 ROOT, SET, KEEP, BAD = "usb-backups", "usb-backup.json", 10, 2
-RESERVE = int(os.environ.get("CRATE_BACKUP_RESERVE") or 5 * 1024 ** 3)  # the room that always stays free on this Mac
+RESERVE = int(os.environ.get("CRATE_BACKUP_RESERVE") or 20 * 1024 ** 3)  # the room that always stays free on this Mac
 LIBS = (("rekordbox", "pioneer"), ("Engine DJ", "engine library"), ("Serato", "_serato_"))
 MAIN = (("rekordbox", "pioneer/rekordbox/export.pdb"), ("rekordbox", "pioneer/rekordbox/exportlibrary.db"),
         ("Engine DJ", "engine library/database2/m.db"))  # a library is gone when one of these was there and isn't
@@ -47,18 +52,24 @@ SKIP = usb_ask.SYSTEM + ("thrown back by the crate",)
 CLOUD = os.environ.get("CRATE_ICLOUD") or os.path.expanduser("~/Library/Mobile Documents/com~apple~CloudDocs")
 INSIDE = ("The Crate", "USB backups")
 DATALESS = 0x40000000  # (stat.SF_DATALESS) a file whose content is in iCloud only: its name, size and time are here
-# Asks macOS, for each path in a list: is it safely in iCloud? Then its room on this Mac is given back (the file
-# stays in iCloud Drive and comes back when it is opened). macOS itself refuses one that has not gone up yet.
+# Asks macOS about each file in a list, one letter each: "x" kept out of iCloud (macOS's own "excluded from sync"),
+# "-" not in iCloud Drive at all, "w" in iCloud Drive but not uploaded yet, "u" uploaded (its content still here),
+# "e" uploaded and its room on this Mac given back just now (only asked with "free": macOS itself refuses that for a
+# file that has not gone up, which is the safety), "?" macOS could not say.
 JXA = """ObjC.import("Foundation");
 function run(argv) {
-  var out = "", fm = $.NSFileManager.defaultManager;
+  var out = "", fm = $.NSFileManager.defaultManager, free = argv[1] === "free";
+  var keys = $(["NSURLIsUbiquitousItemKey", "NSURLUbiquitousItemIsUploadedKey", "NSURLUbiquitousItemIsExcludedFromSyncKey"]);
   var names = ObjC.unwrap($.NSString.stringWithContentsOfFileEncodingError(argv[0], $.NSUTF8StringEncoding, null)).split("\\n");
   for (var i = 0; i < names.length; i++) {
     if (!names[i]) continue;
-    var u = $.NSURL.fileURLWithPath(names[i]);
-    var d = u.resourceValuesForKeysError($(["NSURLUbiquitousItemIsUploadedKey"]), null);
-    var up = !d.isNil() && !!ObjC.unwrap(d.objectForKey("NSURLUbiquitousItemIsUploadedKey"));
-    out += up && fm.evictUbiquitousItemAtURLError(u, null) ? "1" : "0";
+    var u = $.NSURL.fileURLWithPath(names[i]), d = u.resourceValuesForKeysError(keys, null);
+    var is = function (k) { return !!ObjC.unwrap(d.objectForKey(k)); };
+    if (d.isNil()) out += "?";
+    else if (is("NSURLUbiquitousItemIsExcludedFromSyncKey")) out += "x";
+    else if (!is("NSURLIsUbiquitousItemKey")) out += "-";
+    else if (!is("NSURLUbiquitousItemIsUploadedKey")) out += "w";
+    else out += free && fm.evictUbiquitousItemAtURLError(u, null) ? "e" : "u";
   }
   return out;
 }"""
@@ -153,22 +164,97 @@ def fetch(path):
         return False
 
 
+def look(dir, paths, free=False):
+    """What macOS says of each file in iCloud Drive: {path: letter} (JXA above). A file whose content is in iCloud
+    only is "c" without asking (macOS gives a file's room back only once it is up). free: each one that is uploaded
+    gives its room on this Mac back ("e"). macOS can't be asked: "?" for each (nothing is freed then)."""
+    out, ask = {}, []
+    for p in dict.fromkeys(paths):
+        try:
+            out[p] = "c" if os.stat(p).st_flags & DATALESS else ask.append(p) or "?"
+        except OSError:
+            out[p] = "?"
+    if not ask:
+        return out
+    f = os.path.join(dir, ROOT, ".cloud.txt")
+    try:
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        with open(f, "w") as o:
+            o.write("\n".join(ask))
+        got = subprocess.run(["osascript", "-l", "JavaScript", "-e", JXA, f] + ["free"] * bool(free), capture_output=True,
+                             text=True, timeout=120 + len(ask) // 20)
+        said = got.stdout.strip() if got.returncode == 0 else ""
+        if len(said) == len(ask):
+            out.update(zip(ask, said))
+    except (OSError, subprocess.SubprocessError):
+        pass
+    finally:
+        if os.path.exists(f):
+            os.remove(f)
+    return out
+
+
 def evict(dir, paths):
-    """Files that are safely in iCloud give their room on this Mac back (JXA above). Returns how many did; None when
-    this Mac can't be asked (then macOS frees the room itself, when it runs short: "Optimise Mac Storage")."""
+    """Files that are safely in iCloud give their room on this Mac back. Returns how many did; None when this Mac
+    can't be asked (then macOS frees the room itself, when it runs short: "Optimise Mac Storage")."""
     if not paths:
         return 0
-    p = os.path.join(dir, ROOT, ".cloud.txt")
+    got = look(dir, paths, free=True)
+    return None if all(v == "?" for v in got.values()) else sum(v == "e" for v in got.values())
+
+
+def into(a, b):
+    """Moves a file or folder made on this Mac into iCloud Drive in one step, so iCloud only ever sees it whole and
+    under its own name."""
+    os.makedirs(os.path.dirname(b), exist_ok=True)
     try:
-        with open(p, "w") as f:
-            f.write("\n".join(paths))
-        got = subprocess.run(["osascript", "-l", "JavaScript", "-e", JXA, p], capture_output=True, text=True, timeout=600)
-        return got.stdout.count("1") if got.returncode == 0 else None
-    except (OSError, subprocess.SubprocessError):
-        return None
-    finally:
-        if os.path.exists(p):
-            os.remove(p)
+        os.replace(a, b)
+    except OSError as e:
+        if e.errno != errno.EXDEV:
+            raise
+        shutil.move(a, b)  # (iCloud Drive on another disk than this Mac's lists: copied, then taken from here)
+
+
+def heal(dir, up, name):
+    """A backup's folder in iCloud Drive that macOS keeps out of iCloud (an older version gathered it under a
+    ".nosync" name, and macOS keeps an item made under such a name out for good, even after a rename) is built
+    again: fresh folders under the very same names, and each file MOVED into them (never copied, so it takes no
+    room, and never deleted; only the empty old folders go, and a cut-short ".nosync" copy, which no list counts on).
+    Returns how many backups were healed."""
+    far = os.path.join(up, safe(name))
+    try:
+        tops = [os.path.join(far, d) for d in sorted(os.listdir(far)) if when(d) or d.endswith(" (moving)")]
+    except OSError:
+        return 0
+    said, n = look(dir, [t for t in tops if not t.endswith(" (moving)")]), 0
+    for top in tops:
+        old = top if top.endswith(" (moving)") else top + " (moving)"
+        top = old[:-len(" (moving)")]
+        if said.get(top) == "x" and not os.path.exists(old):
+            os.rename(top, old)
+        elif not os.path.isdir(old):
+            continue  # (one cut short before is carried on with)
+        for root, dirs, names in os.walk(old):
+            to = os.path.normpath(os.path.join(top, os.path.relpath(root, old)))
+            os.makedirs(to, exist_ok=True)
+            for f in names:
+                if f.endswith(".nosync") or f == ".DS_Store":
+                    os.remove(os.path.join(root, f))
+                elif not os.path.lexists(os.path.join(to, f)):
+                    os.rename(os.path.join(root, f), os.path.join(to, f))
+        for root, dirs, names in os.walk(old, topdown=False):
+            try:
+                os.rmdir(root)  # (only when nothing is left in it)
+            except OSError:
+                pass
+        n += 1
+        if os.path.isdir(old):
+            log(dir, f'BACKUP PROBLEM: "{name}": some files of the backup {os.path.basename(top)} could not be moved '
+                f'back into iCloud: they are kept in "{old}".')
+    if n:
+        log(dir, f'backup: "{name}": {n} {"backup" if n == 1 else "backups"} in iCloud Drive that macOS had kept out of '
+            "iCloud (an older version of The Crate gathered them under a .nosync name) are put right: they go up now.")
+    return n
 
 
 def quota():
@@ -443,6 +529,44 @@ def sweep(dir, name, out=()):
     note(dir, name, old=left or None)
 
 
+_ASKED = {}
+
+
+def tally(dir, name, up, pool, lists, free=True, every=300):
+    """What of a USB's backups in iCloud Drive is really in iCloud, asked of macOS (look), never assumed: every file a
+    kept backup counts on. Each one that is up gives its room on this Mac back (free). Each backup's about.json gets
+    "sent" (bytes in iCloud) and "unsent" (bytes only on this Mac so far). Returns {"sent", "unsent", "out": bytes
+    macOS keeps out of iCloud, "here": files still to go up or to leave this Mac, "freed", "asked": when}, or None
+    when it was asked less than `every` seconds ago (asking takes a while on many files)."""
+    if time.time() - _ASKED.get(name, 0) < every:
+        return None
+    _ASKED[name] = time.time()
+    size = {}
+    for s in pool:
+        for rel, row in lists[s["id"]].items():
+            if len(row) > 3:
+                size[spot(dir, name, s["id"], rel, row, up)] = row[0]
+    said = look(dir, list(size), free=free)
+    if size and all(v == "?" for v in said.values()):
+        return None  # macOS can't be asked now: what was said last stands
+    got = {"sent": sum(size[p] for p, v in said.items() if v in "cue"), "freed": sum(v == "e" for v in said.values()),
+           "unsent": sum(size[p] for p, v in said.items() if v not in "cue"),
+           "out": sum(size[p] for p, v in said.items() if v == "x"),
+           "here": sum(v not in "ce" for v in said.values()), "asked": int(time.time())}
+    # ("here" counts every file not yet off this Mac, one iCloud hasn't registered yet ("-") or couldn't say ("?")
+    # included: the songs job keeps asking until each is up and gone from here, or a day passes with no change)
+    for s in pool:
+        at = os.path.join(home(dir, name), s["id"], "about.json")
+        about, mine = read(at, {}), [spot(dir, name, s["id"], rel, row, up) for rel, row in lists[s["id"]].items()
+                                     if len(row) > 3]
+        sent = sum(size[p] for p in mine if said.get(p, "?") in "cue")
+        new = {"sent": sent, "unsent": sum(size[p] for p in mine) - sent}
+        if isinstance(about, dict) and about and {k: about.get(k) for k in new} != new:
+            write(at, {**about, **new})
+            twin(dir, name, s["id"], up)
+    return got
+
+
 def lifted(dir, name):
     """How much of a USB's backups is kept in iCloud Drive (a file kept once counts once)."""
     seen = {}
@@ -480,6 +604,8 @@ def _run(dir, usb, src, name, keep, fail):
     cfg = load(dir)
     up = cloud() if cfg["place"] == "icloud" else ""  # (iCloud Drive chosen but not to be opened: this Mac, this time)
     far, tail = os.path.join(up, safe(name)) if up else "", "icloud" if up else "mac"
+    if up:
+        heal(dir, up, name)
     # A backup builds on the newest one kept in the same place: what didn't change since is shared with it
     base = next((s for s in got if (s.get("place") or "mac") == tail), None)
     # In iCloud Drive a file is kept once, by the backup that first held it: every backup kept there is looked at, so
@@ -526,10 +652,10 @@ def _run(dir, usb, src, name, keep, fail):
     while os.path.exists(os.path.join(at, stamp())) or (up and os.path.exists(os.path.join(far, stamp()))):
         t += 1  # (two backups within one second: each gets a folder of its own)
     day, part = time.strftime("%Y-%m-%d %H%M%S", time.localtime(t)), os.path.join(at, ".part")
-    # In iCloud Drive the files are gathered under a name iCloud leaves alone (".nosync") and go up once they are whole
-    box = os.path.join(far, ".part.nosync") if up else part
-    for d in {part, box}:
-        shutil.rmtree(d, ignore_errors=True)  # (what a backup cut short left behind)
+    # For iCloud Drive the files are gathered on this Mac and moved in whole once they all are (into)
+    box = os.path.join(at, ".up") if up else part
+    for d in {part, box} | ({os.path.join(far, ".part.nosync")} if up else set()):
+        shutil.rmtree(d, ignore_errors=True)  # (what a backup cut short left behind; .part.nosync: an older version's)
     files, bad, unread = {}, {}, list(stuck)
     todo = sorted((rel, row) for rel, row in seen.items() if rel not in waiting)
 
@@ -602,15 +728,15 @@ def _run(dir, usb, src, name, keep, fail):
     if up:
         write(os.path.join(part, "waiting.json"), waiting)
         os.makedirs(box, exist_ok=True)
-        os.rename(box, os.path.join(far, day))
+        into(box, os.path.join(far, day))
     os.rename(part, os.path.join(at, day))
     twin(dir, name, day, up)
     prune(dir, name, keep)
     # (songs that went up before and haven't left this Mac yet still count: after() sends them off, with or without
     # new songs to go up)
-    here = (note(dir, name).get("up") or {}).get("here") or 0
-    note(dir, name, checked=int(time.time()), size=weigh(at), cloud=lifted(dir, name),
-         up={"left": len(waiting), "here": here, "why": "", "at": int(time.time())} if up else None)
+    was = note(dir, name).get("up") or {}
+    note(dir, name, checked=int(time.time()), size=weigh(at), kept=lifted(dir, name), cloud=None,
+         up={**was, "left": len(waiting), "here": was.get("here") or 0, "why": "", "at": int(time.time())} if up else None)
     good = next((s for s in snaps(dir, name) if s.get("ok")), None)
     if why and good and not note(dir, name).get("repair"):
         # it stays "to repair" until a backup is put back or you say it's fine: a USB you erased gets new, empty
@@ -672,6 +798,11 @@ def songs(dir, usb, src=""):
         f.write(str(os.getpid()))
     try:
         idle, skip, start = 0, set(), ((snaps(dir, name) or [{}])[0]).get("waiting")
+        with open(os.path.join(dir, ".backup.lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            up = cloud() if load(dir)["place"] == "icloud" else ""
+            if up:
+                heal(dir, up, name)  # (a backup an older version left out of iCloud goes up now)
         while idle < 2880:
             with open(os.path.join(dir, ".backup.lock"), "w") as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
@@ -707,14 +838,14 @@ def _songs(dir, usb, name, skip, turn=20):
         return False, 0
     pool = [s for s in kept if s.get("place") == "icloud"]  # (the newest first)
     lists = {s["id"]: files_of(dir, name, s["id"]) for s in pool}
-    # Room first: songs that are safely in iCloud leave this Mac (the libraries stay: they are small). Every backup
-    # kept there is looked through, not just the newest: a song the USB lost since is still in an older one.
-    held = {spot(dir, name, day, rel, row, up) for day, rows in lists.items() for rel, row in rows.items()
-            if row[2] == "song" and len(row) > 3}
-    here = sorted(p for p in held if local(p))
-    freed = evict(dir, here)
-    here, why, did, rest, left0 = len(here) - (freed or 0), "", False, 0, 0
-    free, left, t0 = shutil.disk_usage(up).free, room(30), time.time()
+    # Room first: what macOS says is safely in iCloud leaves this Mac. Every backup kept there is looked through, not
+    # just the newest: a song the USB lost since is still in an older one.
+    was = note(dir, name).get("up") or {}
+    seen = tally(dir, name, up, pool, lists)
+    here, freed = (seen["here"], seen["freed"]) if seen else (was.get("here") or 0, 0)
+    why, did, rest, left0, tmp = "", False, 0, 0, os.path.join(home(dir, name), ".up-song")
+    # (a song is copied on this Mac first, into .up-song: the room that counts is the smaller of both disks)
+    free, left, t0 = min(shutil.disk_usage(up).free, shutil.disk_usage(home(dir, name)).free), room(30), time.time()
     # What iCloud Drive holds by now, by its place on the USB, its size and its time: {...: the day that holds it}
     have = {(rel, row[0], row[1]): row[3] for s in reversed(pool) for rel, row in lists[s["id"]].items() if len(row) > 3}
     # The newest backup's waiting songs go up, and then what an older one kept there still waits for: a song the copy
@@ -777,12 +908,14 @@ def _songs(dir, usb, name, skip, turn=20):
                 continue
             to = spot(dir, name, day, rel, row + [day], up)
             try:
+                if os.path.exists(to + ".nosync"):
+                    os.remove(to + ".nosync")  # (an older version's copy, cut short: no list counts on it)
                 if usb_tidy.size(to) != row[0]:  # (one that got there just before a stop is taken as it is)
-                    os.makedirs(os.path.dirname(to), exist_ok=True)
-                    copy(a, to + ".nosync", row[1])
-                    if os.path.getsize(to + ".nosync") != row[0]:
+                    # copied on this Mac first, then moved in whole (into): iCloud never sees half a song
+                    copy(a, tmp, row[1])
+                    if os.path.getsize(tmp) != row[0]:
                         raise OSError("cut short")
-                    os.replace(to + ".nosync", to)
+                    into(tmp, to)
                     free -= row[0]
                     if left is not None:
                         left = _ROOM["free"] = left - row[0]
@@ -790,8 +923,8 @@ def _songs(dir, usb, name, skip, turn=20):
                 have[(rel, row[0], row[1])] = day
                 here += 1
             except OSError:
-                if os.path.exists(to + ".nosync"):
-                    os.remove(to + ".nosync")
+                if os.path.exists(tmp):
+                    os.remove(tmp)
                 if not os.path.isdir(usb):
                     why = "unplugged"
                     rest += 1
@@ -812,11 +945,12 @@ def _songs(dir, usb, name, skip, turn=20):
         if not n:
             left0 = len(waiting)
     why = why or ("unread" if any(r in skip for r in newest) else "")
-    note(dir, name, up={"left": left0, "here": here, "why": why, "at": int(time.time())},
-         **({"cloud": lifted(dir, name)} if did else {}))
+    keep = {k: v for k, v in (seen or was).items() if k in ("sent", "unsent", "out", "asked")}
+    note(dir, name, up={**keep, "left": left0, "here": here, "why": why, "at": int(time.time())},
+         **({"kept": lifted(dir, name)} if did else {}))
     # (iCloud full: the songs still wait, and go up by themselves once there is room again; it is asked every few minutes)
     can = 0 if why == "unplugged" else rest
-    return bool(did or freed), can + (here if freed is not None else 0)
+    return bool(did or freed), can + here
 
 
 def binned(usb, rel, row):
@@ -847,8 +981,10 @@ def after(dir, usb, src):
     if load(dir)["place"] != "icloud" or not last or last.get("place") != "icloud" or alive(dir, name):
         return
     # (an older backup kept there can still wait for a song too: one the copy to the USB replaced before it went up)
+    # (and once after each backup, so macOS is asked what of it is up, and what is gives its room on this Mac back)
+    up = note(dir, name).get("up") or {}
     if (not any(s.get("waiting") for s in snaps(dir, name) if s.get("place") == "icloud")
-            and not (note(dir, name).get("up") or {}).get("here")):
+            and not up.get("here") and (up.get("asked") or 0) >= last.get("when", 0)):
         return
     with open(os.path.join(dir, "dj.log"), "a") as out:
         subprocess.Popen([sys.executable, os.path.abspath(__file__), "songs", dir, usb, src], start_new_session=True,
@@ -1026,10 +1162,12 @@ def status(dir):
         if got:
             st = note(dir, n)
             sticks.append({"name": got[0].get("name") or n, "size": st.get("size", 0), "checked": st.get("checked", 0),
-                           "repair": st.get("repair"), "fine": st.get("fine"), "cloud": st.get("cloud", 0),
+                           "repair": st.get("repair"), "fine": st.get("fine"),
+                           # in iCloud: only what macOS said is uploaded ("kept": what the backups' lists hold)
+                           "cloud": (st.get("up") or {}).get("sent", 0), "kept": st.get("kept", st.get("cloud", 0)),
                            "up": st.get("up") if got[0].get("place") == "icloud" else None, "going": alive(dir, n),
                            "snaps": [{k: s.get(k) for k in ("id", "when", "ok", "why", "libs", "songs", "bytes", "skipped",
-                                                            "place", "waiting")} for s in got]})
+                                                            "place", "waiting", "sent", "unsent")} for s in got]})
     return {"songs": cfg["songs"], "place": cfg["place"], "free": room() if cfg["place"] == "icloud" else None,
             "going": alive(dir), "sticks": sticks, "doing": progress(dir)}
 

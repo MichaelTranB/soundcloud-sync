@@ -917,15 +917,19 @@ function draw() {
     sm.append(link('It\'s fine', () => post('/api/dj/backup', { fine: mine.name })));
     bkRow(el('span', { className: 'dot warn' }), stickName + ' looks damaged: ' + (hurt.why || 'its library could not be read') + '.', sm);
   }
+  const mb = b => b ? size(Math.max(1, Math.round(b / 1e6))) : 'nothing';
+  const icl = m => !(m.up || {}).asked ? 'checking what is in iCloud' : mb(m.cloud || 0) + ' in iCloud' + (m.up.unsent ? ', ' + mb(m.up.unsent) + ' still waiting to upload' : '');
   const fine = mine && mine.snaps.find(x => x.ok);
   if (fine) bkRow(el('span', { className: 'dot ok' }), 'Backed up ' + at(fine.when), el('small', { textContent: [(fine.libs || []).join(', ') || 'No deck library on it yet',
-    fine.songs ? num(fine.songs) + (fine.songs === 1 ? ' song that is' : ' songs that are') + ' only on the USB' : '', fine.place === 'icloud' ? size(Math.max(1, Math.round((mine.cloud || fine.bytes) / 1e6))) + ' in iCloud Drive' : size(Math.max(1, Math.round((mine.size || fine.bytes) / 1e6))) + ' on this Mac',
+    fine.songs ? num(fine.songs) + (fine.songs === 1 ? ' song that is' : ' songs that are') + ' only on the USB' : '', fine.place === 'icloud' ? icl(mine) : size(Math.max(1, Math.round((mine.size || fine.bytes) / 1e6))) + ' on this Mac',
     fine.skipped || '', !hurt && mine.checked > fine.when + 90 ? 'nothing new since, checked ' + at(mine.checked) : '', S.usbIn ? '' : 'plug it in to back it up or repair it'].filter(Boolean).join(' · ') }));
   else if (!doing) bkRow(el('span', { className: 'dot' }), 'No backup yet', el('small', { textContent: S.usbIn ? 'It is made by itself each time your USB is plugged in. Or now.' : 'Plug in your USB: its backup is made by itself.' }));
-  // iCloud Drive: the songs that are only on the USB go up after its libraries, as this Mac has room
+  // iCloud Drive: the songs that are only on the USB go up after its libraries, as this Mac has room. What is in
+  // iCloud is what macOS says is uploaded (backup.tally), never what was merely copied into iCloud Drive.
   const up = new1 && new1.place === 'icloud' ? { ...(mine.up || {}), left: new1.waiting || 0 } : null;
-  if (up && (up.left || up.here) && !doing) bkRow(el('span', { className: mine.going ? 'spin' : 'dot' }), 'Songs going up to iCloud Drive', el('small', { textContent: [
-    up.left ? num(up.left) + ' to go' : '', up.here ? num(up.here) + ' uploading' : '', B.free != null ? 'iCloud has ' + size(Math.round(B.free / 1e6)) + ' free' : '',
+  if (up && (up.left || up.here || up.unsent) && !doing) bkRow(el('span', { className: mine.going ? 'spin' : 'dot' }), 'Going up to iCloud Drive', el('small', { textContent: [
+    up.left ? num(up.left) + (up.left === 1 ? ' song' : ' songs') + ' still only on the USB' : '', up.unsent ? mb(up.unsent) + ' on this Mac, waiting to upload' : '',
+    up.out ? mb(up.out) + ' that macOS kept out of iCloud: being put right' : '', B.free != null ? 'iCloud has ' + size(Math.round(B.free / 1e6)) + ' free' : '',
     up.why === 'full' ? 'your iCloud is full: make room there and they carry on' : up.left && !S.usbIn ? 'plug the USB in and they carry on'
       : up.why === 'room' ? 'more go once these are up, so this Mac keeps its room' : up.why === 'unread' ? 'some could not be read: tried again at the next backup' : up.left && !mine.going ? 'they carry on at the next backup' : ''].filter(Boolean).join(' · ') }));
   const now = el('button', { className: 'ghost mini', textContent: 'Back up now', disabled: !S.usbIn || !!doing }), fixB = el('button', { className: 'ghost mini', textContent: 'Repair this USB', disabled: !S.usbIn || !!doing });
