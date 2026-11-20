@@ -116,6 +116,13 @@ straight into your decks' libraries, with no dragging and no clicks:
   changes moves at the next update. Playlists and cues follow, each song stays on the USB once, nothing is
   deleted, and nothing outside The Crate's own folder is touched. **One folder** puts every song back. Only the
   USB is laid out; the music folder on the Mac stays as it is.
+- **Backup and repair:** every time the USB is plugged in, what your decks saved on it (the rekordbox, Engine DJ
+  and Serato libraries: hot cues, playlists, history) is copied to this Mac first, along with any song that is
+  only on the USB (a switch under **Options**). That only reads the USB, and the last 10 backups are kept. If a
+  library on it stops opening, the Library Manager says so, and **Repair this USB** puts a backup back: the
+  libraries, and any song that went missing. What is on the USB at that moment is backed up first, and nothing
+  else on it is touched. The Crate never erases a USB: one that won't open at all is erased by you in Disk
+  Utility, then repaired here.
 - **Spotify Liked Songs:** they keep their own folder (on the Mac and on the USB) and their own playlist on
   every deck, newest like first. They stay out of the genre playlists and folders until you file one: open the
   **Spotify Liked Songs** list and press **Add to playlist**. It joins that genre's playlist and stays on the

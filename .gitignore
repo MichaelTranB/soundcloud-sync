@@ -144,3 +144,8 @@ liked-state.json
 *.json.tmp
 .waves/
 liked-settings.json
+usb-backups/
+usb-backup.json
+.backup.lock
+.backup-progress
+.backup-progress.tmp
