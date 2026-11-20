@@ -14,7 +14,12 @@ the decks' libraries were made from (usb.sh itself only ever adds):
   a song whose cover or details were filled in on the Mac since it was copied (details-changed.tsv, kept by
     details.py): the USB's copy is the older file, so it is swapped for the library's the same way.
 
+  the hidden "._name" files a Mac leaves beside every file it writes on a USB that isn't Mac-formatted (junk())
+    are taken off The Crate's folder: they hold nothing of the song, and on decks, phones and PCs they show up as
+    files that won't play, or get in the folder's way.
+
   usb_tidy.py DIR SRC DEST    DIR: the app folder; SRC: the music folder on the Mac; DEST: its copy on the USB
+  usb_tidy.py junk DEST       only the "._name" files (usb.sh, after it copied)
 
 Only files inside DEST are ever touched; anything else on the USB is left alone. Run by usb.sh before it copies, and
 by dj.py before it writes the decks' libraries. Standard library only."""
@@ -51,6 +56,33 @@ def size(p):
 def shadow(p):
     """The "._name" file macOS keeps beside a file on a USB that isn't Mac-formatted: it goes where its file goes."""
     return os.path.join(os.path.dirname(p), "._" + os.path.basename(p))
+
+
+def junk(dest):
+    """Takes the "._name" files off The Crate's folder on the USB (and the one beside the folder itself). A Mac
+    writes one beside each file on a USB that isn't Mac-formatted, to hold notes only a Mac reads (where the file
+    came from); the song is whole without it. Only a real one goes: it starts as these files do and is small (one
+    holding more, an old Mac file's second half, stays). Returns how many went."""
+    def real(p):
+        try:
+            if os.path.islink(p) or not os.path.isfile(p) or os.path.getsize(p) > 65536:
+                return False
+            with open(p, "rb") as f:
+                return f.read(4) == b"\x00\x05\x16\x07"
+        except OSError:
+            return False
+    found = [shadow(os.path.normpath(dest))] if os.path.isdir(dest) else []
+    for root, dirs, files in os.walk(dest):
+        found += [os.path.join(root, f) for f in files if f.startswith("._")]
+    n = 0
+    for p in found:
+        if real(p):
+            try:
+                os.remove(p)
+                n += 1
+            except OSError:
+                pass
+    return n
 
 
 def trash(dest, p):
@@ -254,6 +286,9 @@ def say(off, moved, stuck, swapped=0, twice=0):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "junk":
+        junk(sys.argv[2])
+        sys.exit(0)
     if len(sys.argv) != 4:
         sys.exit(__doc__)
     said = say(*tidy(*sys.argv[1:4]))

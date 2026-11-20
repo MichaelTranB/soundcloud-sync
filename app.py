@@ -1043,7 +1043,8 @@ def usb_asking():
     if not usb or not os.path.isdir(at):
         return None
     s = usb_ask.state(DIR, at)
-    return usb_ask.what(DIR, OUT, at) if s == "ask" else {"name": usb, "state": s, "content": usb_ask.content(at)}
+    return usb_ask.what(DIR, OUT, at) if s == "ask" else {"name": usb, "state": s, "content": usb_ask.content(at),
+                                                            "how": usb_ask.how(DIR, at)}
 
 
 def usb_answer(yes):

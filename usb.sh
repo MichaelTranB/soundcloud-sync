@@ -19,7 +19,7 @@ DEST="${VOLUMES:-/Volumes}/$NAME"
 # is copied to this Mac (backup.py: it only reads the USB), so a USB that goes wrong can be put back as it was.
 python3 "$DIR/backup.py" run "$DIR" "$DEST" "$SRC" 2>>"$DIR/dj.log"
 # A USB that already has things on it is changed only after your OK on the page (usb_ask.py): until then nothing on
-# it is touched. An empty one needs no asking.
+# it is touched. An empty one needs no asking, and neither does one The Crate was already copying to before it asked.
 python3 "$DIR/usb_ask.py" check "$DIR" "$DEST" || {
   tail -1 "$DIR/usb.log" 2>/dev/null | grep -q "waiting for your OK" || \
     echo "$(date '+%F %R')  USB \"$NAME\" already has things on it: waiting for your OK on the page" >> "$DIR/usb.log"
@@ -52,6 +52,9 @@ PY="$HOME/.local/share/crate-dj/python/bin/python3"; [ -x "$PY" ] || PY="$HOME/.
 # Then a new song's missing cover and details are filled in (details.py: only empty fields, each one undoable), so
 # the USB gets the finished file.
 [ -z "$MID" ] && [ -x "$PY" ] && "$PY" "$DIR/details.py" auto "$DIR" "$SRC" 2>>"$DIR/dj.log"
+# A song whose file name a USB can't hold (a : or ? in it) is renamed without the sign (filename.py): on the USB
+# its name would come out as one no deck or phone can read. Its copy on the USB and the decks' lists follow below.
+[ -z "$MID" ] && python3 "$DIR/filename.py" auto "$DIR" "$SRC" 2>>"$DIR/dj.log"
 # First, inside that folder only: a song you threw back on the page goes to the USB's Trash, and Soulseek songs that
 # sat in a folder of their own move in with the rest (so the copy below doesn't put them on it a second time).
 python3 "$DIR/usb_tidy.py" "$DIR" "$SRC" "$CRATE" >>"$DIR/usb.log" 2>&1
@@ -76,6 +79,9 @@ if rsync -a --ignore-existing --out-format='%n' --files-from="$LIST" "$SRC/" "$C
   # The decks' libraries (dj.py): the tracks now on the USB join its Engine DJ library, and rekordbox on this Mac
   # catches up. Before any eject, and not back until it's written. A sync does the listening itself, at its end.
   [ -z "$MID" ] && VOLUMES="${VOLUMES:-/Volumes}" python3 "$DIR/dj.py" "$DIR" "$SRC" --wait 2>>"$DIR/dj.log"
+  # Last: the hidden "._name" files a Mac leaves beside each file it writes there come off The Crate's folder
+  # (usb_tidy.py): decks and phones show them as songs that won't play.
+  python3 "$DIR/usb_tidy.py" junk "$CRATE" 2>>"$DIR/dj.log"
 else
   cat "$DIR/.usb-err" >> "$DIR/usb.log"
   [ -d "$DEST" ] || fail "it was unplugged before the copy finished. Plug it back in; it carries on."

@@ -512,6 +512,7 @@ def once(dir, src, volumes):
         rekordbox_usb(dir, src, songs, lists, stick, usb)
         if options(dir)["cues"]:  # (yours to switch off on the page)
             cues(dir, src, stick, usb, [s["rel"] for s in songs])  # last: every library has its songs by now
+        usb_tidy.junk(fold.folder(stick))  # the "._name" files a Mac left beside what was just written there
     remember(dir, seen(dir, src, songs, stick) if wrote else there)
     if recognise.key(dir) and os.path.exists(PY):  # on its own: it asks the internet, and comes back here when it learns something
         subprocess.Popen([PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "recognise.py"), dir, src],

@@ -1071,7 +1071,8 @@ function drawAsk() {
   const answer = yes => post('/api/dj/usb-ok', { yes });
   box.hidden = !u || u.state === 'ok'; box.textContent = '';
   ok.hidden = !u || u.state !== 'ok' || !u.content; ok.textContent = '';
-  if (!ok.hidden) ok.append('"' + u.name + '" had things on it and you said go ahead. ', link('Stop', () => answer(false)));
+  if (!ok.hidden) ok.append('"' + u.name + (u.how ? '" already had The Crate\'s songs on it, so it wasn\'t asked about. '
+    : '" had things on it and you said go ahead. '), link('Stop', () => answer(false)));
   if (!u || u.state === 'ok') return;
   if (u.state === 'no') {
     const go = el('button', { textContent: 'Allow' }); go.onclick = () => answer(true);

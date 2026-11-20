@@ -86,7 +86,9 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
 - **Ask first (`usb_ask.py`):** a USB that already has files, folders or a DJ library is changed only after his
   "Go ahead" on the page (`/` and `/dj`: what is added, what is never touched, how to undo). `usb.sh` and
   `dj.once()` both stop at this gate; the yes is kept per stick (`.thecrate` in The Crate's folder on it,
-  `usb-ok.json`), a new kind of change (`KINDS`) asks again, "Stop" takes it back. An empty USB isn't asked.
+  `usb-ok.json`), a new kind of change (`KINDS`) asks again, "Stop" takes it back. An empty USB isn't asked, nor
+  one The Crate copied to before this gate existed (`used()`: a copy on record in `usb.log`, its folder there holding
+  this library's songs, no note on the stick; the yes is recorded with `"how"`).
 - **Backup and repair (`backup.py`, `usb-backups/<USB>/<day>/`, the card on `/dj`):** `usb.sh` runs it first,
   before the ask gate, because it only reads the USB: every non-audio file of `PIONEER`, `Engine Library` and
   `_Serato_`, plus songs that are only on the USB (`usb-backup.json`). Unchanged files are hard links; a library
