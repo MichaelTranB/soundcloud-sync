@@ -791,7 +791,11 @@ function haveRow(t) {
     ...((s.justGot || []).includes(t.name) ? [el('span', { className: 'tag new', title: 'Just picked up from your Downloads folder', textContent: 'New' })] : []),
     ...(t.src ? [el('span', { className: 'tag', title: t.src === 'Soulseek' ? 'Found on Soulseek; replaced by the artist\'s own file when it comes' : 'Fetched from the artist\'s own free-download link', textContent: t.src })] : []),
     el('button', { className: 'ghost', title: 'Opens this file in rekordbox on your Mac, to see its waveform and try it on your deck', textContent: 'Open in rekordbox',
-      onclick: () => call('/api/dj/rekordbox', { file: t.file }).then(() => {}, e => alert(e.message)) }),
+      onclick: ev => { const b = ev.currentTarget;
+        call('/api/dj/rekordbox', { file: t.file }).then(j => {  // decks being updated: it opens once they're done
+          if (!j || !j.rekordboxSoon) return;
+          b.textContent = 'Opens when your decks are updated…'; setTimeout(() => { b.textContent = 'Open in rekordbox'; }, 60000);
+        }, e => alert(e.message)); } }),
     el('button', { className: 'undo bad', title: 'Wrong song or a bad copy? It goes to the Trash, is never taken again, comes off your USB too, and another copy is looked for right away.',
       textContent: 'Wrong or bad file', onclick: async () => {
         if (!confirm(`Throw back "${t.name}"?\n\n${t.wrong ? 'It looks wrong: ' + t.wrong + '.\n\n' : ''}It goes to the Trash, this file is never taken again, and The Crate starts looking for another copy right away.` + offUsb)) return;
