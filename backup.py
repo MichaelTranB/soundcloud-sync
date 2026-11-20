@@ -308,7 +308,9 @@ def _run(dir, usb, src, name, keep, fail):
             fail.append("this Mac has no room left for it")
             return None
     mark = hashlib.sha1(json.dumps([sorted(seen.items()), sorted(stuck)]).encode()).hexdigest()
-    if last and last.get("seen") == mark:
+    # Nothing on it changed since the last backup: that one stands. Unless a file could not be read then: it is
+    # tried again every time, so a read that only failed once doesn't leave the backup short for good.
+    if last and last.get("seen") == mark and not last.get("unread"):
         note(dir, name, checked=int(time.time()))
         return last
     t = int(time.time())
@@ -354,6 +356,10 @@ def _run(dir, usb, src, name, keep, fail):
             if os.path.isfile(had):  # the last copy that could be read stays in the backup
                 link(had, to)
                 files[rel] = before[rel]
+    if last and last.get("seen") == mark and sorted(unread) == last.get("unread") and files == before:
+        shutil.rmtree(part, ignore_errors=True)  # (tried again, and it still can't be read: the last backup stands)
+        note(dir, name, checked=int(time.time()))
+        return last
     low = {r.lower() for r in files}
     why = sorted(set(bad.values()))
     why += [f"its {lib} library is gone" for lib in dict.fromkeys(lib for lib, p in MAIN
@@ -363,7 +369,7 @@ def _run(dir, usb, src, name, keep, fail):
     libs = [n for n, _ in LIBS if any(v[2] == n for v in files.values())]
     about = {"name": name, "ok": not why, "why": "; ".join(why), "bad": bad, "seen": mark, "libs": libs,
              "songs": sum(1 for v in files.values() if v[2] == "song"), "files": len(files),
-             "bytes": sum(v[0] for v in files.values()), "skipped": skipped}
+             "bytes": sum(v[0] for v in files.values()), "skipped": skipped, "unread": sorted(unread)}
     os.makedirs(part, exist_ok=True)
     write(os.path.join(part, "manifest.json"), files)
     write(os.path.join(part, "about.json"), about)
