@@ -33,10 +33,9 @@
     home: [
       { title: 'Welcome to The Crate', text: 'It gets your playlists onto your Mac in top quality, then onto your DJ USB. A one-minute look around.' },
       { target: () => q('#start'), title: 'Your checklist', text: 'Each step ticks itself when it\'s done. Hide it any time; the Setup button brings it back.' },
-      { target: field('#url'), title: 'Add a playlist', text: 'Paste a SoundCloud, Spotify or Apple Music link and press Add. Tap a saved one to sync it.' },
+      { target: field('#url'), title: 'Add a playlist', text: 'Paste a SoundCloud, Spotify or Apple Music link and press Add. Copied your Spotify Liked Songs? Paste those here too. Tap a saved playlist to sync it.' },
       { target: () => { const e = q('#profile'); return e && e.closest('details'); }, title: 'Or find yours on SoundCloud',
         text: 'Open this and type your SoundCloud name to list every playlist you have. It uses the sign-in already in your browser.' },
-      { target: field('#liked'), title: 'Spotify Liked Songs', text: 'Paste them once. Each sync fetches the next batch, EDM first, and always leaves space free on your Mac.' },
       { target: field('#usb'), title: 'Your DJ USB', text: 'Pick it and new songs copy over after every sync and whenever you plug it in. It only adds, never deletes.' },
       { target: field('#scplUsb'), title: 'USB to SoundCloud', text: 'Turns the folders on a USB into private SoundCloud playlists. It never uploads files or changes the USB.' },
       { target: field('#slskUser'), title: 'Soulseek', text: 'Finds what SoundCloud won\'t give you, lossless or 320 kbps only. Sign in once; it only ever downloads.' },

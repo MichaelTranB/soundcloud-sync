@@ -134,15 +134,15 @@ const FAQ = [
 
   // ---- Liked Songs
   { t: 'liked', id: 'what-liked', q: 'What are Spotify Liked Songs here?', k: 'spotify likes favourites favorites batch edm',
-    a: '<p>Optional. Paste your Liked Songs and each sync looks for the next batch on Soulseek, EDM first and newest first, then everything else. They go into their own folder so you can sort them into your playlists yourself.</p>' },
+    a: '<p>Optional. Paste your Liked Songs into the playlist box and each sync looks for the next batch on Soulseek, EDM first and newest first, then everything else. They go into their own folder so you can sort them into your playlists yourself.</p>' },
   { t: 'liked', id: 'paste-liked', q: 'How do I paste them?', k: 'copy shift click command c',
-    a: '<p>In Spotify open Liked Songs, click the newest song, Shift-click the oldest you want, press <b>⌘C</b> and paste into <b>Spotify Liked Songs</b>. Liked more? Paste again.</p>' },
+    a: '<p>In Spotify open Liked Songs, click the newest song, Shift-click the oldest you want, press <b>⌘C</b> and paste into the same box as your playlist links. Liked more? Paste again.</p>' },
   { t: 'liked', id: 'liked-space', q: 'Will it fill up my Mac?', k: 'disk storage space gb free floor',
-    a: '<p>No. It only takes what fits and always leaves some space free (10 GB to start). The page says when it\'s paused for space. Change the folder, order or free space under <b>Options</b>.</p>' },
+    a: '<p>No. It only takes what fits and always leaves some space free (10 GB to start). The page says when it\'s paused for space. Change the folder, order or free space under <b>Liked Songs options</b>.</p>' },
   { t: 'liked', id: 'liked-spotify', q: 'Does it sign in to Spotify or change my likes?', k: 'account privacy',
     a: '<p>No. There\'s no Spotify sign-in, and nothing changes in Spotify.</p>' },
   { t: 'liked', id: 'liked-stop', q: 'How do I stop it?', k: 'forget clear undo',
-    a: '<p>Press <b>Stop</b> to clear the list. Songs already on your Mac stay.</p>' },
+    a: '<p>Press the <b>×</b> next to Liked Songs in your playlists. Songs already on your Mac stay.</p>' },
   { t: 'liked', id: 'liked-decks', q: 'Where do Liked Songs show up on my decks?', k: 'genre playlist apart',
     a: '<p>They keep their own folder and their own playlist. A song joins a genre playlist once you give it a genre. You can switch that under the Library Manager\'s <b>Options</b>.</p>' },
 
@@ -155,6 +155,8 @@ const FAQ = [
     a: '<p>It only adds. The one exception: a song you threw back with <b>Wrong or bad file</b> leaves the USB too, into the USB\'s own Trash, so you can take it back. Only The Crate\'s own folder on the USB is ever touched.</p>' },
   { t: 'usb', id: 'usb-eject', q: 'Can it eject the USB for me?', k: 'pull out safely notice',
     a: '<p>Yes. Tick <b>Eject the USB once a sync has put its new tracks on it</b>. It never ejects mid-sync, and it\'s off until you tick it. You also get a Mac notice when new tracks land.</p>' },
+  { t: 'usb', id: 'usb-to-soundcloud', q: 'Can I turn the folders on my USB into SoundCloud playlists?', k: 'private playlist folder rekordbox make',
+    a: '<p>Yes. In <b>USB to SoundCloud</b> on The Crate, tick the folders you want and press <b>Make playlists</b>. Each becomes a <b>private</b> playlist named after its folder, or one playlist for all (<b>Options</b>). Claude or Codex finds each song in your Chrome and checks artist, title and length; unsure ones wait for your look.</p><p>It never uploads files, makes anything public or changes your USB. To undo, delete the playlist on SoundCloud.</p>' },
   { t: 'usb', id: 'usb-folders', q: 'How are songs filed on the USB?', k: 'layout one folder edm other genre',
     a: '<p>In <b>One folder</b>, in <b>EDM and Other</b>, or <b>by genre</b> (EDM/Dubstep, Other/Hip Hop). You pick in the Library Manager; it asks before moving anything. New songs are filed by themselves, and <b>One folder</b> puts every song back.</p>' },
   { t: 'usb', id: 'genres', q: 'Where do genres come from?', k: 'tags essentia sound no genre yet playlist',
