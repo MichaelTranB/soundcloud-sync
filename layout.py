@@ -10,11 +10,16 @@ Three ways to lay the songs out, picked on the Library Manager page (usb-layout.
     genre   EDM/<genre> / Other/<genre> / No genre yet      (a song sits in its first genre's folder; one with
             any EDM genre is EDM, under its first EDM genre, so the folders match the "EDM (all)" playlist)
 
+With group or genre, "All songs" can be ticked too: an "All songs" folder beside them holds a copy of every song,
+so a phone app or a deck that browses folders finds everything in one place as well (all_songs(); it needs room on
+the USB for a second copy, and is left out, and said, when there isn't). The decks' libraries list each song once,
+from its own folder.
+
 Only the USB is laid out: the music folder on the Mac stays as it is. Only songs from this library are ever moved,
 and only inside The Crate's own folder; nothing is copied twice and nothing is deleted. The USB itself is the
 record of where each song sits, so there is no list to fall out of step: where() looks. Picking "flat" again puts
 every song back in the one folder. Standard library only."""
-import json, os, sys, unicodedata
+import json, os, shutil, sys, unicodedata
 
 import genres, usb_tidy
 
@@ -22,6 +27,8 @@ FILE = "usb-layout.json"
 EDM, REST = "EDM", "Other"
 OTHER = ["Hip Hop", "R&B", "Pop", "Rock"]  # the genres that aren't EDM, unless you say otherwise
 MODES = ("flat", "group", "genre")
+ALL = "All songs"  # the folder of copies, when "All songs" is ticked
+ROOM = 5 << 30  # what the USB keeps free when it makes those copies (the decks need room for their own files too)
 LEFT = (".DS_Store", "._.DS_Store")  # what macOS leaves in a folder: it doesn't make the folder "not empty"
 
 
@@ -39,13 +46,16 @@ def load(dir):
     got = got if isinstance(got, dict) else {}
     other = got.get("other") if isinstance(got.get("other"), list) else OTHER
     return {"mode": got.get("mode") if got.get("mode") in MODES else "flat",
-            "other": [x for x in other if isinstance(x, str) and x.strip()]}
+            "other": [x for x in other if isinstance(x, str) and x.strip()],
+            "all": got.get("all") is True}
 
 
-def save(dir, mode=None, other=None):
+def save(dir, mode=None, other=None, all=None):
     cfg = load(dir)
     if mode in MODES:
         cfg["mode"] = mode
+    if isinstance(all, bool):
+        cfg["all"] = all
     if other is not None:
         cfg["other"] = list(dict.fromkeys(x.strip() for x in other if isinstance(x, str) and x.strip()))
     tmp = os.path.join(dir, FILE + ".tmp")
@@ -89,6 +99,98 @@ def folder(gs, cfg):
 
 def tops():
     return {cf(EDM), cf(REST), cf(safe(genres.NONE))}
+
+
+def copies(cfg):
+    """Whether the USB gets the "All songs" folder of copies."""
+    return cfg.get("all") is True and cfg["mode"] != "flat"
+
+
+def all_songs(dest, at, cfg, dry=False):
+    """Keeps the "All songs" folder in step: a copy of each song from where it sits (at: {song: where, inside The
+    Crate's folder}), made again when the song's file changed, and taken off when the song left the USB or the
+    folder isn't wanted. A copy is only ever taken off while the song's own file is still on the USB (else it goes
+    to the USB's Trash, like a song you threw back). Returns (copies made, taken off, said: a line for the log)."""
+    home = os.path.join(dest, ALL)
+    want = {}
+    if copies(cfg):
+        for rel, where in at.items():
+            p = os.path.join(dest, where)
+            if usb_tidy.size(p) >= 0:
+                want.setdefault(cf(os.path.basename(rel)), p)  # (two songs of one name: the first)
+    try:
+        there = {cf(f): f for f in os.listdir(home) if not f.startswith(".") and f.lower().endswith(usb_tidy.AUDIO)}
+    except OSError:
+        there = {}
+    made = off = 0
+    for f in os.listdir(home) if not dry and os.path.isdir(home) else ():  # a copy that was cut short
+        if f.startswith(".crate-"):
+            try:
+                os.remove(os.path.join(home, f))
+            except OSError:
+                pass
+    for k, f in there.items():  # no longer wanted here
+        if k in want:
+            continue
+        p = os.path.join(home, f)
+        if dry:
+            off += 1
+            continue
+        kept = [q for q in at.values() if cf(os.path.basename(q)) == k and usb_tidy.size(os.path.join(dest, q)) >= 0]
+        try:
+            if kept:
+                os.remove(p)
+                if usb_tidy.size(usb_tidy.shadow(p)) >= 0:
+                    os.remove(usb_tidy.shadow(p))
+            elif not usb_tidy.trash(dest, p):
+                continue
+            off += 1
+        except OSError:
+            pass
+    todo = []
+    for k, p in want.items():
+        q = os.path.join(home, there.get(k, os.path.basename(p)))
+        try:
+            a, b = os.stat(p), os.stat(q)
+            if a.st_size == b.st_size and abs(a.st_mtime - b.st_mtime) <= 2:
+                continue
+        except OSError:
+            pass
+        todo.append((p, q))
+    said = ""
+    need = sum(usb_tidy.size(p) for p, _ in todo)
+    try:
+        free = shutil.disk_usage(dest).free
+    except OSError:
+        free = 0
+    if todo and free - need < ROOM:
+        said = (f'PROBLEM: no room for the "{ALL}" copies ({-(-need >> 20)} MB more needed, and the USB keeps '
+                f"{ROOM >> 30} GB free). Free some space, or untick All songs on the page")
+        todo = []
+    for p, q in todo:
+        if dry:
+            made += 1
+            continue
+        tmp = os.path.join(home, ".crate-" + os.path.basename(q))
+        try:
+            os.makedirs(home, exist_ok=True)
+            shutil.copy2(p, tmp)
+            os.replace(tmp, q)
+            made += 1
+        except OSError as e:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            said = f'PROBLEM: a copy in "{ALL}" couldn\'t be made ({e.strerror})'
+            break
+    if not dry and not copies(cfg) and empty(home):
+        gone(home)
+    if not said and (made or off):
+        s = lambda n: "" if n == 1 else "s"
+        said = "; ".join(([f'{made} song{s(made)} copied into "{ALL}"'] if made else []) +
+                         ([f'{off} taken off "{ALL}"'] if off else []))
+    return made, off, said
 
 
 def where(dest):
@@ -275,8 +377,10 @@ def plan(dest, songs, cfg):
         f = folder(s.get("genres") or [], cfg) if s["rel"] in can and not s.get("apart") else os.path.dirname(s["rel"])
         folders[f] = folders.get(f, 0) + 1
     order = lambda f: (f.split(os.sep)[0] == safe(genres.NONE), f.split(os.sep)[0] != EDM, f.lower())
-    out = {"mode": cfg["mode"], "songs": len(songs),
+    out = {"mode": cfg["mode"], "all": copies(cfg), "songs": len(songs),
            "folders": [{"name": f.replace(os.sep, "/"), "songs": n} for f, n in sorted(folders.items(), key=lambda x: order(x[0])) if f]}
+    if copies(cfg):
+        out["folders"].insert(0, {"name": ALL, "songs": len(songs), "copies": True})
     if dest and os.path.isdir(dest):
         out.update(move=arrange(dest, songs, cfg, dry=True)[0],
                    on=len(songs) - len(missing(dest, [s["rel"] for s in songs])))

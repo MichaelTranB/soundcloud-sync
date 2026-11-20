@@ -52,6 +52,9 @@ PY="$HOME/.local/share/crate-dj/python/bin/python3"; [ -x "$PY" ] || PY="$HOME/.
 # Then a new song's missing cover and details are filled in (details.py: only empty fields, each one undoable), so
 # the USB gets the finished file.
 [ -z "$MID" ] && [ -x "$PY" ] && "$PY" "$DIR/details.py" auto "$DIR" "$SRC" 2>>"$DIR/dj.log"
+# A song whose name has a sign a USB can't hold (: ? * and the like) gets its look-alike on the Mac (usbsafe.py); the
+# copy on the USB and the decks' rows follow it (usb_tidy and dj.py below), so every device can open it.
+[ -z "$MID" ] && python3 "$DIR/usbsafe.py" names "$DIR" "$SRC" 2>>"$DIR/usb.log"
 # First, inside that folder only: a song you threw back on the page goes to the USB's Trash, and Soulseek songs that
 # sat in a folder of their own move in with the rest (so the copy below doesn't put them on it a second time).
 python3 "$DIR/usb_tidy.py" "$DIR" "$SRC" "$CRATE" >>"$DIR/usb.log" 2>&1
@@ -76,6 +79,9 @@ if rsync -a --ignore-existing --out-format='%n' --files-from="$LIST" "$SRC/" "$C
   # The decks' libraries (dj.py): the tracks now on the USB join its Engine DJ library, and rekordbox on this Mac
   # catches up. Before any eject, and not back until it's written. A sync does the listening itself, at its end.
   [ -z "$MID" ] && VOLUMES="${VOLUMES:-/Volumes}" python3 "$DIR/dj.py" "$DIR" "$SRC" --wait 2>>"$DIR/dj.log"
+  # The 4 KB "._" file macOS writes beside each file on a USB that isn't Mac-formatted: decks and phone apps show
+  # them as broken tracks, so they're taken off The Crate's folder (usbsafe.py; only those files, nothing else).
+  python3 "$DIR/usbsafe.py" clean "$CRATE" 2>>"$DIR/usb.log"
 else
   cat "$DIR/.usb-err" >> "$DIR/usb.log"
   [ -d "$DEST" ] || fail "it was unplugged before the copy finished. Plug it back in; it carries on."

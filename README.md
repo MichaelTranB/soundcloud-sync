@@ -86,6 +86,12 @@ Never YouTube rips or recorded streams: low quality.
   with **Wrong or bad file** leaves the USB as well (right away if it's plugged in, else the next time you plug it
   in). It goes to the USB's own Trash, so you can still take it back until you empty the Trash; only The Crate's
   own folder on the USB is ever touched.
+- **Folders on the USB** (Library Manager page): one folder, EDM and Other, or a folder per genre. With folders you
+  can also turn on **All songs**: a copy of every song in one folder beside them, so any app finds everything in one
+  place (it needs room for that second copy and keeps 5 GB free). Your decks still list each song once.
+- **Works on every device.** A song whose name has a sign a USB can't hold (`: ? * " < > | \`) is renamed with its
+  look-alike (`：` `？` ...), and the hidden `._` files a Mac leaves on the USB are taken off after each copy, so
+  phone apps like djay and other computers open the folder cleanly.
 
 ### USB to SoundCloud playlists
 

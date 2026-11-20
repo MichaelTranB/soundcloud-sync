@@ -443,6 +443,9 @@ def place(dir, songs, stick, usb="", file=False):
             said = layout.say(moved, stuck, twice, cfg["mode"] == "flat")
             if said:
                 log(dir, f'USB "{usb}": {said}')
+            said = layout.all_songs(dest, at, cfg)[2]  # the "All songs" folder of copies, when it's ticked
+            if said:
+                log(dir, f'USB "{usb}": {said}')
         else:
             at = layout.places(dest, [s["rel"] for s in songs])
     except Exception as e:  # never silent: the page shows the last lines of dj.log

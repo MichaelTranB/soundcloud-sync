@@ -244,7 +244,7 @@ def tidy(d, src, dest):
 def say(off, moved, stuck, swapped=0, twice=0):
     s = lambda n: "" if n == 1 else "s"
     parts = ([f"{off} song{s(off)} you threw back taken off it (in the USB's Trash)"] if off else []) + \
-            ([f"{moved} Soulseek song{s(moved)} moved in with the rest"] if moved else []) + \
+            ([f"{moved} song{s(moved)} moved or renamed to match the Mac"] if moved else []) + \
             ([f"{swapped} file{s(swapped)} that {'was' if swapped == 1 else 'were'} another download of a song "
               "swapped for your library's (the old one is in the USB's Trash)"] if swapped else []) + \
             ([f"{twice} double{s(twice)} taken off it (a song that was on it twice; in the USB's Trash)"]
