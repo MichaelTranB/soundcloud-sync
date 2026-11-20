@@ -1239,11 +1239,24 @@ def one_copy(at, plugged):
     cfg = layout.load(DIR)
     if not plugged or not cfg["all"] or cfg["mode"] == "flat" or (cfg["one"] and usb_ask.allows(DIR, at, "one")):
         return None
+    home = os.path.join(place.folder(at), layout.ALL)
+    try:
+        key = (at, os.stat(home).st_mtime, os.stat(place.folder(at)).st_mtime)
+    except OSError:
+        return None
+    hit = ONE_COPY.get("v")
+    if hit and hit[0] == key and time.monotonic() - hit[1] < 300:  # (the page asks every few seconds: walk the USB at most every 5 min)
+        return hit[2]
     try:
         off, left, freed = layout.doubles(place.folder(at), dry="quick")
     except OSError:
         return None
-    return {"copies": off, "bytes": freed, "left": left} if off else None
+    out = {"copies": off, "bytes": freed, "left": left} if off else None
+    ONE_COPY["v"] = (key, time.monotonic(), out)
+    return out
+
+
+ONE_COPY = {}
 
 
 def layout_plan(mode):
@@ -1601,6 +1614,7 @@ def dj_post(path, body):
             except OSError:
                 return "Couldn't note your answer. Try again."
             layout.save(DIR, one=True)
+            ONE_COPY.clear()
         elif body.get("yes") is False:
             layout.save(DIR, one=False)
         else:

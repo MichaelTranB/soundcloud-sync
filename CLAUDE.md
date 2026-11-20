@@ -85,7 +85,8 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   stored once in its own folder and `CRATE/All songs.m3u8` (relative paths, `#THECRATE` line = ours) lists them all.
   A stick that already has the copies keeps them until "Keep one copy of each song" and its Go ahead (`usb_ask.allow`
   kind `one`, per stick); then a copy comes off only when its twin is byte-identical (sha256) and no deck library on
-  the stick lists a file in `All songs/` (`layout.pointed`). Dry run, read-only: `python3 layout.py onecopy <CRATE>`.
+  the stick lists a file in `All songs/` (`layout.pointed`; `exportLibrary.db` read from a copy through the analyser's
+  pyrekordbox; unreadable counts as listed, and the copies are then kept in step as before). Dry run, read-only: `python3 layout.py onecopy <CRATE>`.
 - **"All songs" folder of copies (`layout.all_songs`, `"all": true, "one": false`, "Make copies instead"):** with
   `group`/`genre`, `CRATE/All songs/` holds a copy of every song (made after `arrange` in `dj.place`, re-made when the
   file changes, taken off when the song leaves or the toggle goes off). It keeps 5 GB free (`layout.ROOM`) or skips the

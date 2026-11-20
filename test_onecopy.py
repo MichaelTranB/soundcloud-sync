@@ -105,7 +105,7 @@ class OneCopy(unittest.TestCase):
     def test_deck_pointing_into_all_songs_stops_it(self):
         self.engine(["../SoundCloud Sync/All songs/a.mp3"])
         made, off, said = layout.all_songs(self.dest, self.at, self.cfg, ok=True, usb=self.usb)
-        self.assertEqual(off, 0)
+        self.assertEqual(off, 1)  # (copies kept in step: only e, whose song left, goes; no double taken off)
         self.assertIn("PROBLEM", said)
         self.assertIn("a.mp3", self.all_songs())
 
@@ -115,7 +115,35 @@ class OneCopy(unittest.TestCase):
         with open(os.path.join(d, "export.pdb"), "wb") as f:
             f.write(b"\0" * 64 + "/SoundCloud Sync/All songs/b.mp3".encode("utf-16-le"))
         self.assertEqual(layout.pointed(self.usb), ["rekordbox"])
-        self.assertEqual(layout.all_songs(self.dest, self.at, self.cfg, ok=True, usb=self.usb)[1], 0)
+        self.assertEqual(layout.all_songs(self.dest, self.at, self.cfg, ok=True, usb=self.usb)[1], 1)
+        self.assertIn("b.mp3", self.all_songs())
+
+    def test_blocked_keeps_copies_in_step_and_writes_no_list(self):
+        self.engine(["../SoundCloud Sync/All songs/a.mp3"])
+        os.remove(os.path.join(self.dest, layout.ALL, "b.mp3"))  # a copy gone missing is made again, as before
+        made, off, said = layout.all_songs(self.dest, self.at, self.cfg, ok=True, usb=self.usb)
+        self.assertIn("PROBLEM", said)
+        self.assertIn("b.mp3", self.all_songs())
+        self.assertFalse(os.path.exists(os.path.join(self.dest, layout.LIST)))
+
+    def test_newest_rekordbox_library_is_checked(self):
+        d = os.path.join(self.usb, "PIONEER", "rekordbox")
+        os.makedirs(d)
+        open(os.path.join(d, "exportLibrary.db"), "wb").close()
+        was = layout.ANALYSER
+        try:
+            layout.ANALYSER = ""  # no way to read it: counts as pointing there, nothing taken off
+            self.assertEqual(layout.pointed(self.usb), ["rekordbox (couldn't be read)"])
+            self.assertEqual(layout.all_songs(self.dest, self.at, self.cfg, ok=True, usb=self.usb)[1], 1)
+            self.assertIn("a.mp3", self.all_songs())
+        finally:
+            layout.ANALYSER = was
+
+    def test_hash_names_get_dot_slash(self):
+        self.put("#1 hit.mp3", b"H" * 10)
+        layout.write_list(self.dest)
+        with open(os.path.join(self.dest, layout.LIST), encoding="utf-8") as f:
+            self.assertIn("./#1 hit.mp3", f.read().splitlines())
 
     def test_someone_elses_list_is_left(self):
         with open(os.path.join(self.dest, layout.LIST), "w") as f:

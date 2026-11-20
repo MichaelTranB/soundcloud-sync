@@ -23,7 +23,7 @@ Only the USB is laid out: the music folder on the Mac stays as it is. Only songs
 and only inside The Crate's own folder; nothing is copied twice and nothing is deleted. The USB itself is the
 record of where each song sits, so there is no list to fall out of step: where() looks. Picking "flat" again puts
 every song back in the one folder. Standard library only."""
-import hashlib, json, os, shutil, sqlite3, sys, tempfile, unicodedata
+import hashlib, json, os, shutil, sqlite3, subprocess, sys, tempfile, unicodedata
 
 import genres, usb_tidy
 
@@ -318,6 +318,34 @@ def twins(dest):
     return out
 
 
+ANALYSER = os.environ.get("CRATE_DJ_PY") or next(
+    (p for p in map(os.path.expanduser, ("~/.local/share/crate-dj/python/bin/python3",
+                                         "~/.local/share/crate-dj/venv/bin/python")) if os.path.exists(p)), "")
+READ_OL = ("import logging, sys\nlogging.disable(logging.CRITICAL)\nfrom pyrekordbox.onelibrary import OneLibrary\n"
+           "db = OneLibrary(sys.argv[1])\n"
+           "print(sum(sys.argv[2] in (c.path or '').replace('\\\\', '/') for c in db.get_content().all()))\n")
+
+
+def onelibrary(lib, needle):
+    """True: the USB's rekordbox library (exportLibrary.db) lists a file whose path holds needle; "unread": it
+    couldn't be read (no analyser Python, or an error), which counts as a yes; False: it doesn't."""
+    if not ANALYSER or not os.path.exists(ANALYSER):
+        return "unread"
+    tmp = tempfile.mkdtemp()
+    try:
+        for x in ("", "-wal", "-shm"):
+            if os.path.isfile(lib + x):
+                shutil.copy2(lib + x, os.path.join(tmp, "exportLibrary.db" + x))
+        r = subprocess.run([ANALYSER, "-c", READ_OL, os.path.join(tmp, "exportLibrary.db"), needle],
+                           capture_output=True, text=True, timeout=300)
+        n = r.stdout.strip().splitlines()[-1] if r.returncode == 0 and r.stdout.strip() else ""
+        return "unread" if not n.isdigit() else int(n) > 0
+    except (OSError, subprocess.SubprocessError):
+        return "unread"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def pointed(usb):
     """The deck libraries on the USB that list a file inside an "All songs" folder (or couldn't be read): while
     any does, no copy there is taken off, so no deck loses a track."""
@@ -340,6 +368,11 @@ def pointed(usb):
             who.append("Engine DJ (couldn't be read)")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+    lib = os.path.join(usb, "PIONEER", "rekordbox", "exportLibrary.db")
+    if os.path.isfile(lib):  # (the newest decks' library is locked: read through pyrekordbox, from a copy on the Mac)
+        hit = onelibrary(lib, needle)
+        if hit:
+            who.append("rekordbox" if hit is True else "rekordbox (couldn't be read)")
     files = [("rekordbox", os.path.join(usb, "PIONEER", "rekordbox", "export.pdb")),
              ("rekordbox", os.path.join(usb, "PIONEER", "rekordbox", "exportExt.pdb")),
              ("Serato", os.path.join(usb, "_Serato_", "database V2"))]
@@ -418,7 +451,8 @@ def write_list(dest):
         return f'a "{LIST}" of someone else\'s is there, so it was left as it is'
     songs = sorted((p for ps in twins(dest).values() for p in ps), key=lambda p: cf(os.path.relpath(p, dest)))
     text = "#EXTM3U\n#PLAYLIST:" + ALL + "\n" + OURS + "\n" + \
-           "".join(os.path.relpath(p, dest).replace(os.sep, "/") + "\n" for p in songs)
+           "".join(("./" if os.path.relpath(p, dest).startswith("#") else "") +  # (a line starting # is a comment)
+                   os.path.relpath(p, dest).replace(os.sep, "/") + "\n" for p in songs)
     try:
         with open(path, encoding="utf-8") as f:
             if f.read() == text:
@@ -461,8 +495,10 @@ def onecopy(dest, at, cfg, ok, usb, dry=False):
     off = 0
     if stamped(home)[1]:
         who = pointed(usb) if usb else []
-        if who:
-            return 0, 0, f'PROBLEM: {", ".join(who)} on the USB lists songs in "{ALL}", so its copies stay'
+        if who:  # (the copies stay and are kept in step as before; no list is written)
+            made, off, said = all_songs(dest, at, {**cfg, "one": False})
+            stop = f'PROBLEM: {", ".join(who)} on the USB lists songs in "{ALL}", so its copies stay'
+            return made, off, "; ".join(x for x in (said, stop) if x)
         off, left, freed = doubles(dest, dry=dry)
         if off:
             said.append(f'one copy of each song: {off} double{"" if off == 1 else "s"} taken off "{ALL}" ({gb(freed)} freed)')
