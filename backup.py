@@ -1229,7 +1229,7 @@ def restore(dir, usb, src, name, day):
     # ("Back up songs that are only on the USB" is off, this Mac was short of room, or it could not be read) stays
     # as it is. A song that is gone is put back.
     now = files_of(dir, here, kept["id"]) if kept and kept.get("id") else {}
-    done = {"lib": 0, "song": 0, "left": 0, "aside": 0, "fixed": 0, "away": 0}
+    done = {"lib": 0, "song": 0, "left": 0, "aside": 0, "fixed": 0, "away": 0, "lost": 0}
 
     def held(rel, b):  # that backup holds this file of the USB as it is now
         try:
@@ -1271,6 +1271,7 @@ def restore(dir, usb, src, name, day):
                 if not has(dir, up, a, row[0]):
                     if own and row[2] != "song":
                         return gone  # a library from your own cloud is put back whole or not at all
+                    done["lost"] += rel in bad  # (a damaged song with no good copy there stays flagged)
                     continue
                 # From the cloud every library file is had first, before anything on the USB is changed: a repair
                 # never stops half way because this Mac is offline
@@ -1352,7 +1353,7 @@ def restore(dir, usb, src, name, day):
             usb_ask.answer(dir, usb, True)
         except OSError:
             pass
-    note(dir, here, repair=None, **({"damaged": None, "sums": None} if bad and not done["away"] else {}))
+    note(dir, here, repair=None, **({"damaged": None, "sums": None} if bad and not done["away"] and not done["lost"] else {}))
     stamp = time.strftime("%b %-d, %H:%M", time.localtime(when(day)))
     return (f'backup: "{here}" put back from the backup of {stamp}'
             + (f' of "{name}"' if name != here else "")
@@ -1367,6 +1368,9 @@ def restore(dir, usb, src, name, day):
                f"damaged {'one is' if done['fixed'] == 1 else 'ones are'} in its Trash)." if done["fixed"] else "")
             + (f" {done['away']} {'song' if done['away'] == 1 else 'songs'} could not be fetched from {WHERE[place]}: "
                "repair again when this Mac is online." if done["away"] else "")
+            + (f" {done['lost']} damaged {'song' if done['lost'] == 1 else 'songs'} on it {'has' if done['lost'] == 1 else 'have'}"
+               f" no good copy in {WHERE[place]} and {'stays' if done['lost'] == 1 else 'stay'} as {'it is' if done['lost'] == 1 else 'they are'}:"
+               " still flagged on the page." if done["lost"] else "")
             + " Your library's songs and playlists follow now.")
 
 
@@ -1391,7 +1395,7 @@ def status(dir):
                            "snaps": [{k: s.get(k) for k in ("id", "when", "ok", "why", "libs", "songs", "bytes", "skipped",
                                                             "place", "waiting", "sent", "unsent")} for s in got]})
     return {"songs": cfg["songs"], "place": cfg["place"],
-            "free": room() if cfg["place"] == "icloud" else owncloud.free(dir) if cfg["place"] == "own" else None,
+            "free": room() if cfg["place"] == "icloud" else owncloud.free(dir, wait=False) if cfg["place"] == "own" else None,
             "own": owncloud.status(dir), "going": alive(dir), "sticks": sticks, "doing": progress(dir)}
 
 

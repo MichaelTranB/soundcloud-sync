@@ -18,7 +18,7 @@ rclone (rclone.org, MIT licence): no second USB, and no copy of the backup on th
   owncloud.py disconnect DIR         The Crate's access to that cloud is taken back here (the backups there stay)
 
 Standard library only."""
-import configparser, hashlib, json, os, platform, re, shutil, subprocess, sys, tempfile, time, unicodedata, urllib.request, zipfile
+import configparser, hashlib, json, os, platform, re, shutil, subprocess, sys, tempfile, threading, time, unicodedata, urllib.request, zipfile
 
 REMOTE, CONF, STATE = "crate", "rclone.conf", ".owncloud.json"
 TOP = "The Crate/USB backups"
@@ -228,19 +228,40 @@ def drop(dir, paths):
     return bad
 
 
-def about(dir, every=300):
+_ASKING = {}
+
+
+def about(dir, every=300, wait=True):
     """The cloud's room: {"total", "used", "free", "at"} in bytes (a provider that doesn't tell one: None), kept for
-    `every` seconds so the page never waits. {"why": ...} when the cloud can't be asked."""
-    p = os.path.join(dir, ".owncloud-about.json")
+    `every` seconds. {"why": ...} when the cloud can't be asked. With wait=False (the page) it never waits: what was
+    known last is said, and the cloud is asked again on the side."""
+    p, old = os.path.join(dir, ".owncloud-about.json"), None
     try:
         with open(p) as f:
             got = json.load(f)
-        if time.time() - got.get("at", 0) < every and got.get("kind") == kind(dir):
-            return got
+        if isinstance(got, dict) and got.get("kind") == kind(dir):
+            if time.time() - got.get("at", 0) < every:
+                return got
+            old = got
     except (OSError, ValueError, AttributeError):
         pass
     if not root(dir):
         return None
+    if not wait:
+        if time.time() - _ASKING.get(dir, 0) > 120:  # (one question at a time; a stuck one is let go after 2 minutes)
+            _ASKING[dir] = time.time()
+
+            def ask():
+                try:
+                    _ask(dir, p)
+                finally:
+                    _ASKING.pop(dir, None)
+            threading.Thread(target=ask, daemon=True).start()
+        return old
+    return _ask(dir, p)
+
+
+def _ask(dir, p):
     r = rc(dir, "about", f"{REMOTE}:", "--json", timeout=60)
     try:
         if r.returncode:
@@ -259,9 +280,9 @@ def about(dir, every=300):
     return got
 
 
-def free(dir):
+def free(dir, wait=True):
     """Room left in the cloud to fill, MARGIN kept back (None: it can't be told)."""
-    a = about(dir) or {}
+    a = about(dir, wait=wait) or {}
     return None if a.get("free") is None else a["free"] - MARGIN
 
 
@@ -294,7 +315,7 @@ def connecting(dir):
 def status(dir):
     """For the page: which cloud, signed in or not, a sign-in at work, its room, and the last thing that went wrong."""
     return {"kind": kind(dir), "label": label(dir), "kinds": KINDS, "connecting": connecting(dir),
-            "said": state(dir).get("said"), "about": about(dir, every=3600) if kind(dir) else None}
+            "said": state(dir).get("said"), "about": about(dir, every=3600, wait=False) if kind(dir) else None}
 
 
 def connect(dir, k):

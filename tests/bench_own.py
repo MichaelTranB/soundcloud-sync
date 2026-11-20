@@ -146,6 +146,31 @@ backup.note(DIR, "Lexar", repair=None)
 for x in backup.snaps(DIR, "Lexar"):  # (the backup the repair made first would make step 9's "now" one a repeat)
     if x["id"] not in had:
         shutil.rmtree(os.path.join(DIR, "usb-backups", "Lexar", x["id"]))
+# 8e. a damaged song whose good copy is not in the cloud: the repair leaves it flagged, never "all fine"
+had = {x["id"] for x in backup.snaps(DIR, "Lexar")}
+backup.note(DIR, "Lexar", damaged=["Contents/song3.mp3"], repair={"day": got2["id"], "why": "test", "when": 1})
+real_ls = owncloud.listing
+owncloud.listing = lambda *a, **k: {p: n for p, n in (real_ls(*a, **k) or {}).items() if not p.endswith("song3.mp3")}
+owncloud._LS.clear()
+line = backup.restore(DIR, USB, SRC, "Lexar", got2["id"])
+owncloud.listing = real_ls
+owncloud._LS.clear()
+ok(backup.note(DIR, "Lexar").get("damaged") == ["Contents/song3.mp3"] and "no good copy" in line,
+   f"damaged song with no cloud copy stays flagged ({line[-120:]})")
+backup.note(DIR, "Lexar", damaged=None, repair=None)
+for x in backup.snaps(DIR, "Lexar"):
+    if x["id"] not in had:
+        shutil.rmtree(os.path.join(DIR, "usb-backups", "Lexar", x["id"]))
+# 8f. the page never waits for the cloud's room: an old answer is said, the cloud asked on the side
+import json as _j
+backup.save(DIR, place="own")
+ap = os.path.join(DIR, ".owncloud-about.json")
+a0 = _j.load(open(ap)); a0["at"] = 1; _j.dump(a0, open(ap, "w"))
+real_rc = owncloud.rc
+owncloud.rc = lambda *a, **k: (time.sleep(5), real_rc(*a, **k))[1]
+t0 = time.time(); st = backup.status(DIR); took = time.time() - t0
+owncloud.rc = real_rc
+ok(took < 2 and st.get("free") is not None, f"page answers at once with the last room known ({took:.1f}s)")
 # 9. Off: no backup at plug-in; "now" still makes one, on this Mac
 backup.save(DIR, place="off")
 before = len(backup.snaps(DIR, "Lexar"))
