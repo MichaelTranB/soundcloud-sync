@@ -306,7 +306,7 @@ def tidy(d, src, rels=()):
             rec["done"][t["link"]] = {"was": old.get("was") or t["name"], "at": int(time.time()),
                                       "said": old.get("said") or [t["artist"], t["title"]],
                                       **({"tags": old["tags"], "fixed": old.get("fixed")} if "tags" in old else
-                                         {"tags": snap, "fixed": prior} if snap else {}),
+                                         {"tags": snap or {}, "fixed": prior}),  # {}: only its file name was tidied
                                       "to": [way["artist"], way["title"]],
                                       **({"rename": True} if t["rename"] else {})}
             rec["asis"].pop(t["link"], None)
@@ -452,8 +452,9 @@ def undo(d, src, rel):
     was = load(d)["done"].get(link)
     if not link or not was:
         return False
-    if was.get("tags"):
-        back_tags(d, src, rel, was)
+    if "tags" in was:
+        if was["tags"]:  # (empty: only its file name was tidied, so its tags stay as they are)
+            back_tags(d, src, rel, was)
     else:  # (tidied before Undo kept its own note)
         naming.undo(d, src, rel)
     stem = lambda n: os.path.splitext(n)[0]  # (converted since, to AIFF say: its kind stays as it is now)
