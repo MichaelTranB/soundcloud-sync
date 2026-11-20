@@ -160,3 +160,8 @@ liked-settings.json
 sc-playlists.json
 sc-playlists.json.*.tmp
 .sc-playlists.lock
+rclone.conf
+rclone.conf.new
+.owncloud.json
+.owncloud-about.json
+.owncloud-about.json.tmp

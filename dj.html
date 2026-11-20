@@ -345,7 +345,7 @@
     </ol>
 
     <h3>Backup and repair</h3>
-    <p>Each time you plug in your USB, what your decks saved on it (hot cues, playlists, history) is copied to this Mac first, or to your iCloud Drive if you pick that in <b>Options</b> (it spares this Mac's room). If a library on it stops opening, this page says so and <b>Repair this USB</b> puts the backup back, songs included. Erasing a USB is never done for you.</p>
+    <p>Each time you plug in your USB, what your decks saved on it (hot cues, playlists, history) is copied to this Mac first, or to your iCloud Drive or your own cloud (OneDrive, Dropbox, pCloud) if you pick that in <b>Options</b> (it spares this Mac's room). If a library on it stops opening, this page says so and <b>Repair this USB</b> puts the backup back, songs included. Erasing a USB is never done for you.</p>
 
     <h3>Your USB is asked first</h3>
     <p>A USB that already has things on it is not touched until you press <b>Go ahead</b>. After that, songs go only into The Crate's own folder and playlists into its own <b>The Crate</b> folder. Your files, folders and playlists are never moved, renamed or deleted. You can stop any time.</p>
@@ -893,8 +893,11 @@ function draw() {
   checks.forEach(r => cl.append(el('div', { className: 'row' }, el('span', { className: 'dot' + (r.ok === true ? ' ok' : r.ok === false ? ' warn' : '') }),
     el('div', {}, r.say, r.do ? el('small', { textContent: r.do }) : ''))));
 
-  // backup and repair (backup.py): what the decks saved on the USB is kept on this Mac or in iCloud Drive, and can be put back
+  // backup and repair (backup.py): what the decks saved on the USB is kept on this Mac, in iCloud Drive or in your own
+  // cloud (owncloud.py), and can be put back
   const bk = $('backup'), B = S.backup || { sticks: [] }, mine = B.sticks.find(s => s.name === S.usb), doing = B.doing;
+  const own = B.own || {}, ownName = own.label || 'your own cloud';
+  const placeIs = { icloud: 'in your iCloud Drive', own: 'in your ' + ownName, off: 'nowhere: backup is off in Options' }[B.place] || 'on this Mac';
   const at = t => { const d = new Date(t * 1000), n = new Date(), y = new Date(n - 864e5);
     return (d.toDateString() === n.toDateString() ? 'today' : d.toDateString() === y.toDateString() ? 'yesterday' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }))
       + ', ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
@@ -902,9 +905,9 @@ function draw() {
     .sort((a, b) => (b.name === S.usb) - (a.name === S.usb) || b.when - a.when);
   const stickName = '"' + S.usb + '"', bkRow = (dot, say, sub) => bk.append(el('div', { className: 'row' }, dot, el('div', {}, say, sub || '')));
   bk.hidden = !S.usb; bk.textContent = '';
-  bk.append(el('h2', {}, 'Backup & repair', el('small', { textContent: 'what your decks saved on your USB, kept ' + (B.place === 'icloud' ? 'in your iCloud Drive' : 'on this Mac') }), ask('backup', 'How backup and repair work')),
-    notes2('backup', ['Every time you plug in your USB, its rekordbox, Engine DJ and Serato libraries (hot cues, playlists, history) are copied to ' + (B.place === 'icloud' ? 'your iCloud Drive' : 'this Mac') + ' first. That only reads the USB.',
-      'Options picks where backups are kept: this Mac, or your iCloud Drive, which spares this Mac\'s room. Songs go up bit by bit, then leave this Mac.',
+  bk.append(el('h2', {}, 'Backup & repair', el('small', { textContent: 'what your decks saved on your USB, kept ' + placeIs }), ask('backup', 'How backup and repair work')),
+    notes2('backup', ['Every time you plug in your USB, its rekordbox, Engine DJ and Serato libraries (hot cues, playlists, history) are copied ' + (B.place === 'off' ? 'nowhere while backup is off (Back up now still makes one, on this Mac)' : placeIs) + ' first. That only reads the USB.',
+      'Options picks where: this Mac, your iCloud Drive, or your own cloud (OneDrive, Dropbox or pCloud, signed in on its own page). The clouds spare this Mac\'s room; songs go up bit by bit, straight from the USB to your own cloud.',
       'Repair puts those libraries back, and any song that went missing. What is on the USB now is backed up first, and nothing else on it is touched.',
       'A USB that will not open at all has to be erased first, in Disk Utility: that step is yours. Then plug it in and repair it here.']));
   if (!doing) fixUsb = fixUsb && S.usbIn && good.length > 0;
@@ -919,15 +922,26 @@ function draw() {
   }
   const mb = b => b ? size(Math.max(1, Math.round(b / 1e6))) : 'nothing';
   const icl = m => !(m.up || {}).asked ? 'checking what is in iCloud' : mb(m.cloud || 0) + ' in iCloud' + (m.up.unsent ? ', ' + mb(m.up.unsent) + ' still waiting to upload' : '');
+  const oc = m => !(m.up || {}).asked ? 'checking what is in ' + ownName : mb(m.cloud || 0) + ' in ' + ownName + (m.up.unsent ? ', ' + mb(m.up.unsent) + ' still to go up' : '')
+    + (B.free != null ? ', ' + size(Math.max(0, Math.round(B.free / 1e6))) + ' left there' : '');
   const fine = mine && mine.snaps.find(x => x.ok);
   if (fine) bkRow(el('span', { className: 'dot ok' }), 'Backed up ' + at(fine.when), el('small', { textContent: [(fine.libs || []).join(', ') || 'No deck library on it yet',
-    fine.songs ? num(fine.songs) + (fine.songs === 1 ? ' song that is' : ' songs that are') + ' only on the USB' : '', fine.place === 'icloud' ? icl(mine) : size(Math.max(1, Math.round((mine.size || fine.bytes) / 1e6))) + ' on this Mac',
+    fine.songs ? num(fine.songs) + (fine.songs === 1 ? ' song that is' : ' songs that are') + ' only on the USB' : '', fine.place === 'icloud' ? icl(mine) : fine.place === 'own' ? oc(mine) : size(Math.max(1, Math.round((mine.size || fine.bytes) / 1e6))) + ' on this Mac',
     fine.skipped || '', !hurt && mine.checked > fine.when + 90 ? 'nothing new since, checked ' + at(mine.checked) : '', S.usbIn ? '' : 'plug it in to back it up or repair it'].filter(Boolean).join(' · ') }));
   else if (!doing) bkRow(el('span', { className: 'dot' }), 'No backup yet', el('small', { textContent: S.usbIn ? 'It is made by itself each time your USB is plugged in. Or now.' : 'Plug in your USB: its backup is made by itself.' }));
   // iCloud Drive: the songs that are only on the USB go up after its libraries, as this Mac has room. What is in
   // iCloud is what macOS says is uploaded (backup.tally), never what was merely copied into iCloud Drive.
-  const up = new1 && new1.place === 'icloud' ? { ...(mine.up || {}), left: new1.waiting || 0 } : null;
-  if (up && (up.left || up.here || up.unsent) && !doing) bkRow(el('span', { className: mine.going ? 'spin' : 'dot' }), 'Going up to iCloud Drive', el('small', { textContent: [
+  // Your own cloud: straight from the USB; what is there is what the cloud's own listing shows. Full, or a sign-in to
+  // give again, is said in its own line and never left silent.
+  const up = new1 && (new1.place === 'icloud' || new1.place === 'own') ? { ...(mine.up || {}), left: new1.waiting || 0 } : null;
+  if (up && new1.place === 'own' && ['full', 'signin', 'net'].includes(up.why)) bkRow(el('span', { className: 'dot warn' }),
+    { full: 'Your ' + ownName + ' is full', signin: ownName + ' needs you to sign in again', net: ownName + ' could not be reached' }[up.why],
+    el('small', { textContent: { full: 'Make room there (or get more): the songs carry on by themselves. ' + (B.free != null ? size(Math.max(0, Math.round(B.free / 1e6))) + ' left there.' : ''),
+      signin: 'Options, My own cloud: sign in again. Nothing waiting is lost.', net: 'Is this Mac online? Tried again in a few minutes.' }[up.why] }));
+  else if (up && new1.place === 'own' && (up.left || up.unsent) && !doing) bkRow(el('span', { className: mine.going ? 'spin' : 'dot' }), 'Going up to ' + ownName, el('small', { textContent: [
+    up.left ? num(up.left) + (up.left === 1 ? ' song' : ' songs') + ' still only on the USB' : '', B.free != null ? size(Math.max(0, Math.round(B.free / 1e6))) + ' left there' : '',
+    up.left && !S.usbIn ? 'plug the USB in and they carry on' : up.why === 'unread' ? 'some could not be read: tried again at the next backup' : up.left && !mine.going ? 'they carry on at the next backup' : ''].filter(Boolean).join(' · ') }));
+  if (up && new1.place === 'icloud' && (up.left || up.here || up.unsent) && !doing) bkRow(el('span', { className: mine.going ? 'spin' : 'dot' }), 'Going up to iCloud Drive', el('small', { textContent: [
     up.left ? num(up.left) + (up.left === 1 ? ' song' : ' songs') + ' still only on the USB' : '', up.unsent ? mb(up.unsent) + ' on this Mac, waiting to upload' : '',
     up.out ? mb(up.out) + ' that macOS kept out of iCloud: being put right' : '', B.free != null ? 'iCloud has ' + size(Math.round(B.free / 1e6)) + ' free' : '',
     up.why === 'full' ? 'your iCloud is full: make room there and they carry on' : up.left && !S.usbIn ? 'plug the USB in and they carry on'
@@ -1079,6 +1093,7 @@ function drawDoit(rows, songs) {
   fill.append(f.autoDetails ? 'New songs are filled in by themselves. ' : 'New songs are left as they are. ',
     link(f.autoDetails ? 'Switch off' : 'Switch on', () => post('/api/dj/details', { auto: !f.autoDetails })));
 }
+let wantOwn = false;  // "My own cloud" picked before signing in: it switches to it once you have
 // Options: every switch in one sheet. Your way is how it starts; anyone can change it here.
 async function setOpt(body, done, path) { if (await post(path || '/api/dj/options', body)) say(done); }
 function drawOpts() {
@@ -1105,10 +1120,41 @@ function drawOpts() {
   const keep = (S.backup || {}).songs;
   sw('Back up USB-only songs', 'Songs on your USB that are not on this Mac are kept in its backup too. Off: only what your decks saved.', keep,
     () => setOpt({ songs: !keep }, keep ? 'Backups keep only what your decks saved.' : 'Songs only on the USB are backed up too.', '/api/dj/backup'));
-  const far = (S.backup || {}).place === 'icloud', where = el('button', { className: 'ghost mini', textContent: far ? 'iCloud' : 'This Mac' });
-  where.setAttribute('aria-label', 'Keep USB backups in: ' + (far ? 'iCloud Drive. Press for this Mac' : 'this Mac. Press for iCloud Drive'));
-  where.onclick = () => setOpt({ place: far ? 'mac' : 'icloud' }, far ? 'USB backups are kept on this Mac.' : 'USB backups go to your iCloud Drive.', '/api/dj/backup');
-  line('Keep USB backups in', 'This Mac, or your iCloud Drive: that spares this Mac\'s room. Press to switch.', where);
+  // Backup: Off / This Mac / iCloud Drive / My own cloud (backup.py, owncloud.py). "My own cloud" signs in on the
+  // provider's own page in your browser; nothing of yours is typed here.
+  const B = S.backup || {}, own = B.own || {}, gb = b => b == null ? '?' : size(Math.max(0, Math.round(b / 1e6)));
+  if (own.kind && wantOwn && B.place !== 'own') { wantOwn = false; setOpt({ place: 'own' }, 'USB backups go to your ' + own.label + '.', '/api/dj/backup'); }
+  const pick = el('select', {}, ...[['off', 'Off'], ['mac', 'This Mac'], ['icloud', 'iCloud Drive'], ['own', 'My own cloud']].map(([v, t]) =>
+    el('option', { value: v, textContent: t, selected: (wantOwn && !own.kind ? 'own' : B.place || 'mac') === v })));
+  pick.setAttribute('aria-label', 'Backup');
+  pick.onchange = () => {
+    const v = pick.value;
+    if (v === 'own' && !own.kind) { wantOwn = true; drawOpts(); return; }  // signed in first, then it switches by itself
+    wantOwn = false;
+    setOpt({ place: v }, { off: 'USB backups are off. Back up now still makes one.', mac: 'USB backups are kept on this Mac.', icloud: 'USB backups go to your iCloud Drive.', own: 'USB backups go to your ' + own.label + '.' }[v], '/api/dj/backup');
+  };
+  line('Backup', 'Each time your USB is plugged in. iCloud Drive and your own cloud spare this Mac\'s room.', pick);
+  if (B.place === 'own' || wantOwn || own.kind) {
+    const a = own.about || {}, acts = el('span', {});
+    let what;
+    if (own.connecting) what = 'Finish signing in on the page that opened in your browser.';
+    else if (own.kind) {
+      what = 'Signed in to ' + own.label + (a.why ? ': ' + ({ full: 'it is full', signin: 'sign in again', net: 'can\'t be reached now' }[a.why] || 'can\'t be asked now')
+        : a.free != null ? ': ' + gb(a.used) + ' used, ' + gb(a.free) + ' left' + (a.free < 1e9 ? ' (nearly full: make room there)' : '') : '.');
+      const out = el('button', { className: 'ghost mini', textContent: a.why === 'signin' ? 'Sign in again' : 'Sign out' });
+      out.onclick = a.why === 'signin' ? () => setOpt({ connect: own.kind }, 'Sign in on the page that opens in your browser.', '/api/dj/owncloud')
+        : () => setOpt({ disconnect: true }, 'Signed out. The backups there stay; new ones are kept on this Mac.', '/api/dj/owncloud');
+      acts.append(out);
+    } else {
+      what = 'Sign in on your cloud\'s own page: The Crate never sees your password.' + (own.said ? ' ' + own.said : '');
+      for (const [k, t] of Object.entries(own.kinds || {})) {
+        const b = el('button', { className: 'ghost mini', textContent: t });
+        b.onclick = () => { wantOwn = true; setOpt({ connect: k }, 'Sign in to ' + t + ' on the page that opens in your browser.', '/api/dj/owncloud'); };
+        acts.append(b, ' ');
+      }
+    }
+    line('My own cloud', what, acts);
+  }
   go('USB folders', 'Where The Crate\'s folder sits on the USB, how songs are filed in it, and which genres count as EDM.', 'folders');
   go('Genres', 'Add or remove the genres your songs are sorted into.', 'pills');
   const home = el('a', { className: 'ghost mini', href: '/', textContent: 'Open' });

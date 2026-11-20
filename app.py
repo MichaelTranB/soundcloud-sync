@@ -8,7 +8,7 @@ import glob, json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, 
 import audio, freedl, links, playlists, safety, soulseek, tour
 import aiff, club, details, dj, friend, genres, layout, liked, recognise, scplaylists, usb_ask, waveform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import backup, naming, place, tempo
+import backup, naming, owncloud, place, tempo
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.expanduser("~/Music/SoundCloud Sync")
@@ -1512,14 +1512,16 @@ def dj_post(path, body):
         if "songs" in body:  # songs that are only on the USB are kept too, or not
             backup.save(DIR, body["songs"] is True)
             return None
-        if "place" in body:  # where the backups are kept: this Mac, or your iCloud Drive (which spares this Mac's room)
-            if body["place"] not in ("mac", "icloud"):
+        if "place" in body:  # where the backups are kept: off, this Mac, your iCloud Drive or your own cloud (both
+            if body["place"] not in backup.PLACES:  # spare this Mac's room)
                 return "Not a place a backup can go."
             if body["place"] == "icloud" and not backup.cloud():
                 return ("iCloud Drive can't be opened on this Mac. Turn it on in System Settings (or allow The Crate, "
                         "if your Mac asks), then choose it again.")
+            if body["place"] == "own" and not owncloud.kind(DIR):
+                return "Sign in to your own cloud first (OneDrive, Dropbox or pCloud, just below)."
             backup.save(DIR, place=body["place"])
-            if not usb or not os.path.isdir(at) or backup.progress(DIR):
+            if body["place"] == "off" or not usb or not os.path.isdir(at) or backup.progress(DIR):
                 return None  # the next backup goes there
             body = {"now": True}  # with the USB plugged in, the first backup there starts right away
         if "fine" in body:  # "It's fine": the USB once seen damaged is no longer offered a repair
@@ -1530,7 +1532,7 @@ def dj_post(path, body):
             return "Plug in your USB first."
         if backup.progress(DIR):
             return "A backup is already at work."
-        job = ["run", DIR, at, OUT]
+        job = ["run", DIR, at, OUT, "now"]
         if "restore" in body:  # your press on "Put it back" is the yes; what is on the USB now is backed up first
             r = body["restore"] if isinstance(body["restore"], dict) else {}
             if not any(s["name"] == r.get("name") and any(x["id"] == r.get("day") and x["ok"] for x in s["snaps"]) for s in kept):
@@ -1543,6 +1545,26 @@ def dj_post(path, body):
                                  stdout=subprocess.DEVNULL, stderr=log)
         threading.Thread(target=p.wait, daemon=True).start()
         return None
+    if path == "/api/dj/owncloud":  # your own cloud (owncloud.py, rclone): its own sign-in page opens in your browser
+        k = body.get("connect")
+        if k is not None:
+            if k not in owncloud.KINDS:
+                return "Not a cloud The Crate can use."
+            if owncloud.connecting(DIR):
+                return "A sign-in is already open in your browser: finish it there (or close it), then try again."
+            with open(os.path.join(DIR, "dj.log"), "a") as log:
+                p = subprocess.Popen([sys.executable, os.path.join(DIR, "owncloud.py"), "connect", DIR, k],
+                                     start_new_session=True, stdout=subprocess.DEVNULL, stderr=log)
+            threading.Thread(target=p.wait, daemon=True).start()
+            return None
+        if body.get("disconnect") is True:  # The Crate lets go of it; the backups there stay
+            if backup.alive(DIR) or backup.progress(DIR) is not None:  # (a backup, its songs, or a repair)
+                return "A backup is at work: try again once it is done."
+            owncloud.disconnect(DIR)
+            if backup.load(DIR)["place"] == "own":
+                backup.save(DIR, place="mac")
+            return None
+        return "Not something your own cloud can do."
     if path == "/api/dj/layout":  # how the songs sit inside The Crate's folder on the USB (layout.py: one folder, or
         mode, other = body.get("mode"), body.get("other")  # by genre), and which genres aren't EDM. The run files them.
         every = body.get("all")  # an "All songs" folder of copies beside them, or not
