@@ -20,6 +20,7 @@ import fcntl, os, sys, time
 import usb_tidy
 
 SIGNS = usb_tidy.SIGNS  # \\ : * ? " < > | and their look-alikes
+DECKS = ("_Serato_", "Engine Library", "PIONEER")  # at the top of the USB: Serato's, Engine DJ's and rekordbox's
 DOUBLE = b"\x00\x05\x16\x07"  # how every "._" file macOS writes begins (AppleDouble)
 
 
@@ -134,10 +135,14 @@ def junk(p):
 
 
 def clean(crate):
-    """Takes off the "._" files inside The Crate's folder, and the one for the folder itself beside it. Returns how
-    many."""
+    """Takes off the "._" files inside The Crate's folder, and the ones for that folder and the decks' folders beside
+    it. Returns how many."""
     crate = os.path.abspath(crate)
     found = [os.path.join(os.path.dirname(crate), "._" + os.path.basename(crate))]
+    top = crate  # the top of the USB: the twins of the decks' own folders The Crate writes in, too
+    while not os.path.ismount(top) and os.path.dirname(top) != top:
+        top = os.path.dirname(top)
+    found += [os.path.join(top, "._" + n) for n in DECKS]
     for root, dirs, files in os.walk(crate):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
         found += [os.path.join(root, f) for f in files if f.startswith("._")]
