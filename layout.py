@@ -125,8 +125,10 @@ def keep(made_from, home):
             os.replace(path + ".tmp", path)
         elif os.path.lexists(path):
             os.remove(path)
+        return True
     except OSError as e:
         print(f'what was copied into "{ALL}" couldn\'t be noted ({e.strerror})', file=sys.stderr)
+        return False
 
 
 def all_songs(dest, at, cfg, dry=False):
@@ -196,7 +198,11 @@ def all_songs(dest, at, cfg, dry=False):
             pass
         todo.append((p, q))
     said = ""
-    need = sum(usb_tidy.size(p) for p, _ in todo)
+    need = grown = 0  # the most room the copies take at any point: each one is whole beside the one it replaces,
+    for p, q in todo:  # which then frees its space
+        size, was = usb_tidy.size(p), max(usb_tidy.size(q), 0)
+        need = max(need, grown + size)
+        grown += size - was
     try:
         free = shutil.disk_usage(dest).free
     except OSError:
@@ -205,6 +211,16 @@ def all_songs(dest, at, cfg, dry=False):
         said = (f'PROBLEM: no room for the "{ALL}" copies ({-(-need >> 20)} MB more needed, and the USB keeps '
                 f"{ROOM >> 30} GB free). Free some space, or untick All songs on the page")
         todo = []
+    if todo and not dry:  # each copy is noted as The Crate's before it is put there (with no marker yet, so a copy
+        # cut short is made again next time), so a USB pulled out mid-way never leaves a copy it doesn't own
+        for p, q in todo:
+            made_from.setdefault(cf(os.path.basename(q)), [])
+        try:
+            os.makedirs(home, exist_ok=True)
+        except OSError:
+            pass
+        if not keep(made_from, home):
+            said, todo = f'PROBLEM: the copies in "{ALL}" couldn\'t be noted on the USB, so none were made', []
     for p, q in todo:
         if dry:
             made += 1
@@ -216,7 +232,7 @@ def all_songs(dest, at, cfg, dry=False):
             os.replace(tmp, q)
             made_from[cf(os.path.basename(q))] = mark(p)
             made += 1
-            if made % 20 == 0:  # (kept as it goes: a USB pulled out mid-way still knows the copies are its own)
+            if made % 20 == 0:  # (noted as it goes: fewer made again after a USB is pulled out mid-way)
                 keep(made_from, home)
         except OSError as e:
             try:
