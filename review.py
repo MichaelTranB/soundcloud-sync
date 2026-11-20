@@ -171,6 +171,9 @@ def peers(d, src):
     return out
 
 
+ORIGINAL = re.compile(r"\boriginal (?:mix|version|edit)\b|[(\[]\s*original\s*[)\]]", re.I)
+
+
 def doubt(artist, title, song, rel, cur, peer=""):
     """Why this file may be another song than the playlist's ("" when its name agrees). cur: (artist, title) inside
     the file. What's inside it and the name it came with are read together: either may be the one that says it. A
@@ -191,6 +194,8 @@ def doubt(artist, title, song, rel, cur, peer=""):
     want, got = soulseek.version_words(title), soulseek.version_words(stem) | soulseek.version_words(cur[1])
     if got and want and not got & want:
         return "it says it's another version: " + " ".join(sorted(got))
+    if want and not got and ORIGINAL.search(f"{cur[1]} {stem}"):  # ("Original Mix" holds no version words)
+        return "it says it's the original, the playlist's is a version: " + " ".join(sorted(want))
     if got and not want and got - soulseek.words(artist) - soulseek.words(title):
         return "it says it's a version of the song, the playlist's isn't: " + " ".join(sorted(got))
     return ""
