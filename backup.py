@@ -552,7 +552,9 @@ def tally(dir, name, up, pool, lists, free=True, every=300):
     got = {"sent": sum(size[p] for p, v in said.items() if v in "cue"), "freed": sum(v == "e" for v in said.values()),
            "unsent": sum(size[p] for p, v in said.items() if v not in "cue"),
            "out": sum(size[p] for p, v in said.items() if v == "x"),
-           "here": sum(v in "uwx" for v in said.values()), "asked": int(time.time())}
+           "here": sum(v not in "ce" for v in said.values()), "asked": int(time.time())}
+    # ("here" counts every file not yet off this Mac, one iCloud hasn't registered yet ("-") or couldn't say ("?")
+    # included: the songs job keeps asking until each is up and gone from here, or a day passes with no change)
     for s in pool:
         at = os.path.join(home(dir, name), s["id"], "about.json")
         about, mine = read(at, {}), [spot(dir, name, s["id"], rel, row, up) for rel, row in lists[s["id"]].items()
@@ -842,7 +844,8 @@ def _songs(dir, usb, name, skip, turn=20):
     seen = tally(dir, name, up, pool, lists)
     here, freed = (seen["here"], seen["freed"]) if seen else (was.get("here") or 0, 0)
     why, did, rest, left0, tmp = "", False, 0, 0, os.path.join(home(dir, name), ".up-song")
-    free, left, t0 = shutil.disk_usage(up).free, room(30), time.time()
+    # (a song is copied on this Mac first, into .up-song: the room that counts is the smaller of both disks)
+    free, left, t0 = min(shutil.disk_usage(up).free, shutil.disk_usage(home(dir, name)).free), room(30), time.time()
     # What iCloud Drive holds by now, by its place on the USB, its size and its time: {...: the day that holds it}
     have = {(rel, row[0], row[1]): row[3] for s in reversed(pool) for rel, row in lists[s["id"]].items() if len(row) > 3}
     # The newest backup's waiting songs go up, and then what an older one kept there still waits for: a song the copy
