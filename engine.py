@@ -75,10 +75,12 @@ def genres_there(usb, songs):
         have = {nfc(p): g or "" for p, g in con.execute("SELECT path, genre FROM Track") if p}
     finally:
         con.close()
-    out, music = {}, place.web(usb)
+    out, roots = {}, [place.web(usb)] + place.others(usb)
     for s in songs:
-        p = nfc(f"../{music}/{s.get('at') or s['rel']}")  # ("at": the folder it sits in on this USB, layout.py)
-        if p in have:
+        n = s.get("at") or s["rel"]  # ("at": the folder it sits in on this USB, layout.py)
+        # (a row still at a place The Crate's folder had before counts: the write that follows moves it over)
+        p = next((p for p in (nfc(f"../{m}/{n}") for m in roots) if p in have), "")
+        if p:
             out[s["rel"]] = have[p]
     return out
 
@@ -115,11 +117,14 @@ def write(usb, songs, lists, backups):
         # (a row left at a place the folder had before follows its file, the same way)
         by = layout.rows(have, tuple(f"../{m}/" for m in [music] + place.others(usb)))
         there = lambda p: os.path.isfile(os.path.join(usb, p[3:]))
+        # (the same place under the old folder first; a match by file name alone is for a move inside the folder)
+        same = layout.same(by, have, [s for s, _ in on_usb], lambda s: [
+            nfc(f"../{m}/{n}") for n in (s.get("at") or s["rel"], s.get("was")) if n for m in place.others(usb)], there)
         for s, usb_file in on_usb:
             r = row(s, usb_file, music)
             old = nfc(f"../{music}/{s['was']}") if s.get("was") else ""
             if r["path"] not in have and old not in have:  # filed into another folder on the USB (layout.py)
-                old = layout.old(by, s, r["path"], there)
+                old = same.get(s["rel"]) or layout.old(by, s, r["path"], there)
             if old in have and r["path"] not in have:  # the file moved: the same track, cues and all, at its new place
                 # (or became another kind of file with the same sound: a FLAC that is now an AIFF, aiff.py)
                 con.execute("UPDATE Track SET path=?, filename=?, fileType=?, fileBytes=?, bitrate=COALESCE(?, bitrate) "

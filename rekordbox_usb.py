@@ -411,11 +411,14 @@ def write(job, master=None, is_open=running):
             "LEFT JOIN genre g ON g.genre_id = c.genre_id") if p and nfc(p).startswith(pre)}
         # A file that moved inside the folder (dj.py's "was") is the same track at a new place: its row follows.
         moved = []
-        by = layout.rows(own, pre)
+        by, there = layout.rows(own, pre), lambda p: os.path.isfile(usb + p)
+        # (the same place under the old folder first; a match by file name alone is for a move inside the folder)
+        same = layout.same(by, own, songs, lambda s: [
+            device(n, m) for n in (s.get("at") or s["rel"], s.get("was")) if n for m in place.others(usb)], there)
         for s in songs:
             old = device(s["was"], music) if s.get("was") else ""
             if at[s["rel"]] not in own and old not in own:  # filed into another folder on the USB (layout.py)
-                old = layout.old(by, s, at[s["rel"]], lambda p: os.path.isfile(usb + p))
+                old = same.get(s["rel"]) or layout.old(by, s, at[s["rel"]], there)
             if old in own and at[s["rel"]] not in own:
                 own[at[s["rel"]]] = own.pop(old)
                 moved.append((at[s["rel"]], s))
