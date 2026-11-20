@@ -1080,6 +1080,65 @@ def fix_start(kind, how, feed):
     return True
 
 
+_review = {"proc": None}  # Check new downloads: a "Tidy all" at work on its own
+
+
+def review_rel(v):
+    """A song's name inside the music folder, as the page sends it (never a way out of it)."""
+    return v if isinstance(v, str) and v and not v.startswith("/") and ".." not in v.split("/") else ""
+
+
+def review_list():
+    """Check new downloads (review.py): the files that may be another song than the playlist's, and the names to tidy
+    to the playlist's own."""
+    p = _review["proc"]
+    busy = bool(p and p.poll() is None)
+    if not os.path.exists(dj.PY):
+        return {"wrong": [], "tidy": [], "done": [], "busy": busy}
+    try:
+        r = subprocess.run([dj.PY, os.path.join(DIR, "review.py"), "list", DIR, OUT],
+                           capture_output=True, text=True, timeout=120)
+        got = json.loads(r.stdout) if r.returncode == 0 else None
+    except (subprocess.TimeoutExpired, ValueError):
+        got = None
+    if not isinstance(got, dict):
+        return {"wrong": [], "tidy": [], "done": [], "busy": busy, "error": "The new downloads couldn't be checked "
+                "just now. The next sync tries again."}
+    return {**got, "busy": busy}
+
+
+def review_post(body):
+    """Check new downloads' buttons: Tidy (the ticked songs, or "all") takes the playlist's name, on its own; It's the
+    right song (keep), Keep this name (asis) and Undo answer at once. None when done, else what to say."""
+    if not os.path.exists(dj.PY):
+        return "The DJ tools aren't set up on this Mac yet."
+    tool = os.path.join(DIR, "review.py")
+    if "tidy" in body:
+        t = body["tidy"]
+        rels = [] if t == "all" else [r for r in map(review_rel, t if isinstance(t, list) else []) if r]
+        if t != "all" and not rels:
+            return "Pick the songs first."
+        p = _review["proc"]
+        if p and p.poll() is None:
+            return "Still tidying the last ones. Try again when it's done."
+        with open(os.path.join(DIR, "dj.log"), "a") as log:
+            _review["proc"] = p = subprocess.Popen([dj.PY, tool, "tidy", DIR, OUT, *rels[:500]], stdin=subprocess.DEVNULL,
+                                                   stdout=subprocess.DEVNULL, stderr=log, start_new_session=True)
+        threading.Thread(target=lambda: (p.wait(), follow()), daemon=True).start()
+        return None
+    how = next((k for k in ("keep", "asis", "undo") if k in body), "")
+    rel = review_rel(body.get(how))
+    if not rel:
+        return "That song isn't in your library any more."
+    try:
+        r = subprocess.run([dj.PY, tool, how, DIR, OUT, rel], capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        return "That took too long. Try again in a moment."
+    if r.returncode:
+        return (r.stderr.strip().splitlines() or ["That song isn't in your library any more."])[-1][:200]
+    return follow() if how == "undo" else None
+
+
 def progress(name):
     """A job's own note while it runs ("done<TAB>of<TAB>its pid": aiff.py, details.py): [done, of], else None."""
     try:
@@ -1613,6 +1672,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, state())
         if self.path == "/api/tour":  # who has seen the guided tour (tour.py)
             return self.send(200, tour_state())
+        if self.path == "/review.js":  # Check new downloads, on the main page
+            with open(os.path.join(DIR, "review.js"), "rb") as fh:
+                return self.send(200, fh.read(), "text/javascript; charset=utf-8")
         if self.path in ("/tour.js", "/faq") or self.path.startswith("/faq?"):  # the tour, and the searchable FAQ page
             f = "tour.js" if self.path == "/tour.js" else "faq.html"
             with open(os.path.join(DIR, f), "rb") as fh:
@@ -1623,6 +1685,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, f.read(), "text/html; charset=utf-8")
         if self.path == "/api/dj":
             return self.send(200, dj_state())
+        if self.path == "/api/review":  # Check new downloads: maybe the wrong file, and names to tidy
+            return self.send(200, review_list())
         if self.path == "/api/dj/usbs":  # what each other plugged-in USB offers to copy
             return self.send(200, friend.scan(DIR, OUT))
         if self.path.split("?")[0] == "/api/dj/layout":  # what a USB layout would do, before it is picked
@@ -1703,7 +1767,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {"error": "wrong origin"})
         try:
             # a pasted song list is ~55 bytes a song; the playlists and folders ticked to copy from another USB
-            cap = 600_000 if self.path in ("/api/spotify-songs", "/api/liked", "/api/dj/aiff", "/api/dj/details", "/api/dj/naming") else \
+            cap = 600_000 if self.path in ("/api/spotify-songs", "/api/liked", "/api/dj/aiff", "/api/dj/details", "/api/dj/naming", "/api/review") else \
                 200_000 if self.path in ("/api/dj/copy", "/api/dj/layout", "/api/scpl/start") else 4096
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
         except ValueError:
@@ -1712,6 +1776,11 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(body, dict) or not tour.mark(DIR, str(body.get("page", "")), *tour_facts()):
                 return self.send(400, {"error": "bad request"})
             return self.send(200, tour_state())
+        if self.path == "/api/review":
+            if not isinstance(body, dict):
+                return self.send(400, {"error": "bad request"})
+            bad = review_post(body)
+            return self.send(400, {"error": bad}) if bad else self.send(200, review_list())
         if self.path.startswith("/api/dj/"):
             if not isinstance(body, dict):
                 return self.send(400, {"error": "bad request"})

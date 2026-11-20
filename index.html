@@ -1214,6 +1214,7 @@ $('q').onkeydown = e => { if (e.key === 'Escape') { e.target.value = ''; draw();
 const tick = () => call('/api/state').catch(() => {});
 tick(); setInterval(tick, 3000);
 </script>
+<script src="/review.js" defer></script>
 <script src="/tour.js" defer></script>
 </body>
 </html>

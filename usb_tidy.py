@@ -204,9 +204,18 @@ def tidy(d, src, dest):
             stuck += 1
     for a, b in rows(d, MOVES):  # moved inside the music folder on the Mac: the same move here, not a second copy
         if os.path.isabs(a) or os.path.isabs(b) or ".." in (a + os.sep + b).split(os.sep) or \
-                size(os.path.join(src, b)) < 0 or os.path.lexists(os.path.join(src, a)):
+                os.path.lexists(os.path.join(src, a)):
             continue
-        pa, pb = os.path.join(dest, layout.spot(spots, a)), os.path.join(dest, b)
+        if size(os.path.join(src, b)) < 0:  # converted since (its FLAC an AIFF now): the move goes to that one
+            stem = os.path.splitext(b)[0]
+            b = next((stem + e for e in AUDIO if size(os.path.join(src, stem + e)) >= 0), "")
+            if not b:
+                continue
+        pa = os.path.join(dest, layout.spot(spots, a))
+        if size(pa) < 0:  # converted before it moved (the USB still has its FLAC): the move takes that one
+            stem = os.path.splitext(a)[0]
+            pa = next((p for p in (os.path.join(dest, layout.spot(spots, stem + e)) for e in AUDIO) if size(p) >= 0), pa)
+        pb = os.path.join(dest, os.path.splitext(b)[0] + os.path.splitext(pa)[1])  # (the USB's file keeps its own kind)
         if size(pa) < 0 or os.path.lexists(pb):
             continue
         try:
