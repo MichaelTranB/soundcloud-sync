@@ -917,6 +917,7 @@ def state():
         reading = None
     watch_login(svc)
     return {
+        "rekordboxSoon": _rb["file"],  # a song waiting for the decks' update to open in rekordbox
         "liked": liked.status(DIR), "likedOpts": liked.settings(DIR),
         "playlist": read("playlist.txt"), "service": svc, "capped": capped, "pasted": pasted,
         "missing": info.get("missing", 0), "reading": reading, "usb": usb, "unread": unread, "volumes": volumes(),
@@ -1147,6 +1148,7 @@ def dj_state():
             s["name"] = off[s["file"]]
     last = lambda *words: next((l for l in reversed(log[-40:]) if any(w in l for w in words)), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
+            "rekordboxSoon": _rb["file"],
             "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged, "usbAsk": usb_asking(),
             "fix": {"auto": rec["auto"], "autoDetails": details.load(DIR)["auto"],
                     "aiff": progress(".aiff-progress"), "details": progress(".details-progress"),
@@ -1186,6 +1188,54 @@ def rekordbox_app():
     one = os.environ.get("REKORDBOX_APP")  # for tests
     found = [one] if one else sorted(glob.glob("/Applications/rekordbox*/rekordbox.app"), reverse=True) + ["/Applications/rekordbox.app"]
     return next((p for p in found if os.path.isdir(p)), "")
+
+
+_rb = {"file": "", "on": False, "lock": threading.Lock()}  # the song (music-folder name) waiting to open in rekordbox
+
+
+def song_now(rel):
+    """Where a song is now: converted to AIFF meanwhile (aiff.py), its new file ("" when it's gone)."""
+    p = song_path(rel)
+    if p:
+        return p
+    try:
+        return next((song_path(new) for new, (old, _) in aiff.history(DIR).items() if old == rel), "")
+    except Exception as e:  # never silent
+        print(f'rekordbox: where "{rel}" went couldn\'t be read ({e})', file=sys.stderr)
+        return ""
+
+
+def rekordbox_open(rb, rel, p):
+    """The song opens in rekordbox, now, or as soon as the decks' run is done (rekordbox's own library is written only
+    while rekordbox is closed). Clicking another song meanwhile opens that one instead, even if the run has just
+    finished. After 15 minutes it's dropped and the log says so; so is a song the run converted, which opens as its
+    AIFF. True: it's waiting."""
+    def launch(path):
+        subprocess.Popen(["open", "-a", rb, path], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+    with _rb["lock"]:  # (one lock, so the waiter's song and a newer click never both open, in either order)
+        if _rb["on"]:
+            _rb["file"] = rel
+            return True
+        if not dj.busy(DIR):
+            launch(p)
+            return False
+        _rb["file"], _rb["on"] = rel, True
+
+    def go():
+        end = time.time() + 900
+        while dj.busy(DIR) and time.time() < end:
+            time.sleep(2)
+        with _rb["lock"]:
+            song, _rb["file"], _rb["on"] = _rb["file"], "", False
+            path = song_now(song)
+            if path and not dj.busy(DIR):
+                launch(path)
+                return
+        print(f'rekordbox: "{song}" wasn\'t opened: ' + ("the decks were still being updated after 15 minutes"
+              if path else "it isn't in your music folder any more"), file=sys.stderr)
+    threading.Thread(target=go, daemon=True).start()
+    return True
 
 
 def kbps_of(s):
@@ -1468,9 +1518,7 @@ def dj_post(path, body):
             return "That file isn't on your Mac any more."
         if not rb:
             return "rekordbox isn't on this Mac."
-        if dj.busy(DIR):
-            return "Your decks are being updated right now. Try again in a moment."
-        subprocess.Popen(["open", "-a", rb, p], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        rekordbox_open(rb, str(body.get("file", "")), p)  # (a run can take minutes: the song waits for it)
         return None
     if path == "/api/dj/show":  # a song's file in Finder (for a kind of file the browser can't play)
         p = song_path(body.get("file", ""))
