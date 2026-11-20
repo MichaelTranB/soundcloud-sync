@@ -5,7 +5,7 @@ Listens on 127.0.0.1 only. Every write checks the Host and Origin headers, so an
 in the browser cannot press the buttons.
 """
 import glob, json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, unicodedata, urllib.parse
-import audio, freedl, links, playlists, safety, soulseek
+import audio, freedl, links, playlists, safety, soulseek, tour
 import aiff, club, details, dj, friend, genres, layout, liked, recognise, scplaylists, usb_ask, waveform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -240,6 +240,15 @@ def read(name, default=""):
             return f.read().strip()
     except OSError:
         return default
+
+
+def tour_facts():
+    """What tour.py needs to tell a new install from a working one: a playlist is set up, the DJ library was used."""
+    return bool(saved()), any(os.path.exists(os.path.join(DIR, n)) for n in ("dj-analysis.json", "dj-written.json"))
+
+
+def tour_state():
+    return tour.state(DIR, *tour_facts())
 
 
 def volumes():
@@ -1466,6 +1475,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, f.read(), "image/svg+xml" if svg else "image/png")
         if self.path == "/api/state":
             return self.send(200, state())
+        if self.path == "/api/tour":  # who has seen the guided tour (tour.py)
+            return self.send(200, tour_state())
+        if self.path in ("/tour.js", "/faq") or self.path.startswith("/faq?"):  # the tour, and the searchable FAQ page
+            f = "tour.js" if self.path == "/tour.js" else "faq.html"
+            with open(os.path.join(DIR, f), "rb") as fh:
+                return self.send(200, fh.read(), "text/javascript; charset=utf-8" if f == "tour.js"
+                                 else "text/html; charset=utf-8")
         if self.path == "/dj":  # the DJ library page: genres, tempo, key, and the decks' libraries
             with open(os.path.join(DIR, "dj.html"), "rb") as f:
                 return self.send(200, f.read(), "text/html; charset=utf-8")
@@ -1556,6 +1572,10 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
         except ValueError:
             return self.send(400, {"error": "bad request"})
+        if self.path == "/api/tour":  # the tour on one page was finished or skipped
+            if not isinstance(body, dict) or not tour.mark(DIR, str(body.get("page", "")), *tour_facts()):
+                return self.send(400, {"error": "bad request"})
+            return self.send(200, tour_state())
         if self.path.startswith("/api/dj/"):
             if not isinstance(body, dict):
                 return self.send(400, {"error": "bad request"})
