@@ -70,13 +70,22 @@ def rows(dir):
         return []
 
 
-def undoable(dir):
-    """AIFFs whose original is still in the Trash: {the AIFF: where its original is}."""
+def history(dir):
+    """Each song's last conversion: {its name now: (its name before, where the other file went)}. A song moved or
+    renamed since (into the Liked Songs folder, or a sign a USB can't hold swapped by usbsafe) is followed there."""
     last = {}
     for old, new, to, _ in rows(dir):
         last[new] = (old, to)
         last.pop(old, None)
-    return {new: to for new, (old, to) in last.items()
+    for old, new in usb_tidy.rows(dir, usb_tidy.MOVES):
+        if old in last and new not in last:
+            last[new] = last.pop(old)
+    return last
+
+
+def undoable(dir):
+    """AIFFs whose original is still in the Trash: {the AIFF: where its original is}."""
+    return {new: to for new, (old, to) in history(dir).items()
             if new.lower().endswith(".aiff") and old.lower().endswith(KINDS) and to and os.path.isfile(to)}
 
 
@@ -470,14 +479,15 @@ def run(dir, src, rels, back=False, show=False, cut=None):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             return None
-        there = undoable(dir) if back else {}
+        there, was = (undoable(dir), history(dir)) if back else ({}, {})
         for n, rel in enumerate(rels):
             if show:
                 note(dir, n, rels)
             path = os.path.join(src, rel)
             try:
                 if back:
-                    old = next((o for o, new, to, _ in reversed(rows(dir)) if new == rel), "")
+                    old = was.get(rel, ("",))[0]  # (back beside the song, as it's called now, in its own kind)
+                    old = old and os.path.splitext(rel)[0] + os.path.splitext(old)[1]
                     if rel not in there or not old:
                         raise Problem("its original is no longer in the Trash")
                     if os.path.lexists(os.path.join(src, old)):
