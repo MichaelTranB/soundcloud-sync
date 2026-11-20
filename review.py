@@ -181,6 +181,16 @@ def mixes(s):
     return {w for m in MIX.findall(s or "") for w in low(m)} - {"mix", "edit", "version", "the", "a", "and", "x"}
 
 
+CUT = re.compile(r"(?:[(\[]|\s-\s)[^)\]]*?\b(instrumental|a ?cc?app?ella|karaoke|live|sped up|slowed|nightcore|dub|demo"
+                 r"|cover)\b", re.I)  # another recording of the song, not a name for the same one ("Extended Mix" is)
+
+
+def cuts(title, *names):
+    """The words saying a file is another recording ("Song (Instrumental)", "Song - Live") the playlist's title lacks."""
+    low = unicodedata.normalize("NFKD", title or "").lower()
+    return {w for n in names for w in (m.lower() for m in CUT.findall(n or "")) if not re.search(rf"\b{w}\b", low)}
+
+
 ORIGINAL = re.compile(r"\boriginal (?:mix|version|edit)\b|[(\[]\s*original\s*[)\]]", re.I)
 
 
@@ -209,6 +219,9 @@ def doubt(artist, title, song, rel, cur, peer=""):
     wm, gm = mixes(title), mixes(cur[1]) | mixes(stem) | mixes(peer)
     if wm and gm and not wm & gm:  # ("Club Mix" asked, "Radio Edit" got: words version_words leaves out)
         return "it says it's another cut: " + " ".join(sorted(gm - wm))
+    other = cuts(title, cur[1], stem, peer)
+    if other:  # ("Song" asked, "Song (Instrumental)" got: neither check above sees it)
+        return "it says it's another recording: " + " ".join(sorted(other))
     if want and not got and ORIGINAL.search(f"{cur[1]} {stem} {peer}"):  # ("Original Mix" holds no version words)
         return "it says it's the original, the playlist's is a version: " + " ".join(sorted(want))
     if got and not want and got - soulseek.words(artist) - soulseek.words(title):
