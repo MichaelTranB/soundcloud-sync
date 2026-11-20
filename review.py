@@ -406,6 +406,7 @@ def back_tags(d, src, rel, was):
         back = {f: v for f, v in was["tags"].items() if f in to and (now.get(f) or "") == to[f]}
         with details._same_time(path):
             n = len(naming._set(path, back))
+        naming._went(nrec, rel, **{f: [to[f]] for f in back})  # the decks' rows that showed the tidied name follow
         if was.get("fixed"):
             nrec["fixed"][rel] = was["fixed"]
         else:
