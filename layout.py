@@ -28,6 +28,7 @@ EDM, REST = "EDM", "Other"
 OTHER = ["Hip Hop", "R&B", "Pop", "Rock"]  # the genres that aren't EDM, unless you say otherwise
 MODES = ("flat", "group", "genre")
 ALL = "All songs"  # the folder of copies, when "All songs" is ticked
+STAMP = ".all-songs.json"  # in that folder: what each copy was made from (mark())
 ROOM = 5 << 30  # what the USB keeps free when it makes those copies (the decks need room for their own files too)
 LEFT = (".DS_Store", "._.DS_Store")  # what macOS leaves in a folder: it doesn't make the folder "not empty"
 
@@ -106,18 +107,11 @@ def copies(cfg):
     return cfg.get("all") is True and cfg["mode"] != "flat"
 
 
-def unchanged(p, q, head=512 << 10, tail=128 << 10):
-    """The copy still matches the song: its start and end, where a song's tags and cover sit, are the same. (A tag
-    edit can keep the size and land within the 2 seconds a USB's clock tells apart, so the time can't say.)"""
-    try:
-        with open(p, "rb") as a, open(q, "rb") as b:
-            if a.read(head) != b.read(head):
-                return False
-            for f in (a, b):
-                f.seek(max(0, os.fstat(f.fileno()).st_size - tail))
-            return a.read() == b.read()
-    except OSError:
-        return False
+def mark(p):
+    """What says a song's file on the USB is still the very one a copy was made from: its size, its time and when
+    that file was made (a file put in its place, when tags changed on the Mac, is a new file even at the same size)."""
+    st = os.stat(p)
+    return [st.st_size, int(st.st_mtime), round(getattr(st, "st_birthtime", 0), 2)]
 
 
 def all_songs(dest, at, cfg, dry=False):
@@ -167,11 +161,16 @@ def all_songs(dest, at, cfg, dry=False):
             off += 1
         except OSError:
             pass
+    try:  # what each copy was made from (STAMP, in the folder)
+        made_from = json.load(open(os.path.join(home, STAMP)))
+        made_from = made_from if isinstance(made_from, dict) else {}
+    except (OSError, ValueError):
+        made_from = {}
     todo = []
     for k, p in want.items():
         q = os.path.join(home, there.get(k, os.path.basename(p)))
         try:
-            if os.stat(p).st_size == os.stat(q).st_size and unchanged(p, q):
+            if made_from.get(cf(os.path.basename(q))) == mark(p) and os.stat(q).st_size == os.stat(p).st_size:
                 continue
         except OSError:
             pass
@@ -195,6 +194,7 @@ def all_songs(dest, at, cfg, dry=False):
             os.makedirs(home, exist_ok=True)
             shutil.copy2(p, tmp)
             os.replace(tmp, q)
+            made_from[cf(os.path.basename(q))] = mark(p)
             made += 1
         except OSError as e:
             try:
@@ -203,6 +203,17 @@ def all_songs(dest, at, cfg, dry=False):
                 pass
             said = f'PROBLEM: a copy in "{ALL}" couldn\'t be made ({e.strerror})'
             break
+    if not dry and os.path.isdir(home):
+        made_from = {k: v for k, v in made_from.items() if k in want}
+        try:
+            if made_from:
+                with open(os.path.join(home, STAMP + ".tmp"), "w") as f:
+                    json.dump(made_from, f, ensure_ascii=False)
+                os.replace(os.path.join(home, STAMP + ".tmp"), os.path.join(home, STAMP))
+            elif os.path.lexists(os.path.join(home, STAMP)):
+                os.remove(os.path.join(home, STAMP))
+        except OSError:
+            pass  # (then the copies are made again next time: slower, never stale)
     if not dry and not copies(cfg) and empty(home):
         gone(home)
     if not said and (made or off):
