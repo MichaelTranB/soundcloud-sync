@@ -25,12 +25,18 @@
   button:disabled { opacity: .45; cursor: default; }
   button[aria-busy="true"]:disabled { opacity: .8; }  /* working, not unavailable */
   /* One filled red button per section (its main action); everything else stays an outline. */
-  button.act { padding: 10px 20px; flex: none; }
+  button.act { padding: 10px 20px; flex: none; background: transparent; color: #ff8a9a; border: 1px solid var(--hot); }
+  button.act:hover:not(:disabled) { background: var(--hot); color: #fff; }
   button.ghost, a.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 10px 18px; font-weight: 600; }
   a.ghost { font: inherit; font-weight: 600; border-radius: 999px; cursor: pointer; text-decoration: none; display: inline-block; }
   .big { font-size: 17px; padding: 18px 34px; }
   /* The way to the Library Manager (tempo, key, genres, the decks): milk white with red words, so it is found at a glance. */
-  button.lib { background: var(--lib); color: var(--hot); font-size: 16px; padding: 14px 24px; display: inline-flex; align-items: center; gap: 9px; }
+  button.lib { background: transparent; color: var(--text); border: 1px solid var(--line); font-size: 16px; padding: 14px 24px; display: inline-flex; align-items: center; gap: 9px; }
+  button.lib:hover { border-color: var(--dim); }
+  /* Help sits under the title as quiet links, not buttons. */
+  .helplinks { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 12px; }
+  .helplinks button, .helplinks a { background: none; border: 0; padding: 2px 0; font: inherit; font-weight: 600; font-size: 14.5px; color: var(--dim); text-decoration: none; border-radius: 4px; cursor: pointer; }
+  .helplinks button:hover, .helplinks a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
   button.lib svg { width: 19px; height: 19px; flex: none; }
   .spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: r 1s linear infinite; vertical-align: -1px; margin-right: 8px; }
   @keyframes r { to { transform: rotate(360deg); } }
@@ -54,15 +60,25 @@
   .stat b .skel { width: 2ch; height: .8em; }
   @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
 
-  .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin: 40px 0 28px; }
-  .stat { background: var(--panel); padding: 22px 24px; min-width: 0; }
-  .stat b { display: block; font-size: 32px; line-height: 1; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-  .stat small { color: var(--dim); font-size: 14px; display: block; margin-top: 10px; }
+  /* Status is one calm line: counts, USB, sign-in. */
+  .strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 28px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 20px; margin: 28px 0 24px; }
+  .stat { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .stat b { font-size: 22px; line-height: 1; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat small { color: var(--dim); font-size: 14.5px; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; background: var(--dim); }
   .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
-  .stat .word { font: 600 17px/1.3 inherit; letter-spacing: 0; }
+  .stat .word { font: 600 15.5px/1.3 inherit; letter-spacing: 0; }
 
-  .setup { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; margin-bottom: 56px; }
+  .setup { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 20px; }
+  .setup.more { margin: 14px 0 0; grid-template-columns: repeat(3, 1fr); align-items: start; }
+  /* "More": the cards you set once. Closed, it is one line saying where they stand. */
+  details.fold { margin: 0 0 40px; color: var(--text); font-size: inherit; }
+  details.fold > summary { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; padding: 12px 18px; border: 1px solid var(--line); border-radius: 14px; cursor: pointer; list-style: none; color: var(--dim); font-size: 14.5px; }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary::before { content: '›'; font-size: 20px; line-height: 1; color: var(--dim); transition: transform .15s; }
+  details.fold[open] > summary::before { transform: rotate(90deg); }
+  details.fold > summary b { color: var(--text); font-size: 15.5px; }
+  details.fold > summary:hover { border-color: var(--dim); }
   .field { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; }
   label { display: block; color: var(--text); font-size: 16px; font-weight: 600; margin-bottom: 12px; }
   /* A small icon in front of each card's title, in the app's lightened red. */
@@ -138,7 +154,7 @@
   #viewNote .agents button { padding: 9px 16px; font-size: 14px; }
   h3 { font-size: 15px; font-weight: 600; color: var(--dim); margin: 28px 0 8px; display: flex; justify-content: space-between; align-items: center; }
   h3 em { font-size: 14px; color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
-  .find { display: flex; align-items: center; gap: 10px; margin: 0 0 28px; }
+  .find { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; }
   .find input { flex: 1; max-width: 420px; }
   .find small { color: var(--dim); font-size: 14px; }
   li .why { flex-basis: 100%; color: var(--dim); font-size: 14.5px; margin-top: -2px; }
@@ -154,8 +170,8 @@
   li .why.paid { color: #f0a868; }
   li .why.gone, li .why.skip { color: var(--dim); }
   li .why .by { color: var(--dim); }
-  li button.bad, .wrongs button.undo { background: none; border: 0; padding: 0; color: var(--dim); font-size: 13px; text-decoration: underline dotted; white-space: nowrap; cursor: pointer; }
-  li button.bad:hover, .wrongs button.undo:hover { color: #e0a040; }
+  li button.bad, .wrongs button.undo, .checks button.undo { background: none; border: 0; padding: 0; color: var(--dim); font-size: 13px; text-decoration: underline dotted; white-space: nowrap; cursor: pointer; }
+  li button.bad:hover, .wrongs button.undo:hover, .checks button.undo:hover { color: #e0a040; }
   li button.play { background: none; border: 1px solid var(--line); border-radius: 50%; width: 30px; height: 30px; padding: 0; flex: none; color: var(--text); font-size: 11px; line-height: 1; cursor: pointer; }
   li button.play.on { background: var(--hot); border-color: var(--hot); color: #fff; }
   .wrongs { padding: 9px 2px 11px; color: #e0a040; font-size: 14px; }
@@ -245,8 +261,9 @@
   #faq li { display: list-item; padding: 0; border: 0; }
   #faq li::marker { color: var(--dim); }
   #faq li b, #faq p b { color: var(--text); }
+  @media (max-width: 1100px) { .setup.more { grid-template-columns: 1fr 1fr; } }
   .setup > *, .cols > * { min-width: 0; }  /* a long row wraps instead of pushing the card off the screen */
-  @media (max-width: 820px) { main { padding: 32px 16px 72px; } .strip { grid-template-columns: 1fr 1fr; } .setup, .cols { grid-template-columns: 1fr; } h1 { font-size: 40px; } .brand img { width: 44px; height: 44px; }
+  @media (max-width: 820px) { main { padding: 32px 16px 72px; } .setup, .setup.more, .cols { grid-template-columns: 1fr; } h1 { font-size: 40px; } .brand img { width: 44px; height: 44px; }
     .row { flex-wrap: wrap; } .row input, .row .pre { min-width: 150px; } }
 </style>
 </head>
@@ -256,12 +273,14 @@
     <div>
       <div class="brand"><img src="/icon.svg" alt=""><h1>The <span>Crate</span></h1></div>
       <div class="sub">Download your SoundCloud, Apple Music or Spotify playlist straight to your USB.</div>
+      <nav class="helplinks" aria-label="Help">
+        <button id="startShow" hidden>Setup <span id="startLeft"></span></button>
+        <button id="faqOpen" aria-haspopup="dialog">How it works</button>
+        <button id="tourOpen">Take the tour</button>
+        <a id="faqLink" href="/faq">FAQ</a>
+      </nav>
     </div>
     <div class="acts">
-      <button class="ghost" id="startShow" hidden>Setup <span id="startLeft"></span></button>
-      <button class="ghost ask" id="faqOpen" aria-haspopup="dialog"><b aria-hidden="true">?</b> How it works</button>
-      <button class="ghost" id="tourOpen">Take the tour</button>
-      <a class="ghost" id="faqLink" href="/faq">FAQ</a>
       <button class="lib" id="djOpen" title="Your songs, ready for the decks: genres, AIFF, covers, cues and the club check."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 4v16M8 8v12M12 6v14M16 6l4 14"/></svg>Library Manager</button>
       <button class="big" id="sync" title="Gets new songs now, then updates your USB and DJ lists. Deletes nothing.">Sync Now</button>
     </div>
@@ -362,7 +381,6 @@
       <div class="lists" id="lists"></div>
       </details>
     </div>
-    </div>
     <div class="field">
       <div class="lab"><label for="usb"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="7" r="1"/><circle cx="4" cy="20" r="1"/><path d="M4.7 19.3 19 5M21 3l-3 1 2 2Z"/><path d="M9.26 7.68 5 12l2 5M10 14l5 2 3.5-3.5"/><path d="m18 12 1-1 1 1-1 1Z"/></svg>USB drive</label>
         <button class="q" data-help="hUsb" aria-expanded="false" aria-label="How the USB copy works">?</button></div>
@@ -376,6 +394,10 @@
       <div class="note" id="usbNote" role="status" aria-live="polite"></div>
       <label class="note"><input type="checkbox" id="eject"> Eject the USB once a sync has put its new tracks on it, so you can just pull it out (never mid-sync)</label>
     </div>
+  </section>
+  <details class="fold" id="moreSetup">
+    <summary><b>More</b><span id="moreSum">USB to SoundCloud · Soulseek · Auto sync</span></summary>
+    <section class="setup more">
     <div class="field">
       <div class="lab"><label for="scplUsb"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>USB to SoundCloud</label>
         <button class="q" data-help="hScpl" aria-expanded="false" aria-label="How USB to SoundCloud works">?</button></div>
@@ -423,7 +445,11 @@
       <div class="row"><span class="every">Every day at</span><input id="syncTime" type="time" step="300" required></div>
       <div class="note" id="timeNote">Keep your Mac on and plugged in at this time. If it's asleep, it syncs when it wakes.</div>
     </div>
-  </section>
+    </section>
+  </details>
+
+  <!-- Check new downloads: the review lists for fresh downloads go here (one include line, its own file). -->
+  <div id="checkNew"></div>
 
   <div class="find">
     <input id="q" type="search" placeholder="Search your tracks" spellcheck="false" autocomplete="off" aria-label="Search tracks in both lists">
@@ -958,6 +984,9 @@ function paintSetup(s) {
   $('slskOk').hidden = !slskGood || slskEdit;
   $('slskForm').hidden = slskGood && !slskEdit;
   $('slskName').textContent = s.soulseekUser || 'your account';
+  // The folded "More" line says where its cards stand, so closed it is still a status.
+  $('moreSum').textContent = ['USB to SoundCloud', slskGood ? 'Soulseek: ' + (s.soulseekUser || 'signed in') : 'Soulseek: not signed in',
+    s.syncTime ? 'Auto sync ' + s.syncTime : 'Auto sync'].join(' · ');
   $('slskStatus').replaceChildren(el('span', { className: 'dot warn' }), document.createTextNode(
     s.soulseekBad ? 'Soulseek turned down the saved sign-in. Sign in again.'
       : slskGood ? 'Signed in as ' + (s.soulseekUser || 'your account') + '. Sign in below to switch accounts.' : 'Not signed in yet.'));
