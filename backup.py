@@ -662,7 +662,8 @@ def alive(dir, name=None):
 def songs(dir, usb, src=""):
     """iCloud Drive only: the songs that are only on the USB go up after its libraries, in short turns (_songs), so a
     backup at plug-in or a repair never waits long for it. It ends when every song is in iCloud and off this Mac,
-    when the USB is unplugged (it carries on at the next plug-in), or after a day in which nothing moved."""
+    when the USB is unplugged (it carries on at the next plug-in), or after a day in which nothing moved (a full
+    iCloud is waited for that long: room made there is seen within minutes, and the songs carry on)."""
     name = os.path.basename(os.path.normpath(usb))
     p = os.path.join(dir, ".backup-songs-" + safe(name))
     if alive(dir, name):
@@ -813,7 +814,8 @@ def _songs(dir, usb, name, skip, turn=20):
     why = why or ("unread" if any(r in skip for r in newest) else "")
     note(dir, name, up={"left": left0, "here": here, "why": why, "at": int(time.time())},
          **({"cloud": lifted(dir, name)} if did else {}))
-    can = 0 if why in ("unplugged", "full") else rest
+    # (iCloud full: the songs still wait, and go up by themselves once there is room again; it is asked every few minutes)
+    can = 0 if why == "unplugged" else rest
     return bool(did or freed), can + (here if freed is not None else 0)
 
 
