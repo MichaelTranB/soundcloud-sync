@@ -215,8 +215,9 @@ straight into your decks' libraries, with no dragging and no clicks:
   looks; it changes nothing.
 - **What it never touches:** your own playlists and folders, beat grids, and any song that isn't The Crate's. A
   music file is changed only to fill an empty detail or to become an AIFF, each with an Undo; cues are only added
-  or brought up to date, never deleted. No song is ever removed from a library. A copy of the library is kept before every change (*dj-backups* in the app
-  folder, the last 20).
+  or brought up to date, never deleted. No song is ever removed from a library, except one of The Crate's that has
+  left the USB (a song you threw back): it leaves the USB's lists too. A copy of the library is kept before every
+  change (*dj-backups* in the app folder, the last 20).
 - The first time you load a song, the deck (or rekordbox) draws its own beat grid and waveform, as for any new file.
 
 Tempo and key come from a free listening tool (Essentia) that The Crate sets up by itself the first time (about
