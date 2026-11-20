@@ -146,14 +146,30 @@ def listen(path):
             "key_sure": round(float(strength), 2), "first_beat": round(float(beats[0]), 3) if len(beats) else 0.0}
 
 
+BEAT_THIS = os.path.join(os.path.expanduser("~/.local/share/crate-dj"), "beat_this", "small0.ckpt")
+BEAT_THIS_SHA = "6074be2c4d490c5f6101fcc374a1ec72ae93456e23bb6019783b849f5dc7d47b"  # Beat This's small0 model (JKU)
+_beat_this = []
+
+
 def third(path):
-    """The tempo by Beat This (a neural network, where it's set up: optional), in [90, 180): 0 where it isn't."""
-    try:
-        from beat_this.inference import File2Beats
-    except Exception:
+    """The tempo by Beat This (a neural network, where it's set up: optional, dj-beatthis-requirements.txt and its
+    small0 model in The Crate's folder), in [90, 180): 0 where it isn't set up or finds no steady beat."""
+    if not _beat_this:
+        _beat_this.append(None)
+        try:
+            import hashlib
+            with open(BEAT_THIS, "rb") as f:
+                if hashlib.sha256(f.read()).hexdigest() != BEAT_THIS_SHA:
+                    return 0
+            from beat_this.inference import Audio2Beats
+            _beat_this[0] = Audio2Beats(checkpoint_path=BEAT_THIS, device="cpu", dbn=False)
+        except Exception:
+            return 0
+    if not _beat_this[0]:
         return 0
     import numpy as np
-    beats_, _ = File2Beats(checkpoint_path="small0", device="cpu", dbn=False)(path)
+    import beats
+    beats_, _ = _beat_this[0](beats.decode(path), beats.RATE)
     d = np.diff(np.asarray(beats_))
     d = d[(d > 0.2) & (d < 1.5)]
     if len(d) < 8:
