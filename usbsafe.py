@@ -28,15 +28,41 @@ def safe(name):
     return name.translate(usb_tidy.LOOK)
 
 
+FRESH = 120  # seconds: a song written this recently may still be downloading or being converted, so it waits
+
+
 def names(dir, src):
-    """Renames each song in the music folder whose file name has such a sign. Returns [(old, new), ...]."""
-    done = []
+    """Renames each song in the music folder whose file name has such a sign. Returns [(old, new), ...]. Never while
+    a conversion (.aiff.lock) or a deck run (.dj.lock) is at work, so no song is renamed under either: the next run
+    does it."""
+    locks = []
+    try:
+        for n in (".aiff.lock", ".dj.lock"):
+            locks.append(open(os.path.join(dir, n), "a"))
+            fcntl.flock(locks[-1], fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print("a conversion or deck run is at work: names a USB can't hold are fixed on the next run", file=sys.stderr)
+        return []
+    try:
+        return rename(dir, src)
+    finally:
+        for l in locks:
+            l.close()
+
+
+def rename(dir, src):
+    done, now = [], time.time()
     for root, dirs, files in os.walk(src):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
         for f in files:
             if f.startswith(".") or not f.lower().endswith(usb_tidy.AUDIO) or safe(f) == f:
                 continue
             a, b = os.path.join(root, f), os.path.join(root, safe(f))
+            try:
+                if now - os.path.getmtime(a) < FRESH:
+                    continue
+            except OSError:
+                continue
             if os.path.lexists(b):  # (one of that name is there already: left as it is, and said)
                 print(f'"{f}" has a sign a USB can\'t hold, and "{safe(f)}" is taken', file=sys.stderr)
                 continue
