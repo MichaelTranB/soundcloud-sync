@@ -512,7 +512,16 @@ def prune(dir, name, keep=""):
     for s in snaps(dir, name):
         good, bad = good + bool(s.get("ok")), bad + (not s.get("ok"))
         if s["id"] not in keep and (good > KEEP if s.get("ok") else bad > BAD):
-            shutil.rmtree(os.path.join(home(dir, name), s["id"]), ignore_errors=True)
+            at = os.path.join(home(dir, name), s["id"])
+            for f in os.listdir(at) if os.path.isdir(at) else ():
+                # your own cloud: its sha256s stay while a kept backup may still count on its files (sweep_own)
+                if not (s.get("place") == "own" and f == "sums.json"):
+                    p = os.path.join(at, f)
+                    shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
+            try:
+                os.rmdir(at)
+            except OSError:
+                pass
             out += [(s.get("place"), s["id"])]
     sweep(dir, name, [d for p, d in out if p == "icloud"])
     sweep_own(dir, name, [d for p, d in out if p == "own"])
@@ -578,11 +587,15 @@ def sweep_own(dir, name, out=()):
         return
     left = []
     for day in old:
-        pre = "/".join([up, safe(name), day]) + "/"
-        mine = [p for p in there if p.startswith(pre)]
-        stay = [p for p in mine if p.startswith(pre + "files/") and (day, nfc(p[len(pre) + 6:])) in used]
+        pre = nfc("/".join([up, safe(name), day]) + "/")  # (the listing's names are NFC: a USB called "Café" too)
+        mine = [p for p in there if nfc(p).startswith(pre)]
+        stay = [p for p in mine if nfc(p).startswith(pre + "files/") and (day, nfc(p)[len(pre) + 6:]) in used]
         if owncloud.drop(dir, [p for p in mine if p not in stay]) or stay:
             left.append(day)  # a kept backup still counts on files in it (or one could not go): looked at next time
+        else:  # nothing of it is left in the cloud: its sha256s, kept by prune(), go too
+            at = os.path.join(home(dir, name), day)
+            if not os.path.isfile(os.path.join(at, "about.json")):
+                shutil.rmtree(at, ignore_errors=True)
     note(dir, name, old_own=left or None)
 
 

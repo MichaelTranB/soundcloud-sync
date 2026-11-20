@@ -102,6 +102,36 @@ owncloud._LS.clear()
 backup.sweep_own(DIR, "Lexar", out=["2020-01-01 000000"])
 ok(not os.path.exists(os.path.join(old, "gone.mp3")), "pushed-out backup's file dropped")
 ok(len([1 for r, _, fs in os.walk(far) for f in fs if f.endswith(".mp3")]) == 5, "kept backup's songs untouched")
+# 8b. a backup pushed out of the kept ten keeps its sha256s while a kept one counts on its files: check() still hears
+day1 = got["id"]
+s_before = [x["id"] for x in backup.snaps(DIR, "Lexar")]
+real_keep = backup.KEEP
+backup.KEEP = 1
+backup.prune(DIR, "Lexar")
+backup.KEEP = real_keep
+gone = os.path.join(DIR, "usb-backups", "Lexar", day1)
+ok(day1 not in [x["id"] for x in backup.snaps(DIR, "Lexar")] and os.listdir(gone) == ["sums.json"],
+   f"pruned own backup keeps only its sums.json ({s_before}, {os.listdir(gone) if os.path.isdir(gone) else None})")
+ok(os.path.isfile(os.path.join(far, "files", "Contents", "song0.mp3")), "its song a kept backup counts on stays in the cloud")
+s0p = os.path.join(USB, "Contents", "song0.mp3")
+good0, st0 = open(s0p, "rb").read(), os.stat(s0p)
+with open(s0p, "r+b") as f: f.seek(10); f.write(b"\1" * 32)
+os.utime(s0p, ns=(st0.st_atime_ns, st0.st_mtime_ns))
+backup.note(DIR, "Lexar", sums=None)
+backup.check(DIR, USB, "Lexar")
+ok("Contents/song0.mp3" in (backup.note(DIR, "Lexar").get("damaged") or []), "damage still found after the prune")
+with open(s0p, "wb") as f: f.write(good0)
+os.utime(s0p, ns=(st0.st_atime_ns, st0.st_mtime_ns))
+backup.note(DIR, "Lexar", damaged=None, repair=None, sums=None)
+# 8c. a USB whose name is written NFD ("Café"): sweep_own still finds its pushed-out files
+cafe = unicodedata.normalize("NFD", "Café")
+old2 = os.path.join(CLOUD, "The Crate", "USB backups", backup.safe(cafe), "2020-01-02 000000", "files")
+put(os.path.join(old2, "x.mp3"), 100)
+os.makedirs(os.path.join(DIR, "usb-backups", backup.safe(cafe)), exist_ok=True)
+owncloud._LS.clear()
+backup.sweep_own(DIR, cafe, out=["2020-01-02 000000"])
+ok(not os.path.exists(os.path.join(old2, "x.mp3")) and not backup.note(DIR, cafe).get("old_own"),
+   "NFD-named USB: pushed-out file dropped, nothing left waiting")
 # 9. Off: no backup at plug-in; "now" still makes one, on this Mac
 backup.save(DIR, place="off")
 before = len(backup.snaps(DIR, "Lexar"))
