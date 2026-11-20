@@ -400,7 +400,8 @@ def mmss(secs):
 def damaged(path):
     """A FLAC whose sound doesn't match its own checksum: a frame in it is broken (a transfer that went wrong, or the
     sharer's copy was), so a deck stutters or stops there and no converter can make an AIFF of it. Played through
-    with ffmpeg; without ffmpeg, another kind of file, or a FLAC with no checksum, there's no saying: False."""
+    with ffmpeg. False: it plays through as it should, or there's no saying for good (another kind of file, a FLAC
+    with no checksum). None: no saying this time (no ffmpeg, or it failed): looked at again on a later run."""
     if not path.lower().endswith(".flac"):
         return False
     import hashlib
@@ -409,8 +410,10 @@ def damaged(path):
         info, ff = aiff.flac_info(path), aiff.ffmpeg()
     except Exception:
         return False
-    if not ff or info["bits"] not in (16, 24, 32) or not info["md5"].strip("0"):
+    if info["bits"] not in (16, 24, 32) or not info["md5"].strip("0"):
         return False
+    if not ff:
+        return None
     import tempfile
     m = hashlib.md5()
     with tempfile.TemporaryFile() as said:
@@ -418,12 +421,12 @@ def damaged(path):
             p = subprocess.Popen([ff, "-v", "error", "-nostdin", "-i", path, "-map", "0:a:0", "-f", f"s{info['bits']}le", "-"],
                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=said)
         except OSError:
-            return False
+            return None
         with p.stdout:
             for chunk in iter(lambda: p.stdout.read(1 << 20), b""):
                 m.update(chunk)
-        if p.wait():  # ffmpeg itself failed (can't read FLAC, was stopped): no saying, the file stays
-            return False
+        if p.wait():  # ffmpeg itself failed (can't read FLAC, was stopped): no saying yet, the file stays
+            return None
         said.seek(0)
         broken = b"decod" in said.read(1 << 16).lower()  # what ffmpeg says about a broken frame ("decode_frame() failed")
     # damaged only when both say so: ffmpeg met a frame it couldn't decode, and the sound isn't what the file's own
@@ -431,7 +434,7 @@ def damaged(path):
     return broken and m.hexdigest() != info["md5"]
 
 
-def judge(path, name, secs, remote="", thrown=()):
+def judge(path, name, secs, remote="", thrown=(), damage=None):
     """Is this file the playlist's song? "" when it is, else why not, in plain words. name: "Uploader - Title" as on
     the playlist; secs: the playlist song's length (0 = unknown, or the upload is only a clip); remote: the file's
     name on the peer's computer; thrown: the sizes of files already thrown back for this track.
@@ -445,7 +448,7 @@ def judge(path, name, secs, remote="", thrown=()):
             return "the same file that was thrown back before"
     except OSError:
         return ""
-    if damaged(path):
+    if damage if damage is not None else damaged(path):  # (damage: already looked at by the caller)
         return DAMAGED
     real, artist, title = inside(path)
     asked = name.partition(" - ")[2] or name
@@ -637,8 +640,11 @@ def check_all(d, slsk):
                 (len(old) > 3 or not flac or not ff):  # (a FLAC looked at before damage was: looked at once more)
             out[path] = old
         else:
+            hurt = damaged(path) if flac and ff else None
             out[path] = [st.st_size, int(st.st_mtime),
-                         judge(path, name, length_of(secs, link, name), came.get(path, ("", ""))[1])] + ([1] if flac and ff else [])
+                         judge(path, name, length_of(secs, link, name), came.get(path, ("", ""))[1], damage=bool(hurt))]
+            if hurt is not None:  # (looked at to its end: not again while the file stays the same)
+                out[path].append(1)
     if out != seen:
         dump(d, CHECKED, out)
     return out
