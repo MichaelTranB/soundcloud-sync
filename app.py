@@ -1216,7 +1216,8 @@ def dj_state():
                     "lastAiff": last("AIFF: ", "AIFF PROBLEM"), "lastDetails": last("details: ", "DETAILS PROBLEM"),
                     "lastCues": last("cues: ", "cues put back: ", "CUES PROBLEM"),
                     "cuesNote": read("cues-unmapped.txt").splitlines()[:6]},
-            "layout": layout.load(DIR), "place": place.status(at if plugged else "", DIR), "rbApp": bool(rekordbox_app()),
+            "layout": layout.load(DIR), "oneCopy": one_copy(at, plugged),
+            "place": place.status(at if plugged else "", DIR), "rbApp": bool(rekordbox_app()),
             "options": dj.options(DIR), "likedName": liked.folder(DIR) or liked.DEFAULTS["folder"],
             "recognise": bool(recognise.key(DIR)), "club": club.check([s["rel"] for s in lib], at, plugged, usb, club.kept(DIR, usb), OUT),
             "lastRecognise": last("song recognition", "RECOGNISE PROBLEM"),
@@ -1230,6 +1231,19 @@ def dj_state():
             "backup": {**backup.status(DIR), "last": last("backup: ", "BACKUP PROBLEM")},
             "others": friend.volumes(), "copy": friend.progress(DIR), "lastFriend": last("USB copy from", "COPY PROBLEM"),
             "problem": dj_problem(log[-6:])}
+
+
+def one_copy(at, plugged):
+    """For "Keep one copy of each song": how many of The Crate's copies in "All songs" on the plugged-in USB have a
+    twin of the same size in their own folder, and the space they take (None when there are none, or it's on)."""
+    cfg = layout.load(DIR)
+    if not plugged or not cfg["all"] or cfg["mode"] == "flat" or (cfg["one"] and usb_ask.allows(DIR, at, "one")):
+        return None
+    try:
+        off, left, freed = layout.doubles(place.folder(at), dry="quick")
+    except OSError:
+        return None
+    return {"copies": off, "bytes": freed, "left": left} if off else None
 
 
 def layout_plan(mode):
@@ -1568,11 +1582,29 @@ def dj_post(path, body):
         return "Not something your own cloud can do."
     if path == "/api/dj/layout":  # how the songs sit inside The Crate's folder on the USB (layout.py: one folder, or
         mode, other = body.get("mode"), body.get("other")  # by genre), and which genres aren't EDM. The run files them.
-        every = body.get("all")  # an "All songs" folder of copies beside them, or not
+        every = body.get("all")  # "All songs" beside them, or not (turned on from here: a list, one copy of each song)
         if (mode is not None and mode not in layout.MODES) or (other is not None and not isinstance(other, list)) or \
                 (every is not None and not isinstance(every, bool)):
             return "That isn't one of the folder layouts."
-        layout.save(DIR, mode, other, every)
+        layout.save(DIR, mode, other, every, True if every is True else None)
+        dj_run(0)
+        return None
+    if path == "/api/dj/onecopy":  # "All songs" as one copy of each song (layout.onecopy). yes: your Go ahead for the
+        usb = read("usb.txt").strip()  # plugged-in stick, so its doubles come off; no: the copies are made again
+        at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)
+        if body.get("yes") is True:
+            if not usb or not os.path.isdir(at):
+                return "That drive isn't plugged in."
+            try:
+                if not usb_ask.allow(DIR, at, "one"):
+                    return "Say Go ahead for this USB first."
+            except OSError:
+                return "Couldn't note your answer. Try again."
+            layout.save(DIR, one=True)
+        elif body.get("yes") is False:
+            layout.save(DIR, one=False)
+        else:
+            return "Yes or no?"
         dj_run(0)
         return None
     if path == "/api/dj/place":  # where The Crate's folder sits on a USB, and its name (place.py). The run moves

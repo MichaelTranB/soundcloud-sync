@@ -402,7 +402,7 @@
     <button class="q" data-help="hFolders" aria-expanded="false" aria-label="How USB folders work">?</button></div>
   <div class="help" id="hFolders" hidden>
     <p><b>By genre</b> files each song under its first genre, like EDM/Dubstep or Other/Hip Hop. A song with any EDM genre counts as EDM. New songs are filed by themselves.</p>
-    <p><b>All songs:</b> with folders, turn this on for one more folder holding a copy of every song, so any app finds everything in one place. It needs room for the copies (the USB keeps 5 GB free) and your decks still list each song once.</p>
+    <p><b>All songs:</b> with folders, turn this on for a list of every song, All songs.m3u8, beside them: each song is stored once, in its own folder, and your decks still list each song once. "Make copies instead" makes a folder with a second copy of every song (it needs the room; the USB keeps 5 GB free); "Keep one copy of each song" takes those copies off again after your Go ahead, each only once its twin is the same file byte for byte.</p>
     <p><b>Any device:</b> names a USB can't hold (with : or ?) get a look-alike sign, and the hidden "._" files a Mac leaves are taken off, so phones and other computers open the folder cleanly.</p>
     <p><b>Where it sits:</b> at the top of the USB, or inside a folder you already keep music in, so all your songs are in one part of the USB. Changing it moves only The Crate's folder.</p>
     <p><b>Never:</b> touches anything outside The Crate's own folder or deletes a song. Playlists and cues follow.</p>
@@ -497,6 +497,7 @@ let copying = false;          // a copy was running at the last look
 let playing = '';             // the file in the player
 let wave = null;              // its waveform (/wave), once it is in
 let lay = null;               // the USB layout being looked at before it is picked: { mode, plan }
+let oneAsk = false;           // "Keep one copy of each song" tapped: its Go ahead question is open
 let restOpen = false;         // the "which genres aren't EDM" picker is open
 let placeAt = null;
 let placeSaid = null;         // what the last save of it said, shown right there: { text, bad }
@@ -628,9 +629,31 @@ function drawFolders() {
     box.append(el('div', { className: 'btns' }, yes, no));
   } else box.append(el('div', { className: 'say', textContent: lay ? 'Counting…' : now[L.mode] }));
   // With folders, an "All songs" folder of copies can sit beside them: everything in one place too (layout.py).
-  if ((lay ? lay.mode : L.mode) !== 'flat') box.append(el('div', { className: 'rest' },
-    L.all ? 'Also "All songs": a copy of every song in one folder.' : 'Also an "All songs" folder with every song in it? Off.',
-    link(L.all ? 'Turn off' : 'Turn on', async () => { if (await post('/api/dj/layout', { all: !L.all })) say(L.all ? 'Off. The copies come off your USB in a moment.' : 'On. Your USB gets it in a moment.'); })));
+  // Kept as one copy (layout.onecopy), "All songs" is a list, All songs.m3u8, naming each song where it is stored.
+  if ((lay ? lay.mode : L.mode) !== 'flat') {
+    const O = S.oneCopy, list = L.all && L.one && !O;
+    box.append(el('div', { className: 'rest' },
+      !L.all ? 'Also "All songs", a list of every song? Off.' : list ? 'Also "All songs": a list of every song (All songs.m3u8), each song stored once.'
+        : 'Also "All songs": a copy of every song in one folder.',
+      link(L.all ? 'Turn off' : 'Turn on', async () => { if (await post('/api/dj/layout', { all: !L.all })) say(L.all ? 'Off. Your USB follows in a moment.' : 'On. Your USB gets it in a moment.'); }),
+      ...(list ? [' ', link('Make copies instead', async () => { if (await post('/api/dj/onecopy', { yes: false })) say('The copies are made again in a moment, if the USB has room.'); })] : [])));
+    if (O) {
+      const gb = (O.bytes / 1073741824).toFixed(1), stick = S.usb ? '"' + S.usb + '"' : 'your USB';
+      if (!oneAsk) box.append(el('div', { className: 'rest' }, link('Keep one copy of each song (frees about ' + gb + ' GB)', () => { oneAsk = true; draw(); })));
+      else {
+        const yes = el('button', { textContent: 'Go ahead' }), no = el('button', { className: 'ghost', textContent: 'Not now' });
+        yes.onclick = async () => { oneAsk = false; if (await post('/api/dj/onecopy', { yes: true })) say('Keeping one copy of each song on ' + stick + '. It takes a few minutes: each copy is checked first.'); };
+        no.onclick = () => { oneAsk = false; draw(); };
+        box.append(el('div', { className: 'say' }, el('span', { className: 'badge', textContent: 'Your OK needed' }),
+          el('ul', {},
+            el('li', {}, el('b', { textContent: 'Changes: ' }), num(O.copies) + ' second copies in "All songs" on ' + stick + ' come off (about ' + gb + ' GB). Each song stays in its own folder; "All songs" becomes a list of every song, All songs.m3u8.'),
+            el('li', {}, el('b', { textContent: 'Checked first: ' }), 'a copy comes off only when its twin in its own folder is the same file, byte for byte' + (O.left ? '; ' + num(O.left) + ' without one stay' : '') + '.'),
+            el('li', {}, el('b', { textContent: 'Never: ' }), 'your decks\' playlists, cues or analysis (they already point at the song in its own folder), or anything outside The Crate\'s folder.'),
+            el('li', {}, el('b', { textContent: 'Undo: ' }), '"Make copies instead" puts the copies back.')),
+          el('div', { className: 'btns' }, yes, no)));
+      }
+    }
+  }
   drawPlace(box);
   if (typing && $(typing)) { const i = $(typing); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
   const rest = el('div', { className: 'rest' }, 'Not EDM: ' + (L.other.join(', ') || 'nothing') + '.', link(restOpen ? 'Done' : 'Change', () => { restOpen = !restOpen; draw(); }));

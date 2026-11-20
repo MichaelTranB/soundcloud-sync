@@ -81,7 +81,12 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   (`layout.arrange`, only on a stick past the ask-first gate); every deck library keeps the song's row and is
   re-pointed, so cues and analysis stay. The page previews (`GET /api/dj/layout?mode=`, nothing touched) and
   switches only on "Use this" (`POST /api/dj/layout`). Not yet tried on a real stick or deck.
-- **"All songs" folder (`layout.all_songs`, `"all": true` in `usb-layout.json`, the toggle on the same card):** with
+- **"All songs" as one copy (`layout.onecopy`, `"one": true`, set whenever All songs is turned on):** each song is
+  stored once in its own folder and `CRATE/All songs.m3u8` (relative paths, `#THECRATE` line = ours) lists them all.
+  A stick that already has the copies keeps them until "Keep one copy of each song" and its Go ahead (`usb_ask.allow`
+  kind `one`, per stick); then a copy comes off only when its twin is byte-identical (sha256) and no deck library on
+  the stick lists a file in `All songs/` (`layout.pointed`). Dry run, read-only: `python3 layout.py onecopy <CRATE>`.
+- **"All songs" folder of copies (`layout.all_songs`, `"all": true, "one": false`, "Make copies instead"):** with
   `group`/`genre`, `CRATE/All songs/` holds a copy of every song (made after `arrange` in `dj.place`, re-made when the
   file changes, taken off when the song leaves or the toggle goes off). It keeps 5 GB free (`layout.ROOM`) or skips the
   copies and logs a PROBLEM. `where()`, `missing`, `doubles()`, `sweep` never look in it; deck libraries list each song

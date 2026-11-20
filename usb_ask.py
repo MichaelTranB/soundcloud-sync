@@ -131,6 +131,24 @@ def answer(dir, usb, yes, how=""):
     save(dir, rec)
 
 
+def allows(dir, usb, kind):
+    """Your Go ahead on this stick covers this one change too (a change asked about on its own, like "one": keep one
+    copy of each song, taking The Crate's own doubles off)."""
+    r = load(dir).get(mark(usb), {}) if mark(usb) else {}
+    return bool(r.get("yes")) and kind in r.get("kinds", [])
+
+
+def allow(dir, usb, kind):
+    """Your Go ahead for one more change on a stick you already said yes to. False when the stick has no yes."""
+    rec, i = load(dir), mark(usb)
+    if not i or not rec.get(i, {}).get("yes"):
+        return False
+    rec[i]["kinds"] = list(dict.fromkeys(rec[i].get("kinds", []) + [kind]))
+    rec[i].setdefault("days", {})[kind] = time.strftime("%Y-%m-%d")
+    save(dir, rec)
+    return True
+
+
 def ready(dir, usb):
     """True when The Crate may change this USB now. An empty stick is noted as allowed on the way, and so is one
     The Crate was already copying to before it asked (used())."""
