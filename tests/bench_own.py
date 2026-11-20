@@ -132,6 +132,20 @@ owncloud._LS.clear()
 backup.sweep_own(DIR, cafe, out=["2020-01-02 000000"])
 ok(not os.path.exists(os.path.join(old2, "x.mp3")) and not backup.note(DIR, cafe).get("old_own"),
    "NFD-named USB: pushed-out file dropped, nothing left waiting")
+# 8d. a repair while your own cloud can't be asked: said, nothing changed, the repair stays offered
+backup.save(DIR, place="mac")
+backup.note(DIR, "Lexar", repair={"day": got2["id"], "why": "test", "when": 1})
+had = {x["id"] for x in backup.snaps(DIR, "Lexar")}
+real_ls = owncloud.listing
+owncloud.listing = lambda *a, **k: None
+line = backup.restore(DIR, USB, SRC, "Lexar", got2["id"])
+owncloud.listing = real_ls
+ok("PROBLEM" in line and "not repaired" in line and backup.note(DIR, "Lexar").get("repair"),
+   f"cloud unreachable: repair stops and says so ({line[:90]})")
+backup.note(DIR, "Lexar", repair=None)
+for x in backup.snaps(DIR, "Lexar"):  # (the backup the repair made first would make step 9's "now" one a repeat)
+    if x["id"] not in had:
+        shutil.rmtree(os.path.join(DIR, "usb-backups", "Lexar", x["id"]))
 # 9. Off: no backup at plug-in; "now" still makes one, on this Mac
 backup.save(DIR, place="off")
 before = len(backup.snaps(DIR, "Lexar"))
@@ -139,7 +153,7 @@ subprocess.run([sys.executable, os.path.join(CODE, "backup.py"), "run", DIR, USB
 ok(len(backup.snaps(DIR, "Lexar")) == before, "Off: plug-in makes no backup")
 subprocess.run([sys.executable, os.path.join(CODE, "backup.py"), "run", DIR, USB, SRC, "now"], env=os.environ, check=False)
 s = backup.snaps(DIR, "Lexar")
-ok(len(s) == before + 1 and s[0].get("place") in ("mac", "off", None), f"Back up now with Off: one more, on this Mac ({s[0].get('place')})")
+ok(len(s) == before + 1 and s[0].get("place") in ("mac", "off", None), f"Back up now with Off: one more, on this Mac ({s[0].get('place')} {before} {[x['id'] for x in s]})")
 # 10. never the person's own rclone settings; the token file is private
 ok(owncloud.conf(DIR) == os.path.join(DIR, "rclone.conf"), "The Crate's own rclone.conf")
 shutil.rmtree(T, ignore_errors=True)

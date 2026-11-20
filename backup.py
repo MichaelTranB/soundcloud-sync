@@ -1254,6 +1254,10 @@ def restore(dir, usb, src, name, day):
                     and (row[2] == "song" or not wrong(dir, rel, path)))
         except OSError:
             return False
+    gone = (f'BACKUP PROBLEM: "{here}" was not repaired: its backup could not be had whole from your own cloud (is '
+            "this Mac online, and still signed in?). Nothing on it was changed.")
+    if own and owncloud.listing(dir, "/".join([up, safe(name)]), fresh=True) is None:
+        return gone  # the cloud can't be asked now: nothing is skipped as if it weren't there
     shutil.rmtree(down, ignore_errors=True)
     with open(os.path.join(dir, ".backup.lock"), "w") as lock, open(os.path.join(dir, ".dj.lock"), "w") as deck:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -1265,6 +1269,8 @@ def restore(dir, usb, src, name, day):
                     progress(dir, i, len(files) * 2, "restore")
                 a, b = spot(dir, name, day, rel, row, up), os.path.join(usb, *rel.split("/"))
                 if not has(dir, up, a, row[0]):
+                    if own and row[2] != "song":
+                        return gone  # a library from your own cloud is put back whole or not at all
                     continue
                 # From the cloud every library file is had first, before anything on the USB is changed: a repair
                 # never stops half way because this Mac is offline
@@ -1272,8 +1278,7 @@ def restore(dir, usb, src, name, day):
                     to = os.path.join(down, *rel.split("/"))
                     os.makedirs(os.path.dirname(to), exist_ok=True)
                     if owncloud.get(dir, a, to) or not ok(rel, row, to):
-                        return (f'BACKUP PROBLEM: "{here}" was not repaired: its backup could not be had whole from '
-                                "your own cloud (is this Mac online, and still signed in?). Nothing on it was changed.")
+                        return gone
                     a = to
                 elif place == "icloud" and row[2] != "song" and not fetch(a):
                     return (f'BACKUP PROBLEM: "{here}" was not repaired: its backup could not be fetched from iCloud '
