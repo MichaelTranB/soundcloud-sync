@@ -107,11 +107,11 @@ def truth(d):
     for link, name, _ in soulseek.load_got(d) + [r for r in soulseek.rows_of(d, "free.tsv", 3)]:
         if link in out:
             continue
-        if "open.spotify.com/track/" in link:
-            s = spot.get(link.split("/track/")[1].split("?")[0]) or {}
-            if s.get("title"):
-                out[link] = (text(s.get("artist")), text(s.get("title")))
-        elif "soundcloud.com/" not in link and " - " in name:  # Apple Music and the like: the name it was got as
+        s = spot.get(link.split("/track/")[1].split("?")[0]) or {} if "open.spotify.com/track/" in link else {}
+        if s.get("title"):
+            out[link] = (text(s.get("artist")), text(s.get("title")))
+        elif "soundcloud.com/" not in link and " - " in name:  # Apple Music, and Spotify songs the playlist's own
+            # page listed (not kept in the cache): the name it was got as, made from the playlist's artist and title
             a, _, t = name.partition(" - ")
             out[link] = (text(a), text(t))
     return out
@@ -270,7 +270,16 @@ def tidy(d, src, rels=()):
         if not t or not s:
             continue
         way = t["want"]
+        snap = prior = None
         if (t["artist"], t["title"]) != (way["artist"], way["title"]):
+            try:  # what Undo puts back: these very tags, and the Library Manager's own undo note as it was
+                now = naming._tags(details._open(os.path.join(src, rel)))[1]
+                snap = {f: now.get(f) or "" for f in ("artist", "title")}
+                with naming.locked(d):
+                    prior = naming.load(d)["fixed"].get(rel)
+            except Exception as e:
+                print(f"{rel}: its name now couldn't be read ({e}), so it's left as it is", file=sys.stderr)
+                continue
             naming.apply(d, src, s, way, " (the playlist's name)")
         naming.fine(d, rel, way["artist"], way["title"])  # the Library Manager doesn't suggest another way round
         with locked(d):
@@ -278,6 +287,9 @@ def tidy(d, src, rels=()):
             old = rec["done"].get(t["link"]) or {}
             rec["done"][t["link"]] = {"was": old.get("was") or t["name"], "at": int(time.time()),
                                       "said": old.get("said") or [t["artist"], t["title"]],
+                                      **({"tags": old["tags"], "fixed": old.get("fixed")} if "tags" in old else
+                                         {"tags": snap, "fixed": prior} if snap else {}),
+                                      "to": [way["artist"], way["title"]],
                                       **({"rename": True} if t["rename"] else {})}
             rec["asis"].pop(t["link"], None)
             save(d, rec)
@@ -384,13 +396,36 @@ def asis(d, src, rel, lib=None):
     return True
 
 
+def back_tags(d, src, rel, was):
+    """The title and artist the file held just before it was tidied, and the Library Manager's undo note as it was
+    then. A name changed since (by you, in another app) stays."""
+    path, to = os.path.join(src, rel), dict(zip(("artist", "title"), was.get("to") or []))
+    with naming.locked(d):
+        nrec = naming.load(d)
+        now = naming._tags(details._open(path))[1]
+        back = {f: v for f, v in was["tags"].items() if f in to and (now.get(f) or "") == to[f]}
+        with details._same_time(path):
+            n = len(naming._set(path, back))
+        if was.get("fixed"):
+            nrec["fixed"][rel] = was["fixed"]
+        else:
+            nrec["fixed"].pop(rel, None)
+        naming.save(d, nrec)
+    if n:
+        details._after(d, src, rel)
+        details.tell(d, f"names: {os.path.basename(rel)} has the name it had before again")
+
+
 def undo(d, src, rel):
     """The title, artist and file name it had before it was tidied; then it's kept as it is (not suggested again)."""
     link = _link(d, src, rel)
     was = load(d)["done"].get(link)
     if not link or not was:
         return False
-    naming.undo(d, src, rel)
+    if was.get("tags"):
+        back_tags(d, src, rel, was)
+    else:  # (tidied before Undo kept its own note)
+        naming.undo(d, src, rel)
     if was.get("was") and was["was"] != os.path.basename(rel) and sources(d, src).get(rel, ("", ""))[1] == "soulseek":
         moved = renames(d, src, {link: was["was"]})
         if not moved:
