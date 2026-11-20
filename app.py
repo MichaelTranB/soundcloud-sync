@@ -917,6 +917,7 @@ def state():
         reading = None
     watch_login(svc)
     return {
+        "rekordboxSoon": _rb["file"],  # a song waiting for the decks' update to open in rekordbox
         "liked": liked.status(DIR), "likedOpts": liked.settings(DIR),
         "playlist": read("playlist.txt"), "service": svc, "capped": capped, "pasted": pasted,
         "missing": info.get("missing", 0), "reading": reading, "usb": usb, "unread": unread, "volumes": volumes(),
@@ -1147,7 +1148,7 @@ def dj_state():
             s["name"] = off[s["file"]]
     last = lambda *words: next((l for l in reversed(log[-40:]) if any(w in l for w in words)), "")
     return {"songs": songs, "list": g["list"], "waiting": bool(_dj["timer"]), "busy": dj.busy(DIR),
-            "rekordboxSoon": bool(_rb["p"]),
+            "rekordboxSoon": _rb["file"],
             "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged, "usbAsk": usb_asking(),
             "fix": {"auto": rec["auto"], "autoDetails": details.load(DIR)["auto"],
                     "aiff": progress(".aiff-progress"), "details": progress(".details-progress"),
@@ -1189,15 +1190,27 @@ def rekordbox_app():
     return next((p for p in found if os.path.isdir(p)), "")
 
 
-_rb = {"p": "", "on": False, "lock": threading.Lock()}  # the song waiting to open in rekordbox
+_rb = {"file": "", "on": False, "lock": threading.Lock()}  # the song (music-folder name) waiting to open in rekordbox
 
 
-def rekordbox_when_free(rb, p):
+def song_now(rel):
+    """Where a song is now: converted to AIFF meanwhile (aiff.py), its new file ("" when it's gone)."""
+    p = song_path(rel)
+    if p:
+        return p
+    try:
+        return next((song_path(new) for new, (old, _) in aiff.history(DIR).items() if old == rel), "")
+    except Exception as e:  # never silent
+        print(f'rekordbox: where "{rel}" went couldn\'t be read ({e})', file=sys.stderr)
+        return ""
+
+
+def rekordbox_when_free(rb, rel):
     """The song opens in rekordbox as soon as the decks' run is done (rekordbox's own library is written only while
     rekordbox is closed). Clicking another song meanwhile opens that one instead. After 15 minutes it's dropped and
-    the log says so."""
+    the log says so; so is a song the run converted, which opens as its AIFF."""
     with _rb["lock"]:
-        _rb["p"] = p
+        _rb["file"] = rel
         if _rb["on"]:
             return
         _rb["on"] = True
@@ -1207,12 +1220,13 @@ def rekordbox_when_free(rb, p):
         while dj.busy(DIR) and time.time() < end:
             time.sleep(2)
         with _rb["lock"]:
-            song, _rb["p"], _rb["on"] = _rb["p"], "", False
-        if dj.busy(DIR):
-            print(f'rekordbox: "{os.path.basename(song)}" wasn\'t opened: the decks were still being updated after '
-                  "15 minutes", file=sys.stderr)
+            song, _rb["file"], _rb["on"] = _rb["file"], "", False
+        p = song_now(song)
+        if dj.busy(DIR) or not p:
+            print(f'rekordbox: "{song}" wasn\'t opened: ' + ("the decks were still being updated after 15 minutes"
+                  if p else "it isn't in your music folder any more"), file=sys.stderr)
             return
-        subprocess.Popen(["open", "-a", rb, song], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        subprocess.Popen(["open", "-a", rb, p], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL)
     threading.Thread(target=go, daemon=True).start()
 
@@ -1498,7 +1512,7 @@ def dj_post(path, body):
         if not rb:
             return "rekordbox isn't on this Mac."
         if dj.busy(DIR):  # (a run can take minutes: the song waits for it rather than being turned away)
-            rekordbox_when_free(rb, p)
+            rekordbox_when_free(rb, str(body.get("file", "")))
         else:
             subprocess.Popen(["open", "-a", rb, p], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
