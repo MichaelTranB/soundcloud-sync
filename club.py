@@ -13,8 +13,8 @@ A club booth is nearly always Pioneer DJ decks (CDJ or XDJ), and they are fussie
       OPUS-QUAD, OMNIS-DUO) and shown by rekordbox under the USB. The Crate keeps this one up itself
       (rekordbox_usb.py) and notes on the Mac what it holds (dj-rekordbox-usb.json), which is what is read here;
     the older one (Device Library: PIONEER/rekordbox/export.pdb), read by the CDJ-3000, the CDJ-2000NXS2 and the
-      decks before them, which only rekordbox itself writes (its Export mode: drag the playlists onto the USB
-      under Devices).
+      decks before them. rekordbox makes it (its Export mode: drag a playlist onto the USB under Devices); once
+      a USB has one, The Crate keeps it in step with the newer one itself (rekordbox_pdb.py).
 (Sources: rekordbox's "USB Device Export" guide, the CDJ-2000NXS, CDJ-2000NXS2 and CDJ-3000 manuals ("Playable
 music file formats"), AlphaTheta's notice on
 USB devices and OneLibrary: alphatheta.com/en/information/important-notice-for-customers-using-usb-devices-with-our-dj-equipment/)
@@ -147,7 +147,7 @@ def check(rels, usb="", plugged=False, name="", in_library=None, src=""):
                 not os.path.isfile(os.path.join(folder, "exportLibrary.db")):
             out.append({"ok": None, "say": f"{stick} only has rekordbox's older kind of library, so The Crate leaves "
                         "it alone.", "do": "Export to it once from rekordbox 7 (drag a playlist onto it under "
-                        "Devices); The Crate keeps its newer library up from then on."})
+                        "Devices); The Crate keeps both its libraries up from then on."})
         elif in_library is None or not n:
             out.append({"ok": None, "say": f"The Crate hasn't put your songs in {stick}'s own rekordbox library yet.",
                         "do": "It does by itself at the next run, with rekordbox closed."})
@@ -162,25 +162,24 @@ def check(rels, usb="", plugged=False, name="", in_library=None, src=""):
         got = exported(usb, [os.path.basename(r) for r in rels])
         older = "the CDJ-3000, the CDJ-2000NXS2 and the decks before them"
         if got is None:
-            out.append({"ok": False, "say": f"{stick} has no older rekordbox export, the one {older} read: those "
+            out.append({"ok": False, "say": f"{stick} has no older rekordbox library, the one {older} read: those "
                         "would show bare folders, with no playlists, tempo or key.",
-                        "do": "Before a gig on those: in rekordbox, with the USB in, drag your playlists onto it "
-                        "under Devices."})
+                        "do": "Before a gig on those: in rekordbox, with the USB in, drag one playlist onto it "
+                        "under Devices, once. The Crate keeps it up from then on."})
         else:
             made = time.strftime("%b %-d", time.localtime(got[1]))
             if not n:
-                out.append({"ok": None, "say": f"{stick} has an older rekordbox export (made {made}); no songs here "
-                            "yet to look for in it.", "do": ""})
+                out.append({"ok": None, "say": f"{stick} has an older rekordbox library (last written {made}); no "
+                            "songs here yet to look for in it.", "do": ""})
             elif got[0] >= n:
                 out.append({"ok": True, "say": f"{'Your song is' if n == 1 else f'All {n} songs are'} in the "
-                            f"older rekordbox export on {stick} too (made {made}), the one {older} read.",
-                            "do": ""})
+                            f"older rekordbox library on {stick} too, the one {older} read, kept up by The "
+                            "Crate.", "do": ""})
             else:
-                out.append({"ok": False, "say": f"{got[0]} of your {n} song{s(n)} {'is' if got[0] == 1 else 'are'} "
-                            f"in the older rekordbox export on {stick} (made {made}), the one {older} read: those "
-                            "only list what's in it.",
-                            "do": "Before a gig on those: in rekordbox, with the USB in, drag your playlists onto it "
-                            "under Devices."})
+                out.append({"ok": None, "say": f"{got[0]} of your {n} song{s(n)} {'is' if got[0] == 1 else 'are'} "
+                            f"in the older rekordbox library on {stick} so far (last written {made}), the one "
+                            f"{older} read.",
+                            "do": "The rest go in by itself at the next run, with rekordbox closed."})
     flac = sum(r.lower().endswith(".flac") for r in rels)
     if flac:
         out.append({"ok": None, "say": f"{flac} of your {n} song{s(n)} {'is' if flac == 1 else 'are'} FLAC: fine on "

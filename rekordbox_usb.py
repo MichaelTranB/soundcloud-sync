@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Writes The Crate's songs into the USB's own rekordbox library (PIONEER/rekordbox/exportLibrary.db, the list
-rekordbox shows under Devices and the newest club decks read), so they show from the USB itself. The songs stay
+"""Writes The Crate's songs into the USB's own rekordbox libraries, so they show from the USB itself: the newer one
+(PIONEER/rekordbox/exportLibrary.db, what rekordbox shows under Devices and the newest club decks read) and the older
+one beside it (export.pdb, what the CDJ-3000, CDJ-2000NXS2, XDJ-RX3 and earlier read), kept in step with each other. The songs stay
 where usb.sh put them, in The Crate's folder on the USB ("SoundCloud Sync", or where you chose: place.py): nothing is copied or moved.
 
   rekordbox_usb.py < job     job, as JSON: {"usb": where the USB is mounted, "src": the music folder on the Mac,
@@ -19,8 +20,11 @@ library was already in step.
   Where rekordbox on this Mac has the track, its row is linked to it and rekordbox's own analysis (beat grid,
     waveform, tempo, key) and cover go onto the USB with it; a track rekordbox analyses later is filled in on a
     later run. Without rekordbox, the tempo and key The Crate worked out are used and the deck draws the rest.
-  The older library on the USB (export.pdb, for the CDJ-3000, CDJ-2000NXS2 and earlier) is only written by
-    rekordbox's own export; club.py says where that stands."""
+  The older library (export.pdb) is brought in step with the newer one after every change (rekordbox_pdb.py): The
+    Crate's tracks and its playlist folder, row for row, nothing else touched, a copy kept first, and the two
+    compared afterwards (rekordbox 7.2 warns of a "library inconsistency" when they differ). Only one rekordbox made
+    itself is written; a USB without one is left as it is.
+  Analysis files sit where rekordbox itself would put them (spot()): the CDJ-3000 looks there without asking."""
 import json, os, shutil, struct, subprocess, sys, tempfile, time, unicodedata, zlib
 
 import layout, naming, place
@@ -297,26 +301,76 @@ def repath(data, path):
     raise ValueError("an analysis file with no track in it")
 
 
+def spot(path):
+    """The folder rekordbox keeps a track's analysis in on a USB, worked out from the track's place there. The
+    CDJ-3000 works it out the same way and looks there without asking the library. (Checked against the 2,813 rows
+    of a library rekordbox 7 exported: all of them.)"""
+    h, raw = 0, path.encode("utf-16-le")
+    for i in range(0, len(raw), 2):
+        c = raw[i] | raw[i + 1] << 8
+        h = (((h * 0x5BC9 + c) & 0xFFFFFFFF) * 0x93B5 + c) & 0xFFFFFFFF
+    h %= 200003
+    p = sum((h >> bit & 1) << n for n, bit in enumerate((0, 2, 6, 7, 9, 13, 16)))
+    return f"/PIONEER/USBANLZ/P{p:03X}/{h:08X}"
+
+
+def free(usb, path):
+    """The first analysis name not taken in that folder (two tracks can land in one: rekordbox numbers them)."""
+    base, n = spot(path), 0
+    while any(os.path.exists(f"{usb}{base}/ANLZ{n:04d}.{part}") for part in PARTS):
+        n += 1
+    return f"{base}/ANLZ{n:04d}.DAT"
+
+
+def clear(files):
+    """Files of The Crate's taken off the USB, and a folder with them once nothing else is in it."""
+    for f in files:
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    for d in {os.path.dirname(f) for f in files}:
+        try:
+            os.rmdir(d)
+        except OSError:
+            pass
+
+
 def analysis(usb, dat, path):
     """rekordbox's analysis of one track (beat grid, waveform, cues), copied from the Mac onto the USB and addressed
     to the track's place there. Where its first file is, as the library names it; "" when it couldn't be made."""
-    h = zlib.crc32(path.encode())
-    rel = f"/PIONEER/USBANLZ/P{(h >> 20) & 0xFFF:03X}/{h & 0xFFFFF:08X}"
-    while os.path.exists(usb + rel):
-        h += 1
-        rel = f"/PIONEER/USBANLZ/P{(h >> 20) & 0xFFF:03X}/{h & 0xFFFFF:08X}"
+    rel, made = free(usb, path), []
     try:
-        os.makedirs(usb + rel)
+        os.makedirs(os.path.dirname(usb + rel), exist_ok=True)
         for part in PARTS:
             if os.path.isfile(dat[:-3] + part):
                 with open(dat[:-3] + part, "rb") as f:
                     data = repath(f.read(), path)
-                with open(f"{usb}{rel}/ANLZ0000.{part}", "wb") as f:
+                made.append(usb + rel[:-3] + part)
+                with open(made[-1], "wb") as f:
                     f.write(data)
-        return rel + "/ANLZ0000.DAT"
+        if not made:
+            raise ValueError("no analysis there")
+        return rel
     except Exception:  # an analysis file this can't read: the track goes on without, and the deck draws its own
-        shutil.rmtree(usb + rel, ignore_errors=True)
+        clear(made)
         return ""
+
+
+def resited(usb, anlz, path):
+    """A track's analysis on the USB copied to the folder rekordbox would keep it in (spot()). Where it is now and
+    the files made; ("", []) when it couldn't be done. The old files go once the library is safely written."""
+    to, made = free(usb, path), []
+    try:
+        os.makedirs(os.path.dirname(usb + to), exist_ok=True)
+        for part in PARTS:
+            if os.path.isfile(usb + anlz[:-3] + part):
+                made.append(usb + to[:-3] + part)
+                shutil.copyfile(usb + anlz[:-3] + part, made[-1])
+        return to, made
+    except OSError:
+        clear(made)
+        return "", []
 
 
 def readdress(usb, dat, path):
@@ -371,7 +425,8 @@ def note(job, name, rels, analysed):
         os.replace(file + ".tmp", file)
 
 
-def write(job, master=None, is_open=running):
+def one(job, master=None, is_open=running):
+    """The newer library (exportLibrary.db): what was said, "" when it was in step already."""
     from sqlalchemy import text
     usb, src = job["usb"].rstrip("/"), job["src"]
     name, folder, music = os.path.basename(usb), place.folder(usb), place.web(usb)
@@ -428,6 +483,10 @@ def write(job, master=None, is_open=running):
         new = [s for s in songs if at[s["rel"]] not in own]
         mine = set(at.values())
         gone = [p for p in own if p not in mine and not os.path.isfile(usb + p)] if os.path.isdir(folder) else []
+        # Analysis The Crate filed where rekordbox wouldn't have (its track moved, or from before it knew where a
+        # CDJ-3000 looks) goes to the track's own folder.
+        resite = [p for p, o in own.items() if p not in gone and o["anlz"].startswith("/PIONEER/USBANLZ/")
+                  and not o["anlz"].startswith(spot(p) + "/") and os.path.isfile(usb + o["anlz"])]
         regenre = [s for s in songs if at[s["rel"]] in own and s.get("genres") and own[at[s["rel"]]]["genre"] != s["genres"][0]]
         fill = [s for s in songs if at[s["rel"]] in own and not own[at[s["rel"]]]["anlz"] and known.get(s["rel"], {}).get("anlz")]
         # a name fixed on the page (naming.py): the row follows only where it still shows the old one
@@ -449,7 +508,7 @@ def write(job, master=None, is_open=running):
         stale = [n for (pid, _), (n, rels) in zip(kids, wanted)
                  if members(pid) != [own[at[r]]["id"] for r in rels]] if same_lists and not new else []
         old_covers = [r for r in covers if at[r] in own]
-        if not (made or new or moved or gone or regenre or fill or old_covers or stale or rename) and same_lists:
+        if not (made or new or moved or gone or resite or regenre or fill or old_covers or stale or rename) and same_lists:
             note(job, name, [s["rel"] for s in songs], sum(bool(own[at[s["rel"]]]["anlz"]) for s in songs))
             return ""
         if is_open():
@@ -484,6 +543,7 @@ def write(job, master=None, is_open=running):
             run("INSERT INTO image (image_id, path) VALUES (:i, :p)", i=n, p=where(n))
             return n
         junk = []  # files of rows that go, taken off the USB once the library is safely written
+        copied, sited = [], 0  # analysis copied to its own folder; taken back if the library isn't written
         try:
             for p, s in moved:  # (or another kind of file with the same sound: a FLAC that is now an AIFF, aiff.py)
                 run("UPDATE content SET path = :p, fileName = :f, fileType = :t, fileSize = :n, "
@@ -492,6 +552,15 @@ def write(job, master=None, is_open=running):
                     n=os.path.getsize(on(s)), i=own[p]["id"])
                 if own[p]["anlz"]:
                     readdress(usb, own[p]["anlz"], p)
+            for p in resite:
+                o = own[p]
+                to, files = resited(usb, o["anlz"], p)
+                if to:
+                    junk += [usb + o["anlz"][:-3] + part for part in PARTS]
+                    copied += files
+                    sited += 1
+                    run("UPDATE content SET analysisDataFilePath = :a WHERE content_id = :i", a=to, i=o["id"])
+                    o["anlz"] = to
             for s in new:
                 k, p, file = known.get(s["rel"], {}), at[s["rel"]], on(s)
                 year = str(s.get("year") or "")
@@ -549,7 +618,7 @@ def write(job, master=None, is_open=running):
                     run(f"DELETE FROM {table} WHERE content_id = :i", i=o["id"])
                 run("DELETE FROM recommendedLike WHERE content_id_1 = :i OR content_id_2 = :i", i=o["id"])
                 if o["anlz"].startswith("/PIONEER/USBANLZ/") and o["anlz"].count("/") == 5:
-                    junk.append(os.path.dirname(usb + o["anlz"]))
+                    junk += [usb + o["anlz"][:-3] + part for part in PARTS]
                 if o["image"] and not run("SELECT count(*) FROM content WHERE image_id = :m", m=o["image"]).scalar():
                     pic = run("SELECT path FROM image WHERE image_id = :m", m=o["image"]).scalar() or ""
                     run("DELETE FROM image WHERE image_id = :m", m=o["image"])
@@ -580,19 +649,17 @@ def write(job, master=None, is_open=running):
             lib.session.commit()
         except Exception:
             lib.session.rollback()
+            clear(copied)
             raise
         run("PRAGMA wal_checkpoint(TRUNCATE)")
         if run("PRAGMA integrity_check").scalar() != "ok":
             lib.close()
+            clear(copied)
             if saved:
                 restore(saved, db_file)
             raise RuntimeError("the USB's rekordbox library didn't pass its check after the change, so it was put "
                                "back as it was" if saved else "the new rekordbox library on the USB didn't pass its check")
-        for f in junk:
-            if os.path.isdir(f):
-                shutil.rmtree(f, ignore_errors=True)
-            elif os.path.isfile(f):
-                os.remove(f)
+        clear(junk)
         there = [s["rel"] for s in songs if at[s["rel"]] in own]
         analysed = sum(bool(own[at[r]]["anlz"]) for r in there)
         note(job, name, there, analysed)
@@ -603,6 +670,8 @@ def write(job, master=None, is_open=running):
             said += f"; {analysed} carry rekordbox's beat grid and waveform"
         if moved:
             said += f"; {len(moved)} followed to where their file{'s are' if len(moved) != 1 else ' is'} now"
+        if sited:
+            said += f"; {sited} analys{'e' if sited != 1 else 'i'}s filed where the CDJ-3000 looks"
         if gone:
             said += f"; {len(gone)} taken out (no longer on the USB)"
         if skipped:
@@ -611,6 +680,121 @@ def write(job, master=None, is_open=running):
     finally:
         lib.close()
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def mirror(run, roots):
+    """The Crate's part of the newer library, as rekordbox_pdb.sync() takes it: its tracks, the names they point
+    at, and its playlist folder. Ids are the same in both libraries (rekordbox writes them that way itself)."""
+    cols = ("content_id contentLink samplingRate artist_id_composer fileSize masterContentId masterDbId image_id "
+            "key_id artist_id_originalArtist label_id artist_id_remixer bitrate trackNo bpmx100 genre_id album_id "
+            "artist_id_artist discNo releaseYear bitDepth length analysedBits color_id rating fileType isrc "
+            "informationUpdateCount analysisDataUpdateCount isHotCueAutoLoadOn dateAdded analysisDataFilePath "
+            "djComment title fileName path").split()
+    keys = ("id link rate composer size masterId masterDb image key original label remixer bitrate trackNo bpm "
+            "genre album artist disc year depth length bits color rating kind isrc info anlzCount auto added anlz "
+            "comment title fileName path").split()
+    tracks = []
+    for r in run(f"SELECT {', '.join(cols)} FROM content ORDER BY content_id"):
+        t = dict(zip(keys, r))
+        if not (t["path"] and nfc(t["path"]).startswith(roots)):
+            continue
+        t["info"], t["anlzCount"] = str(t["info"] or 0), str(t["anlzCount"] or 0)
+        t["kuvo"], t["anlzDate"] = True, t["added"] if t["anlz"] else ""  # (as rekordbox's own rows have them)
+        tracks.append(t)
+    want = {"roots": list(roots), "folder": FOLDER, "tracks": tracks, "top": None, "lists": []}
+    used = lambda *ks: {t[k] for t in tracks for k in ks if t[k]}
+    for key, table, ids, more in (("artists", "artist", used("artist", "remixer", "original", "composer"), ""),
+                                  ("albums", "album", used("album"), ", artist_id"), ("keys", "key", used("key"), ""),
+                                  ("genres", "genre", used("genre"), ""), ("labels", "label", used("label"), ""),
+                                  ("artwork", "image", used("image"), "")):
+        name = "path" if table == "image" else "name"
+        want[key] = {r[0]: {"name": r[1] or "", **({"artist": r[2] or 0} if more else {})}
+                     for r in run(f'SELECT {table}_id, {name}{more} FROM "{table}"') if r[0] in ids}
+    top = run("SELECT playlist_id, sequenceNo FROM playlist WHERE name = :n AND attribute = 1 AND playlist_id_parent = 0 "
+              "ORDER BY playlist_id", n=FOLDER).first()
+    if top:
+        mine = {t["id"] for t in tracks}
+        want["top"] = {"id": top[0], "seq": top[1] or 0}
+        for pid, name in [tuple(r) for r in run("SELECT playlist_id, name FROM playlist WHERE playlist_id_parent = :t "
+                                                "AND attribute = 0 ORDER BY sequenceNo, playlist_id", t=top[0])]:
+            want["lists"].append((pid, name or "", [r[0] for r in run(
+                "SELECT content_id FROM playlist_content WHERE playlist_id = :p ORDER BY sequenceNo", p=pid)
+                if r[0] in mine]))
+    return want
+
+
+def keep(file, folder, name):
+    """The older library as it is now, copied to the Mac (the last 20 kept). Where the copy is."""
+    os.makedirs(folder, exist_ok=True)
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in name)
+    stamp, n = time.strftime("%Y%m%d-%H%M%S"), 1
+    out = os.path.join(folder, f"rekordbox-usb-{safe}-{stamp}.pdb")
+    while os.path.exists(out):
+        n += 1
+        out = os.path.join(folder, f"rekordbox-usb-{safe}-{stamp}-{n}.pdb")
+    shutil.copy2(file, out)
+    mine = sorted((f for f in os.listdir(folder) if f.startswith("rekordbox-usb-") and f.endswith(".pdb")),
+                  key=lambda f: os.path.getmtime(os.path.join(folder, f)))
+    for old in mine[:-20]:
+        try:
+            os.remove(os.path.join(folder, old))
+        except OSError:
+            pass
+    return out
+
+
+def older(job, is_open=running):
+    """The older library beside it (export.pdb, what the CDJ-3000, CDJ-2000NXS2, XDJ-RX3 and earlier read, and what
+    rekordbox 7 checks the newer one against): The Crate's part of the newer library is mirrored into it, row for
+    row (rekordbox_pdb.py), and the two are then compared. Only a library rekordbox made itself is written; a USB
+    without one is left as it is. What was said, "" when the two were in step already."""
+    import rekordbox_pdb
+    from sqlalchemy import text
+    usb = job["usb"].rstrip("/")
+    db_file = os.path.join(usb, "PIONEER", "rekordbox", "exportLibrary.db")
+    file = os.path.join(os.path.dirname(db_file), "export.pdb")
+    if not (os.path.isfile(file) and os.path.isfile(db_file)):
+        return ""
+    lib = opened(db_file)
+    try:
+        roots = tuple("/" + m + "/" for m in [place.web(usb)] + place.others(usb))
+        want = rekordbox_pdb.fitted(mirror(lambda sql, **p: lib.session.execute(text(sql), p), roots))
+    finally:
+        lib.close()
+    path = {t["id"]: nfc(t["path"]) for t in want["tracks"]}
+    lists = [(nfc(n), [path[i] for i in ids]) for _, n, ids in want["lists"]] if want["top"] and want["lists"] else None
+
+    def agree(data):  # what a player would list from the older library, against the newer one
+        if rekordbox_pdb.lists(data, FOLDER) != lists:
+            raise rekordbox_pdb.Bad("the two rekordbox libraries on the USB would not list the same playlists")
+    try:
+        with open(file, "rb") as f:
+            now = f.read()
+        new, did = rekordbox_pdb.sync(now, want)
+        if new is None:
+            agree(now)
+            return ""
+        if is_open():
+            return OPEN
+        rekordbox_pdb.update(file, want, lambda f: keep(f, job["backups"], os.path.basename(usb)), agree)
+    except rekordbox_pdb.Bad as e:
+        raise RuntimeError(f"the older rekordbox library on the USB (export.pdb) was left as it was: {e}")
+    s = lambda n: "" if n == 1 else "s"
+    said = [f"{did[k]} {word}" for k, word in (("new", "new"), ("changed", "updated"), ("gone", "taken out")) if did[k]]
+    n = len(want["tracks"])
+    return (f"the older library (CDJ-3000 and earlier) now matches: {n} track{s(n)}"
+            + (f" ({', '.join(said)})" if said else "") + f", {len(want['lists'])} playlist{s(len(want['lists']))}")
+
+
+def write(job, master=None, is_open=running):
+    """Both of the USB's rekordbox libraries: the newer one first, then the older one brought in step with it."""
+    said = one(job, master, is_open)
+    if said in (OPEN, OLDER):
+        return said
+    more = older(job, is_open)
+    if more == OPEN:
+        return said or OPEN
+    return "; ".join(x for x in (said, more) if x)
 
 
 if __name__ == "__main__":
