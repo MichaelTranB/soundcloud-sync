@@ -40,6 +40,7 @@ usb-place.json.tmp
 names.json
 names.json.tmp
 .naming-progress
+.names.lock
 .originals
 .archive-have
 blocked-originals.txt
