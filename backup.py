@@ -438,8 +438,9 @@ def restore(dir, usb, src, name, day):
     if fail:  # never a repair over something that isn't kept
         return (f'BACKUP PROBLEM: "{here}" was not repaired: what is on it now could not be backed up first '
                 f"({fail[0]}). Nothing on it was changed.")
-    # A song on it now is replaced only when that backup holds it as it is: one left out of it ("Back up songs that
-    # are only on the USB" is off, or this Mac was short of room) stays as it is. A song that is gone is put back.
+    # A song on it now is replaced only when that backup holds it as it is now (size and time): one left out of it
+    # ("Back up songs that are only on the USB" is off, this Mac was short of room, or it could not be read) stays
+    # as it is. A song that is gone is put back.
     now = files_of(dir, here, kept["id"]) if kept and kept.get("id") else {}
     done = {"lib": 0, "song": 0, "left": 0, "aside": 0}
 
@@ -462,7 +463,7 @@ def restore(dir, usb, src, name, day):
         fcntl.flock(lock, fcntl.LOCK_EX)
         fcntl.flock(deck, fcntl.LOCK_EX)  # no deck library is written under it
         try:
-            todo = []
+            todo, stale = [], []
             for i, (rel, row) in enumerate(sorted(files.items())):
                 if i % 20 == 0:
                     progress(dir, i, len(files) * 2, "restore")
@@ -471,14 +472,8 @@ def restore(dir, usb, src, name, day):
                     continue
                 have = usb_tidy.size(b)
                 if row[2] != "song":
-                    if not same(a, b):
-                        todo.append((rel, row, a, b))
-                    else:
-                        try:  # the same file, with newer side notes beside it: those go, or it isn't put back
-                            done["lib"] += bool(notes(rel, b))
-                        except OSError as e:
-                            return f'BACKUP PROBLEM: "{here}" could not be written ({e.strerror or e}). It may have to be erased first.'
-                elif have < 0 or (have != row[0] and now.get(rel, [-1])[0] == have):
+                    (stale if same(a, b) else todo).append((rel, row, a, b))
+                elif have < 0 or (have != row[0] and held(rel, b)):
                     todo.append((rel, row, a, b))
                 elif have != row[0]:
                     done["left"] += 1
@@ -489,17 +484,22 @@ def restore(dir, usb, src, name, day):
             for rel, row, _, b in todo:
                 room -= row[0]
                 short = min(short, room)
-                if row[2] == "song" or held(rel, b):
+                if held(rel, b):
                     room += max(usb_tidy.size(b), 0)
             if short < 0:
                 return (f'BACKUP PROBLEM: "{here}" has no room for its backup ({-short // 1024 ** 2 + 1} MB more is '
                         "needed). Nothing on it was changed.")
+            try:  # a database that is the same already, with newer side notes beside it: those go, or it isn't put back
+                for rel, _, _, b in stale:
+                    done["lib"] += bool(notes(rel, b))
+            except OSError as e:
+                return f'BACKUP PROBLEM: "{here}" could not be written ({e.strerror or e}). It may have to be erased first.'
             for i, (rel, row, a, b) in enumerate(todo):
                 progress(dir, len(todo) + i, len(todo) * 2, "restore")
                 try:
                     os.makedirs(os.path.dirname(b), exist_ok=True)
                     copy(a, b + ".crate-tmp", row[1])
-                    if row[2] != "song" and os.path.lexists(b) and not held(rel, b):
+                    if os.path.lexists(b) and not held(rel, b):
                         # what is there could not be read into that backup (or changed since): it is not written
                         # over, it goes to the USB's Trash, where it can still be got at
                         if not usb_tidy.trash(usb, b):
