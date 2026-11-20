@@ -114,6 +114,13 @@ def mark(p):
     return [st.st_size, int(st.st_mtime), round(getattr(st, "st_birthtime", 0), 2)]
 
 
+def same_file(home, a, b):
+    try:
+        return os.path.samefile(os.path.join(home, a), os.path.join(home, b))
+    except OSError:
+        return False
+
+
 def keep(made_from, home):
     """Writes down the copies The Crate made in "All songs" (STAMP). If that can't be written, the copies it doesn't
     name are left as they are from then on: never a song of someone else's taken off."""
@@ -158,6 +165,14 @@ def all_songs(dest, at, cfg, dry=False):
     except (OSError, ValueError):
         made_from = {}
     mine = {k: f for k, f in there.items() if k in made_from}  # anything else in there was put by someone: untouched
+    for k, f in list(mine.items()) if not dry else ():  # a copy spelled the way its song was before a rename (a sign
+        to = os.path.basename(want.get(k, ""))  # a USB can't hold, now its look-alike) takes the song's spelling
+        if to and to != f and not (os.path.lexists(os.path.join(home, to)) and not same_file(home, f, to)):
+            try:
+                os.rename(os.path.join(home, f), os.path.join(home, to))  # (a "._" twin left: usbsafe.clean)
+                mine[k] = there[k] = to
+            except OSError:
+                pass
     made = off = 0
     taken = set()
     for f in os.listdir(home) if not dry and os.path.isdir(home) else ():  # a copy that was cut short
