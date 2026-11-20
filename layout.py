@@ -106,6 +106,20 @@ def copies(cfg):
     return cfg.get("all") is True and cfg["mode"] != "flat"
 
 
+def unchanged(p, q, head=512 << 10, tail=128 << 10):
+    """The copy still matches the song: its start and end, where a song's tags and cover sit, are the same. (A tag
+    edit can keep the size and land within the 2 seconds a USB's clock tells apart, so the time can't say.)"""
+    try:
+        with open(p, "rb") as a, open(q, "rb") as b:
+            if a.read(head) != b.read(head):
+                return False
+            for f in (a, b):
+                f.seek(max(0, os.fstat(f.fileno()).st_size - tail))
+            return a.read() == b.read()
+    except OSError:
+        return False
+
+
 def all_songs(dest, at, cfg, dry=False):
     """Keeps the "All songs" folder in step: a copy of each song from where it sits (at: {song: where, inside The
     Crate's folder}), made again when the song's file changed, and taken off when the song left the USB or the
@@ -151,8 +165,7 @@ def all_songs(dest, at, cfg, dry=False):
     for k, p in want.items():
         q = os.path.join(home, there.get(k, os.path.basename(p)))
         try:
-            a, b = os.stat(p), os.stat(q)
-            if a.st_size == b.st_size and abs(a.st_mtime - b.st_mtime) <= 2:
+            if os.stat(p).st_size == os.stat(q).st_size and unchanged(p, q):
                 continue
         except OSError:
             pass

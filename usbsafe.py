@@ -57,6 +57,18 @@ def names(dir, src):
             aiff.follow(dir, src, a, b)
     except Exception as e:  # never silent
         print(f"the notes for a renamed song couldn't all follow it ({e})", file=sys.stderr)
+    try:  # a genre picked by hand for a song with no link is kept under its file name: it follows too
+        import genres
+        g, changed = genres.load(dir), False
+        for a, b in done:
+            a, b = ("file:" + os.path.splitext(os.path.basename(x))[0] for x in (a, b))
+            if a in g["songs"] and b not in g["songs"]:
+                g["songs"][b] = g["songs"].pop(a)
+                changed = True
+        if changed:
+            genres.save(dir, g)
+    except Exception as e:  # never silent
+        print(f"the genres picked for a renamed song couldn't follow it ({e})", file=sys.stderr)
     stamp = time.strftime("%F %R")
     with open(os.path.join(dir, "usb.log"), "a") as fh:
         fh.writelines(f'{stamp}  renamed "{a}" to "{b}" (a USB can\'t hold some signs in a name)\n' for a, b in done)
