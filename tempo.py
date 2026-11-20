@@ -86,6 +86,14 @@ def moved(dir, old, new, size, mtime):
         save(dir, note)
 
 
+def touched(dir, rel, size, mtime):
+    """A song whose tags or cover changed (details.py): the sound is the same, so its tempo stays."""
+    note = load(dir)
+    if isinstance(note.get(rel), dict):
+        note[rel] = {**note[rel], "size": size, "mtime": mtime}
+        save(dir, note)
+
+
 def save(dir, note):
     tmp = os.path.join(dir, NOTE + ".tmp")
     with open(tmp, "w") as f:
