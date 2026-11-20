@@ -31,29 +31,29 @@
 
   const STEPS = {
     home: [
-      { title: 'Welcome to The Crate', text: 'It gets your playlists onto your Mac in top quality, then onto your DJ USB. A one-minute look around.' },
-      { target: () => q('#start'), title: 'Your checklist', text: 'Each step ticks itself when it\'s done. Hide it any time; the Setup button brings it back.' },
+      { title: 'Welcome to The Crate', text: 'Start here: paste a playlist, pick your USB, press Sync Now. Everything else is optional and tucked away under More.' },
+      { target: () => q('#start'), title: 'Your checklist', text: 'Each step ticks itself when it\'s done. Hide it any time; Setup under the title brings it back.' },
       { target: field('#url'), title: 'Add a playlist', text: 'Paste a SoundCloud, Spotify or Apple Music link and press Add. Copied your Spotify Liked Songs? Paste those here too. Tap a saved playlist to sync it.' },
       { target: () => { const e = q('#profile'); return e && e.closest('details'); }, title: 'Or find yours on SoundCloud',
         text: 'Open this and type your SoundCloud name to list every playlist you have. It uses the sign-in already in your browser.' },
       { target: field('#usb'), title: 'Your DJ USB', text: 'Pick it and new songs copy over after every sync and whenever you plug it in. It only adds, never deletes.' },
-      { target: field('#scplUsb'), title: 'USB to SoundCloud', text: 'Turns the folders on a USB into private SoundCloud playlists. It never uploads files or changes the USB.' },
-      { target: field('#slskUser'), title: 'Soulseek', text: 'Finds what SoundCloud won\'t give you, lossless or 320 kbps only. Sign in once; it only ever downloads.' },
-      { target: field('#syncTime'), title: 'Daily sync', text: 'Pick the time. Keep your Mac on then; if it\'s asleep, it syncs when it wakes.' },
       { target: () => q('#sync'), title: 'Sync Now', text: 'Gets new songs right away, then updates your USB and DJ lists. The first one takes a while.' },
       { target: () => q('#q'), title: 'Your tracks', text: 'Search both lists. On the left, what\'s on your Mac. On the right, what\'s left to find, with free links and shops.' },
+      { target: field('#scplUsb'), open: () => q('#moreSetup'), title: 'More: USB to SoundCloud', text: 'Turns the folders on a USB into private SoundCloud playlists. It never uploads files or changes the USB.' },
+      { target: field('#slskUser'), open: () => q('#moreSetup'), title: 'Soulseek', text: 'Finds what SoundCloud won\'t give you, lossless or 320 kbps only. Sign in once; it only ever downloads.' },
+      { target: field('#syncTime'), open: () => q('#moreSetup'), title: 'Daily sync', text: 'Pick the time. Keep your Mac on then; if it\'s asleep, it syncs when it wakes.' },
       { target: () => q('#djOpen'), title: 'Next: the Library Manager', next: 'Show me',
         text: 'Your songs get tempo, key and genres, and go onto your decks. That\'s the other half of the tour.' },
     ],
     dj: [
       { title: 'The Library Manager', text: 'Every song with its tempo, key and genres, put onto your decks by itself after each sync.' },
-      { target: () => q('.strip'), title: 'At a glance', text: 'How many songs, how many are sorted into genres, and whether your decks are up to date.' },
+      { target: () => q('.strip'), title: 'At a glance', text: 'One line: how many songs, how many are sorted into genres, and whether your decks are up to date. The one red button, Update decks now, is top right.' },
       { target: section('#decks'), ready: () => q('#decks') && q('#decks').children.length,
         note: 'Your decks (Engine DJ, rekordbox, Serato) show here once songs are synced and a USB is chosen.',
         title: 'Your decks', text: 'Where your songs stand in each DJ app. They update by themselves; your own playlists are never touched.' },
-      { target: section('#folders'), title: 'USB folders', text: 'One folder, or EDM and Other, or by genre. It asks before moving anything, and One folder puts it all back.' },
-      { target: () => q('#club'), title: 'Club check', text: 'Tells you what a club\'s decks need from your USB before a gig.' },
-      { target: () => q('#other'), title: 'Copy from another USB', text: 'A friend\'s USB shows up here. Tick what you want; it\'s only read, never changed.' },
+      { target: section('#folders'), open: () => q('#moreUsb'), title: 'USB folders', text: 'Folded under "USB folders, checks & backup". One folder, or EDM and Other, or by genre. It asks before moving anything, and One folder puts it all back.' },
+      { target: () => q('#club'), open: () => q('#moreUsb'), title: 'Club check', text: 'Tells you what a club\'s decks need from your USB before a gig.' },
+      { target: () => q('#other'), open: () => q('#moreUsb'), title: 'Copy from another USB', text: 'A friend\'s USB shows up here. Tick what you want; it\'s only read, never changed.' },
       { target: section('#pills'), title: 'Genres', text: 'Each genre is a playlist on your decks. Tap one to see its songs; your pick always wins.' },
       { target: () => { const e = q('#doAiff'); return e && e.closest('.doit'); }, title: 'Fix up songs',
         text: 'Tick songs, then Convert to AIFF, Add cover & details, or Put on USB. Every change has Undo on its row.' },
@@ -69,6 +69,13 @@
   // A closed <details> keeps its box but paints nothing inside it, so what sits in one (below its summary) is not on screen.
   const folded = e => { const d = e.closest('details:not([open])'); return !!d && e !== d && !(e.closest('summary') && e.closest('summary').parentElement === d); };
   const shown = e => !!e && e.getClientRects().length > 0 && e.getBoundingClientRect().width > 0 && !folded(e);
+  // A step with `open` names the <details> it sits in: it counts as on screen while that is shut, and opens when the step comes up.
+  const seen = (s, e) => {
+    const d = s && s.open && s.open();
+    if (!d || d.open) return shown(e);
+    d.open = true; const ok = shown(e); d.open = false; return ok;
+  };
+  const unfold = s => { const d = s && s.open && s.open(); if (d) d.open = true; };
   const asList = v => (Array.isArray(v) ? v : [v]).filter(Boolean);
   function union(els) {
     let t = Infinity, l = Infinity, b = -Infinity, r = -Infinity;
@@ -80,7 +87,7 @@
     const out = [];
     STEPS[PAGE].forEach((s, idx) => {
       if (!s.target) return out.push({ s, idx, els: [], text: s.text });
-      const els = asList(s.target()).filter(shown);
+      const els = asList(s.target()).filter(e => seen(s, e));
       if (els.length && (!s.ready || s.ready())) return out.push({ s, idx, els, text: s.text });
       if (s.note) out.push({ s, idx, els: [], text: s.note });
     });
@@ -200,6 +207,7 @@
     if (!item) return end(false);
     const L = list(), rank = Math.max(0, L.findIndex(x => x.idx === item.idx));
     T.cur = item.idx; T.item = item;
+    unfold(item.s);
     const apply = () => {
       T.h.textContent = item.s.title;
       T.p.textContent = item.text;
@@ -259,7 +267,7 @@
     T.card.style.width = cw + 'px';
     const ch = cardHeight();
     // re-read the element: the page may have redrawn it since
-    const els = T.item && T.item.s.target ? asList(T.item.s.target()).filter(shown) : [];
+    const els = T.item && T.item.s.target ? asList(T.item.s.target()).filter(shown) : [];  // unfold() has opened its fold
     const show = T.item.els.length > 0 && els.length > 0;
     let sp;
     if (show) {
