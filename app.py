@@ -1205,15 +1205,22 @@ def song_now(rel):
         return ""
 
 
-def rekordbox_when_free(rb, rel):
-    """The song opens in rekordbox as soon as the decks' run is done (rekordbox's own library is written only while
-    rekordbox is closed). Clicking another song meanwhile opens that one instead. After 15 minutes it's dropped and
-    the log says so; so is a song the run converted, which opens as its AIFF."""
-    with _rb["lock"]:
-        _rb["file"] = rel
+def rekordbox_open(rb, rel, p):
+    """The song opens in rekordbox, now, or as soon as the decks' run is done (rekordbox's own library is written only
+    while rekordbox is closed). Clicking another song meanwhile opens that one instead, even if the run has just
+    finished. After 15 minutes it's dropped and the log says so; so is a song the run converted, which opens as its
+    AIFF. True: it's waiting."""
+    def launch(path):
+        subprocess.Popen(["open", "-a", rb, path], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+    with _rb["lock"]:  # (one lock, so the waiter's song and a newer click never both open, in either order)
         if _rb["on"]:
-            return
-        _rb["on"] = True
+            _rb["file"] = rel
+            return True
+        if not dj.busy(DIR):
+            launch(p)
+            return False
+        _rb["file"], _rb["on"] = rel, True
 
     def go():
         end = time.time() + 900
@@ -1221,14 +1228,14 @@ def rekordbox_when_free(rb, rel):
             time.sleep(2)
         with _rb["lock"]:
             song, _rb["file"], _rb["on"] = _rb["file"], "", False
-        p = song_now(song)
-        if dj.busy(DIR) or not p:
-            print(f'rekordbox: "{song}" wasn\'t opened: ' + ("the decks were still being updated after 15 minutes"
-                  if p else "it isn't in your music folder any more"), file=sys.stderr)
-            return
-        subprocess.Popen(["open", "-a", rb, p], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL)
+            path = song_now(song)
+            if path and not dj.busy(DIR):
+                launch(path)
+                return
+        print(f'rekordbox: "{song}" wasn\'t opened: ' + ("the decks were still being updated after 15 minutes"
+              if path else "it isn't in your music folder any more"), file=sys.stderr)
     threading.Thread(target=go, daemon=True).start()
+    return True
 
 
 def kbps_of(s):
@@ -1511,11 +1518,7 @@ def dj_post(path, body):
             return "That file isn't on your Mac any more."
         if not rb:
             return "rekordbox isn't on this Mac."
-        if dj.busy(DIR):  # (a run can take minutes: the song waits for it rather than being turned away)
-            rekordbox_when_free(rb, str(body.get("file", "")))
-        else:
-            subprocess.Popen(["open", "-a", rb, p], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
+        rekordbox_open(rb, str(body.get("file", "")), p)  # (a run can take minutes: the song waits for it)
         return None
     if path == "/api/dj/show":  # a song's file in Finder (for a kind of file the browser can't play)
         p = song_path(body.get("file", ""))
