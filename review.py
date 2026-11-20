@@ -209,7 +209,8 @@ def doubt(artist, title, song, rel, cur, peer=""):
         (soulseek.words(base) - soulseek.EDITS)
     if main and len(main & (have | soulseek.words(cur[0]))) * 2 < len(main):
         return f'its name has little of "{title}" in it'
-    if not credited(artist, title, f"{cur[0]} {cur[1]} {stem}", cur[0]):
+    said = f"{cur[0]} {cur[1]} {stem}" + ("" if cur[0] else f" {peer}")  # (no artist inside: the peer's name says it)
+    if not credited(artist, title, said, cur[0]):
         return f"it says it's by {cur[0] or 'someone else'}, the playlist's is by {artist}"
     # (the version the peer's name gave stays evidence even when the tags name the song)
     want = soulseek.version_words(title)
@@ -318,7 +319,7 @@ def tidy(d, src, rels=()):
             old = rec["done"].get(t["link"]) or {}
             rec["done"][t["link"]] = {"was": old.get("was") or t["name"], "at": int(time.time()),
                                       "said": old.get("said") or [t["artist"], t["title"]],
-                                      **({"tags": old["tags"], "fixed": old.get("fixed")} if "tags" in old else
+                                      **({"tags": old["tags"], "fixed": old.get("fixed")} if old.get("tags") else
                                          {"tags": snap or {}, "fixed": prior}),  # {}: only its file name was tidied
                                       "to": [way["artist"], way["title"]],
                                       **({"rename": True} if t["rename"] else {})}
