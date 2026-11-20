@@ -411,17 +411,24 @@ def damaged(path):
         return False
     if not ff or info["bits"] not in (16, 24, 32) or not info["md5"].strip("0"):
         return False
+    import tempfile
     m = hashlib.md5()
-    try:
-        p = subprocess.Popen([ff, "-v", "quiet", "-nostdin", "-i", path, "-map", "0:a:0", "-f", f"s{info['bits']}le", "-"],
-                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    except OSError:
-        return False
-    with p.stdout:
-        for chunk in iter(lambda: p.stdout.read(1 << 20), b""):
-            m.update(chunk)
-    p.wait()
-    return m.hexdigest() != info["md5"]
+    with tempfile.TemporaryFile() as said:
+        try:
+            p = subprocess.Popen([ff, "-v", "error", "-nostdin", "-i", path, "-map", "0:a:0", "-f", f"s{info['bits']}le", "-"],
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=said)
+        except OSError:
+            return False
+        with p.stdout:
+            for chunk in iter(lambda: p.stdout.read(1 << 20), b""):
+                m.update(chunk)
+        if p.wait():  # ffmpeg itself failed (can't read FLAC, was stopped): no saying, the file stays
+            return False
+        said.seek(0)
+        broken = b"decod" in said.read(1 << 16).lower()  # what ffmpeg says about a broken frame ("decode_frame() failed")
+    # damaged only when both say so: ffmpeg met a frame it couldn't decode, and the sound isn't what the file's own
+    # checksum says
+    return broken and m.hexdigest() != info["md5"]
 
 
 def judge(path, name, secs, remote="", thrown=()):
