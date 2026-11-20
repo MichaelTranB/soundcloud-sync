@@ -87,6 +87,11 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   "Go ahead" on the page (`/` and `/dj`: what is added, what is never touched, how to undo). `usb.sh` and
   `dj.once()` both stop at this gate; the yes is kept per stick (`.thecrate` in The Crate's folder on it,
   `usb-ok.json`), a new kind of change (`KINDS`) asks again, "Stop" takes it back. An empty USB isn't asked.
+- **Backup and repair (`backup.py`, `usb-backups/<USB>/<day>/`, the card on `/dj`):** `usb.sh` runs it first,
+  before the ask gate, because it only reads the USB: every non-audio file of `PIONEER`, `Engine Library` and
+  `_Serato_`, plus songs that are only on the USB (`usb-backup.json`). Unchanged files are hard links; a library
+  that fails its check marks the backup not ok and sets `repair` in `state.json`. `restore` backs up first,
+  writes only library files and missing songs, and never erases or formats: that stays the user's step.
 - **FLAC to AIFF (`aiff.py`):** `afconvert` writes the AIFF, Mutagen copies details and cover, the sound is
   compared with the FLAC's own checksum, the AIFF passes the safety check, and only then the FLAC goes to the
   Trash; every per-file record and the decks' rows follow, so cues and grids stay. New FLACs convert by

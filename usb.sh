@@ -7,6 +7,7 @@
 # you threw back on the page ("Wrong or bad file"): its copy here goes to the USB's own Trash, and on a USB that
 # already held songs, another download of a library song is swapped for the library's file and a double of one is
 # taken off, both to that Trash as well (usb_tidy.py). Songs that aren't from this library are left alone.
+# Before any of that, what the decks saved on the USB is backed up to this Mac (backup.py: it only reads the USB).
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 DIR="${0:A:h}"
 SRC="${SRC:-$HOME/Music/SoundCloud Sync}"   # both overridable for tests
@@ -14,6 +15,9 @@ NAME="$(cat "$DIR/usb.txt" 2>/dev/null)"
 [ -z "$NAME" ] && exit 0
 DEST="${VOLUMES:-/Volumes}/$NAME"
 [ -d "$DEST" ] || { echo "$(date '+%F %R')  USB \"$NAME\" not plugged in; will copy when it is" >> "$DIR/usb.log"; exit 0; }
+# First, before anything on it is changed: what your decks saved on it since last time (hot cues, playlists, history)
+# is copied to this Mac (backup.py: it only reads the USB), so a USB that goes wrong can be put back as it was.
+python3 "$DIR/backup.py" run "$DIR" "$DEST" "$SRC" 2>>"$DIR/dj.log"
 # A USB that already has things on it is changed only after your OK on the page (usb_ask.py): until then nothing on
 # it is touched. An empty one needs no asking.
 python3 "$DIR/usb_ask.py" check "$DIR" "$DEST" || {

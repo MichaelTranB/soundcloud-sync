@@ -378,7 +378,7 @@ def run(dir, src, volumes="/Volumes", wait=False):
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        if not wait:
+        if not wait and not reading(lock):
             return
         fcntl.flock(lock, fcntl.LOCK_EX)
     while os.path.exists(again):
@@ -386,11 +386,25 @@ def run(dir, src, volumes="/Volumes", wait=False):
         once(dir, src, volumes)
 
 
+def reading(lock):
+    """The lock is held only by a USB backup reading the libraries (backup.py holds it shared), not by another run:
+    no run is going that would pick up .dj-again, so this one waits for the backup instead of leaving."""
+    try:
+        fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    fcntl.flock(lock, fcntl.LOCK_UN)
+    return True
+
+
 def busy(dir):
     """True while a run is going (the page says so)."""
     try:
         with open(os.path.join(dir, ".dj.lock"), "a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return not reading(lock)
         return False
     except OSError as e:
         return isinstance(e, BlockingIOError)

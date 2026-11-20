@@ -41,6 +41,11 @@ names.json
 names.json.tmp
 .naming-progress
 .names.lock
+usb-backups/
+usb-backup.json
+.backup.lock
+.backup-progress
+.backup-progress.tmp
 .originals
 .archive-have
 blocked-originals.txt
@@ -151,8 +156,6 @@ liked-state.json
 *.json.tmp
 .waves/
 liked-settings.json
-tour.json
-tour.json.*
 sc-playlists.json
 sc-playlists.json.*.tmp
 .sc-playlists.lock

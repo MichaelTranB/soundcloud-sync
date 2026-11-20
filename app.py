@@ -8,7 +8,7 @@ import glob, json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, 
 import audio, freedl, links, playlists, safety, soulseek, tour
 import aiff, club, details, dj, friend, genres, layout, liked, recognise, scplaylists, usb_ask, waveform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import naming, place
+import backup, naming, place
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.expanduser("~/Music/SoundCloud Sync")
@@ -1025,7 +1025,7 @@ def dj_problem(lines):
     """The newest PROBLEM line that still stands: one the same deck's later run didn't put right."""
     fine = {"ENGINE": "Engine DJ on", "REKORDBOX": "rekordbox: ", "REKORDBOX USB": 'rekordbox on "',
             "SERATO": "Serato on", "ANALYSER": "listened to", "RECOGNISE": "song recognition",
-            "COPY": "USB copy from"}
+            "COPY": "USB copy from", "BACKUP": "backup: "}
     for i in range(len(lines) - 1, -1, -1):
         if "PROBLEM" in lines[i]:
             m = re.search(r"((?:REKORDBOX )?[A-Z]+) PROBLEM", lines[i])
@@ -1163,6 +1163,7 @@ def dj_state():
             "lastRekordboxUsb": last('rekordbox on "', "REKORDBOX USB PROBLEM"),
             "lastSerato": last("Serato on", "SERATO PROBLEM"),
             # another USB with songs on it: the page asks what's on each (/api/dj/usbs) only when this list changes
+            "backup": {**backup.status(DIR), "last": last("backup: ", "BACKUP PROBLEM")},
             "others": friend.volumes(), "copy": friend.progress(DIR), "lastFriend": last("USB copy from", "COPY PROBLEM"),
             "problem": dj_problem(log[-6:])}
 
@@ -1394,6 +1395,33 @@ def dj_post(path, body):
         return None
     if path in ("/api/dj/aiff", "/api/dj/details", "/api/dj/naming", "/api/dj/put", "/api/dj/usb-ok", "/api/dj/cues"):
         return fix_post(path, body)
+    if path == "/api/dj/backup":  # the USB's backups on this Mac (backup.py), each on its own: it can take a while
+        usb, kept = read("usb.txt").strip(), backup.status(DIR)["sticks"]
+        at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)
+        if "songs" in body:  # songs that are only on the USB are kept too, or not
+            backup.save(DIR, body["songs"] is True)
+            return None
+        if "fine" in body:  # "It's fine": the USB once seen damaged is no longer offered a repair
+            if any(s["name"] == body["fine"] for s in kept):
+                backup.fine(DIR, body["fine"])
+            return None
+        if not usb or not os.path.isdir(at):
+            return "Plug in your USB first."
+        if backup.progress(DIR):
+            return "A backup is already at work."
+        job = ["run", DIR, at, OUT]
+        if "restore" in body:  # your press on "Put it back" is the yes; what is on the USB now is backed up first
+            r = body["restore"] if isinstance(body["restore"], dict) else {}
+            if not any(s["name"] == r.get("name") and any(x["id"] == r.get("day") and x["ok"] for x in s["snaps"]) for s in kept):
+                return "That backup is not on this Mac any more."
+            job = ["restore", DIR, at, OUT, r["name"], r["day"]]
+        elif not body.get("now"):
+            return "Not something a backup can do."
+        with open(os.path.join(DIR, "dj.log"), "a") as log:
+            p = subprocess.Popen([sys.executable, os.path.join(DIR, "backup.py")] + job, start_new_session=True,
+                                 stdout=subprocess.DEVNULL, stderr=log)
+        threading.Thread(target=p.wait, daemon=True).start()
+        return None
     if path == "/api/dj/layout":  # how the songs sit inside The Crate's folder on the USB (layout.py: one folder, or
         mode, other = body.get("mode"), body.get("other")  # by genre), and which genres aren't EDM. The run files them.
         if (mode is not None and mode not in layout.MODES) or (other is not None and not isinstance(other, list)):

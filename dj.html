@@ -101,6 +101,10 @@
   .club .row { display: grid; grid-template-columns: 17px 1fr; padding: 7px 0; font-size: 15px; }
   .club .row .dot { margin-top: 7px; }
   .club .row small { display: block; color: var(--dim); font-size: 14px; }
+  .club .row small button { background: none; border: 0; border-bottom: 1px dotted var(--dim); border-radius: 0; padding: 0; color: var(--text); font-weight: 600; font-size: 14px; }
+  .club .acts { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; font-size: 15px; }
+  .club .acts select { padding: 7px 10px; font-size: 14.5px; max-width: 100%; }
+  .club .acts + small { display: block; color: var(--dim); font-size: 14px; margin-top: 8px; }
   .note { color: var(--dim); font-size: 14.5px; min-height: 18px; }
   .note.bad { color: var(--warn); }
   .note:not(:empty) { position: sticky; top: 10px; z-index: 6; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
@@ -316,6 +320,9 @@
       <li>Not carried: MP3 cues to or from the Prime 4, memory cues to the Prime 4, and beat grids. Each app keeps its own grid.</li>
     </ol>
 
+    <h3>Backup and repair</h3>
+    <p>Each time you plug in your USB, what your decks saved on it (hot cues, playlists, history) is copied to this Mac first. If a library on it stops opening, this page says so and <b>Repair this USB</b> puts the backup back, songs included. Erasing a USB is never done for you.</p>
+
     <h3>Your USB is asked first</h3>
     <p>A USB that already has things on it is not touched until you press <b>Go ahead</b>. After that, songs go only into The Crate's own folder and playlists into its own <b>The Crate</b> folder. Your files, folders and playlists are never moved, renamed or deleted. You can stop any time.</p>
 
@@ -377,6 +384,7 @@
   <section class="other" id="other" hidden aria-label="Copy from another USB"></section>
 
   <div class="club" id="club" hidden></div>
+  <div class="club" id="backup" hidden></div>
 
   <div class="hd"><b>Genres</b><small>Each genre is a playlist on your decks. Tap one to see its songs.</small>
     <button class="q" data-help="hGenres" aria-expanded="false" aria-label="How genres work">?</button></div>
@@ -467,6 +475,7 @@ const crateName = () => (S && S.place && S.place.name) || 'SoundCloud Sync';  //
 let picks = new Set();        // the songs ticked in the list (their files)
 let look = new Set();         // songs whose "which one is it?" candidates are open
 let inList = [];              // the songs in the list right now (what "Select all" ticks)
+let fixUsb = false, fixPick = '';  // "Repair this USB" is open, and the backup picked in it ("USB name\nbackup")
 let jobs = { aiff: false, details: false, naming: false };  // which of the list's jobs was running at the last look
 let checking = new Map();     // songs whose name is being checked or written right now: what the row says meanwhile
 // The to-do lists among the pills: each shows only while it has songs.
@@ -850,6 +859,50 @@ function draw() {
   checks.forEach(r => cl.append(el('div', { className: 'row' }, el('span', { className: 'dot' + (r.ok === true ? ' ok' : r.ok === false ? ' warn' : '') }),
     el('div', {}, r.say, r.do ? el('small', { textContent: r.do }) : ''))));
 
+  // backup and repair (backup.py): what the decks saved on the USB is kept on this Mac, and can be put back
+  const bk = $('backup'), B = S.backup || { sticks: [] }, mine = B.sticks.find(s => s.name === S.usb), doing = B.doing;
+  const at = t => { const d = new Date(t * 1000), n = new Date(), y = new Date(n - 864e5);
+    return (d.toDateString() === n.toDateString() ? 'today' : d.toDateString() === y.toDateString() ? 'yesterday' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }))
+      + ', ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+  const good = B.sticks.flatMap(s => s.snaps.filter(x => x.ok).map(x => ({ name: s.name, day: x.id, when: x.when })))
+    .sort((a, b) => (b.name === S.usb) - (a.name === S.usb) || b.when - a.when);
+  const stickName = '"' + S.usb + '"', bkRow = (dot, say, sub) => bk.append(el('div', { className: 'row' }, dot, el('div', {}, say, sub || '')));
+  bk.hidden = !S.usb; bk.textContent = '';
+  bk.append(el('h2', {}, 'Backup & repair', el('small', { textContent: 'what your decks saved on your USB, kept on this Mac' }), ask('backup', 'How backup and repair work')),
+    notes2('backup', ['Every time you plug in your USB, its rekordbox, Engine DJ and Serato libraries (hot cues, playlists, history) are copied to this Mac first. That only reads the USB.',
+      'Repair puts those libraries back, and any song that went missing. What is on the USB now is backed up first, and nothing else on it is touched.',
+      'A USB that will not open at all has to be erased first, in Disk Utility: that step is yours. Then plug it in and repair it here.']));
+  if (!doing) fixUsb = fixUsb && S.usbIn && good.length > 0;
+  if (doing) bkRow(el('span', { className: 'spin' }), doing.what === 'restore' ? 'Putting the backup back on ' + stickName : 'Backing up ' + stickName,
+    el('small', { textContent: doing.what === 'restore' ? 'Keep the USB plugged in until it is done.' : doing.of ? num(doing.done) + ' of ' + num(doing.of) + ' files' : 'Reading what is on it.' }));
+  const new1 = mine && mine.snaps[0], hurt = mine && (mine.repair || (new1 && !new1.ok && mine.fine !== new1.id ? { why: new1.why } : null));
+  if (hurt && !doing) {
+    const back = good.find(g => g.name === S.usb && g.day === hurt.day) || good[0];
+    const sm = el('small', {}, back ? 'Repair puts back the backup from ' + at(back.when) + '.  ' : 'There is no good backup of it on this Mac yet.  ');
+    sm.append(link('It\'s fine', () => post('/api/dj/backup', { fine: mine.name })));
+    bkRow(el('span', { className: 'dot warn' }), stickName + ' looks damaged: ' + (hurt.why || 'its library could not be read') + '.', sm);
+  }
+  const fine = mine && mine.snaps.find(x => x.ok);
+  if (fine) bkRow(el('span', { className: 'dot ok' }), 'Backed up ' + at(fine.when), el('small', { textContent: [(fine.libs || []).join(', ') || 'No deck library on it yet',
+    fine.songs ? num(fine.songs) + (fine.songs === 1 ? ' song that is' : ' songs that are') + ' only on the USB' : '', size(Math.max(1, Math.round((mine.size || fine.bytes) / 1e6))) + ' on this Mac',
+    fine.skipped || '', !hurt && mine.checked > fine.when + 90 ? 'nothing new since, checked ' + at(mine.checked) : '', S.usbIn ? '' : 'plug it in to back it up or repair it'].filter(Boolean).join(' · ') }));
+  else if (!doing) bkRow(el('span', { className: 'dot' }), 'No backup yet', el('small', { textContent: S.usbIn ? 'It is made by itself each time your USB is plugged in. Or now.' : 'Plug in your USB: its backup is made by itself.' }));
+  const now = el('button', { className: 'ghost mini', textContent: 'Back up now', disabled: !S.usbIn || !!doing }), fixB = el('button', { className: 'ghost mini', textContent: 'Repair this USB', disabled: !S.usbIn || !!doing });
+  now.onclick = async () => { if (await post('/api/dj/backup', { now: true })) say('Backing up ' + stickName + '.'); };
+  fixB.onclick = () => { fixUsb = true; fixPick = ''; draw(); };
+  if (!fixUsb) bk.append(el('div', { className: 'acts' }, now, good.length ? fixB : ''));
+  else {
+    const first = hurt && hurt.day ? good.find(g => g.name === S.usb && g.day === hurt.day) : null, key = g => g.name + '\n' + g.day;
+    if (!good.some(g => key(g) === fixPick)) fixPick = key(first || good[0]);
+    const sel = el('select', {}, ...good.map(g => el('option', { value: key(g), textContent: at(g.when) + (g.name === S.usb ? '' : ' ("' + g.name + '")'), selected: key(g) === fixPick })));
+    sel.setAttribute('aria-label', 'Which backup'); sel.onchange = () => { fixPick = sel.value; };
+    const yes = el('button', { className: 'mini', textContent: 'Put it back' }), no = el('button', { className: 'ghost mini', textContent: 'Cancel' });
+    yes.onclick = async () => { const [name, day] = fixPick.split('\n'); fixUsb = false; if (await post('/api/dj/backup', { restore: { name, day } })) say('Putting the backup back on ' + stickName + '. Keep it plugged in.'); else draw(); };
+    no.onclick = () => { fixUsb = false; draw(); };
+    bk.append(el('div', { className: 'acts' }, 'Put back the backup from', sel, 'onto ' + stickName + '?', yes, no),
+      el('small', { textContent: 'What is on the USB now is backed up first. Nothing else on it is touched.' }));
+  }
+
   // another USB with songs on it (friend.py): one line each until you open it; what it offers is asked only when
   // what is plugged in changes, or a copy has just finished
   const plugged = (S.others || []).join('\n');
@@ -1004,6 +1057,9 @@ function drawOpts() {
     () => setOpt({ cues: !o.cues }, o.cues ? 'Cues are left as they are on each deck.' : 'Cues are kept in step again.'));
   sw('Keep Liked Songs apart', 'Spotify Liked Songs stay on their own list until you give one a genre. Off: sorted like every song.', o.likedApart,
     () => setOpt({ likedApart: !o.likedApart }, o.likedApart ? 'Liked Songs are sorted into genres now.' : 'Liked Songs stay on their own list.'));
+  const keep = (S.backup || {}).songs;
+  sw('Back up USB-only songs', 'Songs on your USB that are not on this Mac are kept in its backup too. Off: only what your decks saved.', keep,
+    () => setOpt({ songs: !keep }, keep ? 'Backups keep only what your decks saved.' : 'Songs only on the USB are backed up too.', '/api/dj/backup'));
   go('USB folders', 'Where The Crate\'s folder sits on the USB, how songs are filed in it, and which genres count as EDM.', 'folders');
   go('Genres', 'Add or remove the genres your songs are sorted into.', 'pills');
   const home = el('a', { className: 'ghost mini', href: '/', textContent: 'Open' });
