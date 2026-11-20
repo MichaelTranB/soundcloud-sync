@@ -274,27 +274,24 @@ def say(names):
     return ", ".join(names[:-1]) + (" and " if len(names) > 1 else "") + names[-1] if names else ""
 
 
-def quiet(dir):
-    """Waits until no deck library is being written (dj.py's lock): a backup never reads one half written."""
-    with open(os.path.join(dir, ".dj.lock"), "a") as deck:
-        fcntl.flock(deck, fcntl.LOCK_SH)
-
-
-def run(dir, usb, src, keep=""):
-    """One backup of the USB, when anything on it changed since the last one. Returns that backup's note."""
+def run(dir, usb, src, keep="", fail=None):
+    """One backup of the USB, when anything on it changed since the last one. Returns that backup's note. fail: a
+    list that gets the reason when what is on the USB now could not be kept (restore() then changes nothing)."""
     name = os.path.basename(os.path.normpath(usb))
     os.makedirs(os.path.join(dir, ROOT), exist_ok=True)
-    with open(os.path.join(dir, ".backup.lock"), "w") as lock:
+    with open(os.path.join(dir, ".backup.lock"), "w") as lock, open(os.path.join(dir, ".dj.lock"), "a") as deck:
         fcntl.flock(lock, fcntl.LOCK_EX)  # one at a time; a second one waits and then finds nothing left to do
-        quiet(dir)
+        # No deck library is written while it is read (dj.py's lock, shared: dj.py waits until the backup is done),
+        # so a backup never holds a library from half way through an update.
+        fcntl.flock(deck, fcntl.LOCK_SH)
         try:
-            return _run(dir, usb, src, name, keep)
+            return _run(dir, usb, src, name, keep, [] if fail is None else fail)
         finally:
             if os.path.exists(os.path.join(dir, ".backup-progress")):
                 os.remove(os.path.join(dir, ".backup-progress"))
 
 
-def _run(dir, usb, src, name, keep):
+def _run(dir, usb, src, name, keep, fail):
     at, last = home(dir, name), (snaps(dir, name) or [None])[0]
     before = files_of(dir, name, last["id"]) if last else {}
     seen, stuck = listing(usb, library(src), load(dir)["songs"])
@@ -308,12 +305,16 @@ def _run(dir, usb, src, name, keep):
         skipped = f"{len(songs)} songs that are only on it were left out: this Mac is short of room"
         if free - new(seen) < RESERVE // 10:
             log(dir, f'BACKUP PROBLEM: "{name}" was not backed up: this Mac has no room left for it.')
+            fail.append("this Mac has no room left for it")
             return None
     mark = hashlib.sha1(json.dumps([sorted(seen.items()), sorted(stuck)]).encode()).hexdigest()
     if last and last.get("seen") == mark:
         note(dir, name, checked=int(time.time()))
         return last
-    day, part = time.strftime("%Y-%m-%d %H%M%S"), os.path.join(at, ".part")
+    t = int(time.time())
+    while os.path.exists(os.path.join(at, time.strftime("%Y-%m-%d %H%M%S", time.localtime(t)))):
+        t += 1  # (two backups within one second: each gets a folder of its own)
+    day, part = time.strftime("%Y-%m-%d %H%M%S", time.localtime(t)), os.path.join(at, ".part")
     shutil.rmtree(part, ignore_errors=True)  # (what a backup cut short left behind)
     files, bad, unread, was = {}, {}, list(stuck), (last or {}).get("bad") or {}
     for i, (rel, row) in enumerate(sorted(seen.items())):
@@ -334,8 +335,7 @@ def _run(dir, usb, src, name, keep):
                 raise OSError("cut short")
             files[rel] = row
             why = wrong(dir, rel, to) if row[2] != "song" else ""
-            if why:  # a library that was being written this very moment reads as damaged: once more, when that is done
-                quiet(dir)
+            if why:  # a library that changed under the copy reads as damaged: once more
                 st = os.stat(os.path.join(usb, *rel.split("/")))
                 files[rel] = row = [st.st_size, int(st.st_mtime), row[2]]
                 copy(os.path.join(usb, *rel.split("/")), to, row[1])
@@ -346,6 +346,7 @@ def _run(dir, usb, src, name, keep):
             if not os.path.isdir(usb):  # unplugged half way: no backup this time, the last one stands
                 shutil.rmtree(part, ignore_errors=True)
                 log(dir, f'backup: "{name}" was unplugged before its backup was done. It is made the next time.')
+                fail.append("it was unplugged")
                 return last
             unread.append(rel)
             if os.path.exists(to):
@@ -419,7 +420,15 @@ def restore(dir, usb, src, name, day):
             time.sleep(1)
         except (OSError, ValueError, IndexError):
             break
-    run(dir, usb, src, keep=day if name == here else "")  # what is on it now is kept first
+    fail = []
+    try:
+        kept = run(dir, usb, src, keep=day if name == here else "", fail=fail)  # what is on it now is kept first
+    except OSError as e:
+        kept = fail.append(e.strerror or str(e))
+    if fail:  # never a repair over something that isn't kept
+        return (f'BACKUP PROBLEM: "{here}" was not repaired: what is on it now could not be backed up first '
+                f"({fail[0]}). Nothing on it was changed.")
+    whole = not (kept or {}).get("skipped")  # (songs only on it were left out of that backup: none is replaced)
     done = {"lib": 0, "song": 0}
     with open(os.path.join(dir, ".backup.lock"), "w") as lock, open(os.path.join(dir, ".dj.lock"), "w") as deck:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -432,7 +441,8 @@ def restore(dir, usb, src, name, day):
                 a, b = os.path.join(at, *rel.split("/")), os.path.join(usb, *rel.split("/"))
                 if not os.path.isfile(a):
                     continue
-                if (usb_tidy.size(b) != row[0]) if row[2] == "song" else not same(a, b):
+                have = usb_tidy.size(b)
+                if (have != row[0] and (have < 0 or whole)) if row[2] == "song" else not same(a, b):
                     todo.append((rel, row, a, b))
             need = sum(row[0] - max(usb_tidy.size(b), 0) for _, row, _, b in todo)
             if need > shutil.disk_usage(usb).free:
