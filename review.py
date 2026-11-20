@@ -181,6 +181,15 @@ def mixes(s):
     return {w for m in MIX.findall(s or "") for w in low(m)} - {"mix", "edit", "version", "the", "a", "and", "x"}
 
 
+DASH = re.compile(r"\s[-\u2013\u2014]\s([^-\u2013\u2014()\[\]]*\b(?:mix|edit|version|remix|bootleg|flip|rework|refix|vip"
+                  r"|mashup|dub)\b)\s*$", re.I)
+
+
+def dashed(s):
+    """"Song - Beta Remix" read as "Song (Beta Remix)", so the version checks see a cut named after a dash too."""
+    return DASH.sub(r" (\1)", s or "")
+
+
 CUT = re.compile(r"(?:[(\[]|\s-\s)[^)\]]*?\b(instrumental|a ?cc?app?ella|karaoke|live|sped up|slowed|nightcore|dub|demo"
                  r"|cover)\b", re.I)  # another recording of the song, not a name for the same one ("Extended Mix" is)
 
@@ -213,11 +222,12 @@ def doubt(artist, title, song, rel, cur, peer=""):
     if not credited(artist, title, said, cur[0]):
         return f"it says it's by {cur[0] or 'someone else'}, the playlist's is by {artist}"
     # (the version the peer's name gave stays evidence even when the tags name the song)
-    want = soulseek.version_words(title)
-    got = soulseek.version_words(stem) | soulseek.version_words(cur[1]) | soulseek.version_words(peer)
+    ds, dc, dp = dashed(stem), dashed(cur[1]), dashed(peer)  # ("Song - Beta Remix" names its cut too)
+    want = soulseek.version_words(dashed(title))
+    got = soulseek.version_words(ds) | soulseek.version_words(dc) | soulseek.version_words(dp)
     if got and want and not got & want:
         return "it says it's another version: " + " ".join(sorted(got))
-    wm, gm = mixes(title), mixes(cur[1]) | mixes(stem) | mixes(peer)
+    wm, gm = mixes(dashed(title)), mixes(dc) | mixes(ds) | mixes(dp)
     if wm and gm and not wm & gm:  # ("Club Mix" asked, "Radio Edit" got: words version_words leaves out)
         return "it says it's another cut: " + " ".join(sorted(gm - wm))
     other = cuts(title, cur[1], stem, peer)
