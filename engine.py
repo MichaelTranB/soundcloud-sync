@@ -12,7 +12,7 @@ Never deletes a track, never touches the music files. Before any change the libr
 with a line in the log. Standard library only."""
 import os, shutil, sqlite3, time, unicodedata
 
-import layout, place
+import layout, naming, place
 
 FOLDER = "The Crate"
 # Engine's numbers for the 24 keys.
@@ -135,12 +135,14 @@ def write(usb, songs, lists, backups):
                 ids[s["rel"]] = tid
                 analysed += 1 if done else 0
                 # a song the deck has analysed keeps what the deck holds: only its genre follows, and a name, artist,
-                # album or year the library had none of (filled in since: details.py)
+                # album or year the library had none of (filled in since: details.py), and a name fixed on the page
+                # (naming.py) where the deck still shows the old one
                 cols = ["genre", *EMPTY] if done else ["genre", *FILL]
                 old = con.execute(f"SELECT {', '.join(cols)} FROM Track WHERE id=?", (tid,)).fetchone()
+                fixed = naming.follows(s, old[cols.index("title")], old[cols.index("artist")])
                 diff = {c: r[c] for c, o in zip(cols, old) if r[c] != o and not (r[c] in (None, "") and o in (None, ""))
                         and not (c != "genre" and r[c] in (None, ""))
-                        and not (done and c in EMPTY and o not in (None, "", 0))}
+                        and not (done and c in EMPTY and o not in (None, "", 0) and c not in fixed)}
                 if diff:
                     con.execute(f"UPDATE Track SET {', '.join(c + '=?' for c in diff)} WHERE id=?", (*diff.values(), tid))
                 continue

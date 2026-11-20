@@ -23,7 +23,7 @@ library was already in step.
     rekordbox's own export; club.py says where that stands."""
 import json, os, shutil, struct, subprocess, sys, tempfile, time, unicodedata, zlib
 
-import layout, place
+import layout, naming, place
 
 FOLDER, RECORD = "The Crate", "dj-rekordbox-usb.json"
 KINDS = {".mp3": 1, ".mp4": 3, ".m4a": 4, ".flac": 5, ".wav": 11, ".aiff": 12, ".aif": 12}  # rekordbox's own codes
@@ -406,9 +406,11 @@ def write(job, master=None, is_open=running):
         # Only The Crate's own rows: the tracks in its folder on the USB (and at a place that folder had before:
         # such a row follows its file below).
         pre = tuple("/" + m + "/" for m in [music] + place.others(usb))
-        own = {nfc(p): {"id": i, "genre": g or "", "anlz": a or "", "image": im or 0} for i, p, g, a, im in run(
-            "SELECT c.content_id, c.path, g.name, c.analysisDataFilePath, c.image_id FROM content c "
-            "LEFT JOIN genre g ON g.genre_id = c.genre_id") if p and nfc(p).startswith(pre)}
+        own = {nfc(p): {"id": i, "genre": g or "", "anlz": a or "", "image": im or 0, "title": t or "", "artist": ar or ""}
+               for i, p, g, a, im, t, ar in run(
+            "SELECT c.content_id, c.path, g.name, c.analysisDataFilePath, c.image_id, c.title, ar.name FROM content c "
+            "LEFT JOIN genre g ON g.genre_id = c.genre_id LEFT JOIN artist ar ON ar.artist_id = c.artist_id_artist")
+               if p and nfc(p).startswith(pre)}
         # A file that moved inside the folder (dj.py's "was") is the same track at a new place: its row follows.
         moved = []
         by, there = layout.rows(own, pre), lambda p: os.path.isfile(usb + p)
@@ -428,6 +430,9 @@ def write(job, master=None, is_open=running):
         gone = [p for p in own if p not in mine and not os.path.isfile(usb + p)] if os.path.isdir(folder) else []
         regenre = [s for s in songs if at[s["rel"]] in own and s.get("genres") and own[at[s["rel"]]]["genre"] != s["genres"][0]]
         fill = [s for s in songs if at[s["rel"]] in own and not own[at[s["rel"]]]["anlz"] and known.get(s["rel"], {}).get("anlz")]
+        # a name fixed on the page (naming.py): the row follows only where it still shows the old one
+        rename = [(s, f) for s in songs for o in [own.get(at[s["rel"]])] if o
+                  for f in [naming.follows(s, o["title"], o["artist"])] if f]
         covers = {}
         for s in songs:  # a picture that can't be read drops out here, so it never counts as something to do
             if at[s["rel"]] not in own or not own[at[s["rel"]]]["image"]:
@@ -444,7 +449,7 @@ def write(job, master=None, is_open=running):
         stale = [n for (pid, _), (n, rels) in zip(kids, wanted)
                  if members(pid) != [own[at[r]]["id"] for r in rels]] if same_lists and not new else []
         old_covers = [r for r in covers if at[r] in own]
-        if not (made or new or moved or gone or regenre or fill or old_covers or stale) and same_lists:
+        if not (made or new or moved or gone or regenre or fill or old_covers or stale or rename) and same_lists:
             note(job, name, [s["rel"] for s in songs], sum(bool(own[at[s["rel"]]]["anlz"]) for s in songs))
             return ""
         if is_open():
@@ -522,6 +527,12 @@ def write(job, master=None, is_open=running):
             for s in regenre:
                 run("UPDATE content SET genre_id = :g WHERE content_id = :i", g=named("genre", s["genres"][0]),
                     i=own[at[s["rel"]]]["id"])
+            for s, f in rename:
+                if "title" in f:
+                    run("UPDATE content SET title = :t WHERE content_id = :i", t=nfc(f["title"]), i=own[at[s["rel"]]]["id"])
+                if "artist" in f:
+                    run("UPDATE content SET artist_id_artist = :a WHERE content_id = :i",
+                        a=named("artist", f["artist"], nameForSearch=""), i=own[at[s["rel"]]]["id"])
             for s in fill:  # rekordbox on this Mac has analysed it since
                 k, o = known[s["rel"]], own[at[s["rel"]]]
                 o["anlz"] = analysis(usb, k["anlz"], at[s["rel"]])

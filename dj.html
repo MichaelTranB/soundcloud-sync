@@ -400,6 +400,7 @@
     <p><b>Convert to AIFF</b>: the same sound, in a file every club deck plays. The original goes to the Trash once the AIFF is checked; playlists and cues follow. <span id="autoSay"></span></p>
     <p><b>Add cover &amp; details</b>: fills only what is empty, and only when it's sure; otherwise you choose. <span id="autoFill"></span></p>
     <p><b>Put on USB</b>: copies songs not on your USB yet into The Crate's own folder. Nothing else on it is moved or deleted.</p>
+    <p><b>Fix names</b>: puts a mixed-up title and artist right, in the file and on your decks. It writes only when a music catalogue agrees; otherwise you choose.</p>
     <p>Each one shows <b>Undo</b> on the song's row.</p>
   </div>
   <div class="bar">
@@ -415,6 +416,7 @@
     <button class="ghost" id="doAiff" disabled>Convert to AIFF</button>
     <button class="ghost" id="doFill" disabled>Add cover &amp; details</button>
     <button class="ghost" id="doUsb" disabled>Put on USB</button>
+    <button class="ghost" id="doNames" hidden>Fix names</button>
     <div class="state" id="doing" role="status" hidden></div>
   </div>
   <ul id="songs"></ul>
@@ -465,12 +467,14 @@ const crateName = () => (S && S.place && S.place.name) || 'SoundCloud Sync';  //
 let picks = new Set();        // the songs ticked in the list (their files)
 let look = new Set();         // songs whose "which one is it?" candidates are open
 let inList = [];              // the songs in the list right now (what "Select all" ticks)
-let jobs = { aiff: false, details: false };  // which of the list's jobs was running at the last look
+let jobs = { aiff: false, details: false, naming: false };  // which of the list's jobs was running at the last look
+let checking = new Map();     // songs whose name is being checked or written right now: what the row says meanwhile
 // The to-do lists among the pills: each shows only while it has songs.
 const TODO = [[' low', 'Below gig quality', s => s.low, 'Every song is gig quality.'],
   [' aiff', 'Needs AIFF', s => s.kind === 'FLAC', 'No FLACs left: every deck plays what you have.'],
   [' cover', 'No cover', s => (s.lacks || []).includes('cover'), 'Every song has its cover.'],
   [' details', 'Missing details', s => (s.lacks || []).some(f => f !== 'cover'), 'No song is missing details.'],
+  [' names', 'Names to fix', s => !!(s.name && s.name.kind), 'Every name looks right.'],
   [' usb', 'Not on USB', s => s.usb === false, 'Every song is on your USB.']];
 
 function say(text, bad) { const n = $('note'); n.textContent = text || ''; n.className = 'note' + (bad ? ' bad' : ''); }
@@ -642,6 +646,23 @@ async function throwAway(song, ask, done) {
   saving--; raw = ''; load();
 }
 
+// A title and artist that look mixed up (naming.py): one line on the song's row, with what can be done about it.
+const asName = w => (w.artist ? w.artist + ' · ' : '') + w.title;
+function nameLine(song) {
+  const n = song.name;
+  const send = async (body, saying) => { checking.set(song.file, saying || 'Writing the name…'); draw(); await post('/api/dj/naming', body); checking.delete(song.file); draw(); };
+  if (checking.has(song.file)) return el('div', { className: 'fix' }, el('span', { className: 'spin' }), checking.get(song.file));
+  if (n.from !== undefined) return el('div', { className: 'fix' }, 'Name fixed. It was "' + n.from + '".', link('Undo', () => send({ undo: song.file }, 'Putting the old name back…')));
+  const fine = link(n.kind === 'ask' ? 'Keep as it is' : "It's fine", () => post('/api/dj/naming', { fine: song.file }));
+  if (n.kind === 'wrong') return el('div', { className: 'fix' }, 'May be the wrong song: it was got as "' + n.want + '". Listen first.',
+    link('Wrong file', () => throwAway(song, 'Throw "' + song.title + '" away?\n\nIt goes to the Trash and leaves your decks and your USB. Soulseek is asked for the right one.', 'In the Trash. Soulseek is being asked for the right one.')),
+    link('Right song: fix its name', () => send({ set: song.file, n: 1 })), fine);
+  if (n.kind === 'ask') return el('div', { className: 'fix' }, 'Which name is right?',
+    ...n.ways.map((w, i) => link(asName(w), () => send({ set: song.file, n: i + 1 }))), fine);
+  const fix = link('Fix', () => send({ fix: song.file }, 'Checking a music catalogue…'));
+  return el('div', { className: 'fix' }, n.sure ? 'Name looks off. Should be "' + asName(n.ways[0]) + '".' : 'Title and artist may be mixed up.', fix, fine);
+}
+
 function setGenres(song, list) {
   kept.add(song.key);
   song.genres = list; song.from = 'your pick';  // shown at once; the app's answer follows
@@ -740,6 +761,7 @@ function row(song) {
   else if (song.left) li.append(el('div', { className: 'fix' }, 'Not converted: ' + song.left));
   if (song.filled) li.append(el('div', { className: 'fix' }, 'Added ' + song.filled.join(', ') + '.',
     link('Undo', () => post('/api/dj/details', { undo: song.file }))));
+  if (song.name) li.append(nameLine(song));
   if (song.ask) {
     const on = look.has(song.file);
     li.append(el('div', { className: 'fix' }, 'Cover and details: not sure which is right.',
@@ -935,15 +957,23 @@ function drawDoit(rows, songs) {
   set('doUsb', 'Put on USB', off, off && S.usbIn, !S.usbIn ? 'Plug in your USB first.' : 'Every song is already on it.');
   $('doAiff').onclick = () => { post('/api/dj/aiff', { files: toAiff.map(s => s.file) }).then(ok => ok &&
     say('Converting ' + num(toAiff.length) + (toAiff.length === 1 ? ' song' : ' songs') + '. Each original goes to the Trash once its AIFF is checked.')); picks.clear(); };
+  // names: the ticked ones, or with nothing ticked every name that looks off, in one go
+  const odd = s => s.name && s.name.kind === 'fix', toName = on.some(odd) ? on.filter(odd) : songs.filter(odd), nb = $('doNames');
+  nb.hidden = !toName.length && !f.naming;
+  set('doNames', on.some(odd) ? 'Fix names' : 'Fix all names', toName.length, toName.length && !f.naming, 'Still checking the last ones.');
+  nb.onclick = () => { post('/api/dj/naming', on.some(odd) ? { files: toName.map(s => s.file) } : { all: true }).then(ok => ok &&
+    say('Checking ' + num(toName.length) + (toName.length === 1 ? ' name' : ' names') + '. Only the sure ones are written; the rest wait for your pick.')); picks.clear(); };
   $('doFill').onclick = () => { say('Looking up ' + num(toFill.length) + (toFill.length === 1 ? ' song' : ' songs') + ': a few seconds each.'); post('/api/dj/details', { files: toFill.map(s => s.file) }); picks.clear(); };
-  const d = $('doing'); d.textContent = ''; d.hidden = !f.aiff && !f.details;
+  const d = $('doing'); d.textContent = ''; d.hidden = !f.aiff && !f.details && !f.naming;
+  if (f.naming) d.append(el('span', { className: 'spin' }), 'Checking names: ' + num(f.naming[0]) + ' of ' + num(f.naming[1]) + '. ');
   if (f.aiff) d.append(el('span', { className: 'spin' }), 'Converting to AIFF: ' + num(f.aiff[0]) + ' of ' + num(f.aiff[1]) + '. ');
   if (f.details) d.append(el('span', { className: 'spin' }), 'Looking up covers and details: ' + num(f.details[0]) + ' of ' + num(f.details[1]) + '.');
   // a job that has just ended says how it went
   const said = l => (l || '').replace(/^\S+ \S+\s+/, '').replace(/^[^:]*:\s*/, '');
   if (jobs.aiff && !f.aiff && f.lastAiff) say('AIFF: ' + said(f.lastAiff), /PROBLEM/.test(f.lastAiff));
   if (jobs.details && !f.details && f.lastDetails) say('Cover and details: ' + said(f.lastDetails), /PROBLEM/.test(f.lastDetails));
-  jobs = { aiff: !!f.aiff, details: !!f.details };
+  if (jobs.naming && !f.naming && f.lastNames) say('Names: ' + said(f.lastNames), /PROBLEM/.test(f.lastNames));
+  jobs = { aiff: !!f.aiff, details: !!f.details, naming: !!f.naming };
   const auto = $('autoSay'); auto.textContent = '';
   auto.append(f.auto ? 'New FLACs convert by themselves. ' : 'New FLACs are left as they are. ',
     link(f.auto ? 'Switch off' : 'Switch on', () => post('/api/dj/aiff', { auto: !f.auto })));

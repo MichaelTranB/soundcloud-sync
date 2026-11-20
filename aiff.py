@@ -427,8 +427,9 @@ def follow(dir, src, old, new):
             os.replace(os.path.join(dir, "dj-analysis.json.tmp"), os.path.join(dir, "dj-analysis.json"))
     except (OSError, ValueError, Problem):
         pass
-    import details
+    import details, naming
     details.moved(dir, old, new)  # a cover or details filled in before stay undoable
+    naming.moved(dir, old, new)  # and so does a name that was fixed
 
 
 def safe(dir, src):

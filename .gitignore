@@ -37,6 +37,10 @@ usb-layout.json
 usb-layout.json.tmp
 usb-place.json
 usb-place.json.tmp
+names.json
+names.json.tmp
+.naming-progress
+.names.lock
 .originals
 .archive-have
 blocked-originals.txt
