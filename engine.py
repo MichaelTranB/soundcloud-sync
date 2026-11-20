@@ -8,9 +8,9 @@ The library is the SQLite file <USB>/Engine Library/Database2/m.db that the deck
     only the genre (the deck's own tempo, key, grid, cues and loops are never touched);
   - keeps one playlist folder, "The Crate", in step. Nothing outside that folder is read or changed.
 Never touches the music files, and never takes a track out, with one exception: a row in The Crate's own folder
-whose file has left the USB (a song you threw back), which a deck would only show as missing. Before any change the library file is copied to the Mac
-(dj-backups/, the last 20 kept). Works only on the library version it knows (3.x); anything else is left alone
-with a line in the log. Standard library only."""
+whose file has left the USB (a song you threw back), which a deck would only show as missing. Before any change
+the library file is copied to the Mac (dj-backups/, the last 20 kept). Works only on the library version it knows
+(3.x); anything else is left alone with a line in the log. Standard library only."""
 import os, shutil, sqlite3, time, unicodedata
 
 import layout, naming, place
