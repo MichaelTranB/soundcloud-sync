@@ -899,7 +899,7 @@ function draw() {
   if (up && (up.left || up.here) && !doing) bkRow(el('span', { className: mine.going ? 'spin' : 'dot' }), 'Songs going up to iCloud Drive', el('small', { textContent: [
     up.left ? num(up.left) + ' to go' : '', up.here ? num(up.here) + ' uploading' : '', B.free != null ? 'iCloud has ' + size(Math.round(B.free / 1e6)) + ' free' : '',
     up.why === 'full' ? 'your iCloud is full: make room there and they carry on' : up.left && !S.usbIn ? 'plug the USB in and they carry on'
-      : up.why === 'room' ? 'more go once these are up, so this Mac keeps its room' : up.left && !mine.going ? 'they carry on at the next backup' : ''].filter(Boolean).join(' · ') }));
+      : up.why === 'room' ? 'more go once these are up, so this Mac keeps its room' : up.why === 'unread' ? 'some could not be read: tried again at the next backup' : up.left && !mine.going ? 'they carry on at the next backup' : ''].filter(Boolean).join(' · ') }));
   const now = el('button', { className: 'ghost mini', textContent: 'Back up now', disabled: !S.usbIn || !!doing }), fixB = el('button', { className: 'ghost mini', textContent: 'Repair this USB', disabled: !S.usbIn || !!doing });
   now.onclick = async () => { if (await post('/api/dj/backup', { now: true })) say('Backing up ' + stickName + '.'); };
   fixB.onclick = () => { fixUsb = true; fixPick = ''; draw(); };

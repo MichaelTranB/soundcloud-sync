@@ -678,6 +678,10 @@ def songs(dir, usb, src=""):
             if not moved:
                 time.sleep(30)
         end = (snaps(dir, name) or [{}])[0]
+        if skip and os.path.isdir(usb):
+            log(dir, f'BACKUP PROBLEM: "{name}": {len(skip)} {"song" if len(skip) == 1 else "songs"} that '
+                f'{"is" if len(skip) == 1 else "are"} only on it could not be read, so '
+                f'{"it is" if len(skip) == 1 else "they are"} not in iCloud Drive yet. Tried again at the next backup.')
         if start and end.get("place") == "icloud" and not end.get("waiting"):
             log(dir, f'backup: "{name}": every song that is only on it is in iCloud Drive now ({end.get("songs", 0)}).')
     finally:
@@ -699,9 +703,14 @@ def _songs(dir, usb, name, skip, turn=20):
     day, at = last["id"], os.path.join(home(dir, name), last["id"])
     files, waiting = files_of(dir, name, day), read(os.path.join(at, "waiting.json"), {})
     waiting = waiting if isinstance(waiting, dict) else {}
-    # Room first: songs that are safely in iCloud leave this Mac (the libraries stay: they are small)
-    here = [p for p in (spot(dir, name, day, rel, row, up) for rel, row in files.items()
-                        if row[2] == "song" and len(row) > 3) if local(p)]
+    # Room first: songs that are safely in iCloud leave this Mac (the libraries stay: they are small). Every backup
+    # kept there is looked through, not just the newest: a song the USB lost since is still in an older one.
+    held = {spot(dir, name, day, rel, row, up) for rel, row in files.items() if row[2] == "song" and len(row) > 3}
+    for s in snaps(dir, name)[1:]:
+        if s.get("place") == "icloud":
+            held.update(spot(dir, name, s["id"], rel, row, up) for rel, row in files_of(dir, name, s["id"]).items()
+                        if row[2] == "song" and len(row) > 3)
+    here = sorted(p for p in held if local(p))
     freed = evict(dir, here)
     here, got, why = len(here) - (freed or 0), {}, ""
     free, left, t0 = shutil.disk_usage(up).free, room(30), time.time()
@@ -713,11 +722,17 @@ def _songs(dir, usb, name, skip, turn=20):
         a = os.path.join(usb, *rel.split("/"))
         try:
             st = os.stat(a)
-        except OSError:
+        except (FileNotFoundError, NotADirectoryError):
             if not os.path.isdir(usb):
                 why = "unplugged"
                 break
             got[rel] = None  # gone from the USB since: nothing to keep
+            continue
+        except OSError:
+            if not os.path.isdir(usb):
+                why = "unplugged"
+                break
+            skip.add(rel)  # it is there but can't be read now: it stays on the list, tried again at the next plug-in
             continue
         if [st.st_size, st.st_mtime_ns] != row[:2]:
             got[rel] = None  # changed since: the next backup lists it anew
@@ -759,6 +774,7 @@ def _songs(dir, usb, name, skip, turn=20):
         write(os.path.join(at, "waiting.json"), waiting)
         write(os.path.join(at, "about.json"), about)
         twin(dir, name, day, up)
+    why = why or ("unread" if any(r in skip for r in waiting) else "")
     note(dir, name, up={"left": len(waiting), "here": here, "why": why, "at": int(time.time())},
          **({"cloud": lifted(dir, name)} if got else {}))
     can = 0 if why in ("unplugged", "full") else sum(1 for r in waiting if r not in skip)
