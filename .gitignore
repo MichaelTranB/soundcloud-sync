@@ -37,6 +37,9 @@ usb-layout.json
 usb-layout.json.tmp
 usb-place.json
 usb-place.json.tmp
+names.json
+names.json.tmp
+.naming-progress
 .originals
 .archive-have
 blocked-originals.txt
@@ -146,6 +149,3 @@ liked-state.json
 *.json.tmp
 .waves/
 liked-settings.json
-names.json
-names.json.tmp
-.naming-progress
