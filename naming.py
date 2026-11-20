@@ -353,12 +353,14 @@ def fine(d, rel, artist, title):
     save(d, rec)
 
 
-def moved(d, old, new):
-    """The song goes by another file name now (its FLAC became an AIFF, or came back): its record follows."""
+def moved(d, old, new=None):
+    """The song goes by another file name now (its FLAC became an AIFF, or came back; it moved into another folder):
+    its record follows, so the name stays fixed and can still be put back. old: one name, or {new: old} for several."""
     rec, hit = load(d), False
-    for k in rec:
-        if old in rec[k]:
-            rec[k][new], hit = rec[k].pop(old), True
+    for new, old in (old if isinstance(old, dict) else {new: old}).items():
+        for k in rec:
+            if old in rec[k]:
+                rec[k][new], hit = rec[k].pop(old), True
     if hit:
         save(d, rec)
 
