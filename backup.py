@@ -89,7 +89,8 @@ def snaps(dir, name):
 
 
 def files_of(dir, name, day):
-    """Every file in one backup: {path on the USB: [size, time, kind]} (kind: "song", or the library it belongs to)."""
+    """Every file in one backup: {path on the USB: [size, time, kind]} (kind: "song", or the library it belongs to).
+    The time is the file's own, as exact as the USB keeps it (in nanoseconds): two saves within one second differ."""
     got = read(os.path.join(home(dir, name), day, "manifest.json"), {})
     return got if isinstance(got, dict) else {}
 
@@ -142,7 +143,7 @@ def listing(usb, mine, songs=True):
                 continue
             if audio and (key(f), st.st_size) in mine:
                 continue
-            out[rel + f] = [st.st_size, int(st.st_mtime), "song" if audio else lib]
+            out[rel + f] = [st.st_size, st.st_mtime_ns, "song" if audio else lib]
     return out, stuck
 
 
@@ -225,7 +226,7 @@ def link(old, new):
 
 def copy(a, b, mtime):
     shutil.copyfile(a, b)
-    os.utime(b, (mtime, mtime))
+    os.utime(b, ns=(mtime, mtime))
 
 
 def weigh(folder):
@@ -339,7 +340,7 @@ def _run(dir, usb, src, name, keep, fail):
             why = wrong(dir, rel, to) if row[2] != "song" else ""
             if why:  # a library that changed under the copy reads as damaged: once more
                 st = os.stat(os.path.join(usb, *rel.split("/")))
-                files[rel] = row = [st.st_size, int(st.st_mtime), row[2]]
+                files[rel] = row = [st.st_size, st.st_mtime_ns, row[2]]
                 copy(os.path.join(usb, *rel.split("/")), to, row[1])
                 why = wrong(dir, rel, to)
             if why:
@@ -447,7 +448,7 @@ def restore(dir, usb, src, name, day):
             st = os.stat(b)
         except OSError:
             return False
-        return now.get(rel, [])[:2] == [st.st_size, int(st.st_mtime)]
+        return now.get(rel, [])[:2] == [st.st_size, st.st_mtime_ns]
 
     def notes(rel, b):  # a database's side notes that aren't in the backup would spoil it: to the USB's Trash
         n = 0
@@ -506,7 +507,7 @@ def restore(dir, usb, src, name, day):
                             raise OSError(errno.EIO, "a file that could not be backed up first is in the way")
                         done["aside"] += 1
                     os.replace(b + ".crate-tmp", b)
-                    os.utime(b, (row[1], row[1]))
+                    os.utime(b, ns=(row[1], row[1]))
                     done["song" if row[2] == "song" else "lib"] += 1
                     notes(rel, b)
                 except OSError as e:
