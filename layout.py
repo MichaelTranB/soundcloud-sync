@@ -114,6 +114,21 @@ def mark(p):
     return [st.st_size, int(st.st_mtime), round(getattr(st, "st_birthtime", 0), 2)]
 
 
+def keep(made_from, home):
+    """Writes down the copies The Crate made in "All songs" (STAMP). If that can't be written, the copies it doesn't
+    name are left as they are from then on: never a song of someone else's taken off."""
+    path = os.path.join(home, STAMP)
+    try:
+        if made_from:
+            with open(path + ".tmp", "w") as f:
+                json.dump(made_from, f, ensure_ascii=False)
+            os.replace(path + ".tmp", path)
+        elif os.path.lexists(path):
+            os.remove(path)
+    except OSError as e:
+        print(f'what was copied into "{ALL}" couldn\'t be noted ({e.strerror})', file=sys.stderr)
+
+
 def all_songs(dest, at, cfg, dry=False):
     """Keeps the "All songs" folder in step: a copy of each song from where it sits (at: {song: where, inside The
     Crate's folder}), made again when the song's file changed, and taken off when the song left the USB or the
@@ -135,14 +150,21 @@ def all_songs(dest, at, cfg, dry=False):
         there = {cf(f): f for f in os.listdir(home) if not f.startswith(".") and f.lower().endswith(usb_tidy.AUDIO)}
     except OSError:
         there = {}
+    try:  # the copies The Crate made, each with what it was made from (STAMP, in the folder): only those are its own
+        made_from = json.load(open(os.path.join(home, STAMP)))
+        made_from = made_from if isinstance(made_from, dict) else {}
+    except (OSError, ValueError):
+        made_from = {}
+    mine = {k: f for k, f in there.items() if k in made_from}  # anything else in there was put by someone: untouched
     made = off = 0
+    taken = set()
     for f in os.listdir(home) if not dry and os.path.isdir(home) else ():  # a copy that was cut short
         if f.startswith(".crate-"):
             try:
                 os.remove(os.path.join(home, f))
             except OSError:
                 pass
-    for k, f in there.items():  # no longer wanted here
+    for k, f in mine.items():  # no longer wanted here
         if k in want:
             continue
         p = os.path.join(home, f)
@@ -159,15 +181,13 @@ def all_songs(dest, at, cfg, dry=False):
             elif not usb_tidy.trash(dest, p):
                 continue
             off += 1
+            taken.add(k)
         except OSError:
             pass
-    try:  # what each copy was made from (STAMP, in the folder)
-        made_from = json.load(open(os.path.join(home, STAMP)))
-        made_from = made_from if isinstance(made_from, dict) else {}
-    except (OSError, ValueError):
-        made_from = {}
     todo = []
     for k, p in want.items():
+        if k in there and k not in mine:  # a song of that name someone put there: left as it is
+            continue
         q = os.path.join(home, there.get(k, os.path.basename(p)))
         try:
             if made_from.get(cf(os.path.basename(q))) == mark(p) and os.stat(q).st_size == os.stat(p).st_size:
@@ -196,6 +216,8 @@ def all_songs(dest, at, cfg, dry=False):
             os.replace(tmp, q)
             made_from[cf(os.path.basename(q))] = mark(p)
             made += 1
+            if made % 20 == 0:  # (kept as it goes: a USB pulled out mid-way still knows the copies are its own)
+                keep(made_from, home)
         except OSError as e:
             try:
                 os.remove(tmp)
@@ -204,16 +226,7 @@ def all_songs(dest, at, cfg, dry=False):
             said = f'PROBLEM: a copy in "{ALL}" couldn\'t be made ({e.strerror})'
             break
     if not dry and os.path.isdir(home):
-        made_from = {k: v for k, v in made_from.items() if k in want}
-        try:
-            if made_from:
-                with open(os.path.join(home, STAMP + ".tmp"), "w") as f:
-                    json.dump(made_from, f, ensure_ascii=False)
-                os.replace(os.path.join(home, STAMP + ".tmp"), os.path.join(home, STAMP))
-            elif os.path.lexists(os.path.join(home, STAMP)):
-                os.remove(os.path.join(home, STAMP))
-        except OSError:
-            pass  # (then the copies are made again next time: slower, never stale)
+        keep({k: v for k, v in made_from.items() if k in want or (k in mine and k not in taken)}, home)
     if not dry and not copies(cfg) and empty(home):
         gone(home)
     if not said and (made or off):
