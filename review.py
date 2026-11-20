@@ -171,6 +171,16 @@ def peers(d, src):
     return out
 
 
+MIX = re.compile(r"[(\[]([^)\]]*\b(?:mix|edit|version|dub|instrumental|acapella|vip|remix|bootleg|flip|rework|refix)\b"
+                 r"[^)\]]*)[)\]]", re.I)
+
+
+def mixes(s):
+    """The words that say which cut a name is, from its brackets: "Club Mix" is {"club"}, "Radio Edit" {"radio"}."""
+    low = lambda m: re.findall(r"[a-z0-9]+", unicodedata.normalize("NFKD", m).lower())  # (soulseek.words drops "radio")
+    return {w for m in MIX.findall(s or "") for w in low(m)} - {"mix", "edit", "version", "the", "a", "and", "x"}
+
+
 ORIGINAL = re.compile(r"\boriginal (?:mix|version|edit)\b|[(\[]\s*original\s*[)\]]", re.I)
 
 
@@ -196,6 +206,9 @@ def doubt(artist, title, song, rel, cur, peer=""):
     got = soulseek.version_words(stem) | soulseek.version_words(cur[1]) | soulseek.version_words(peer)
     if got and want and not got & want:
         return "it says it's another version: " + " ".join(sorted(got))
+    wm, gm = mixes(title), mixes(cur[1]) | mixes(stem) | mixes(peer)
+    if wm and gm and not wm & gm:  # ("Club Mix" asked, "Radio Edit" got: words version_words leaves out)
+        return "it says it's another cut: " + " ".join(sorted(gm - wm))
     if want and not got and ORIGINAL.search(f"{cur[1]} {stem} {peer}"):  # ("Original Mix" holds no version words)
         return "it says it's the original, the playlist's is a version: " + " ".join(sorted(want))
     if got and not want and got - soulseek.words(artist) - soulseek.words(title):
