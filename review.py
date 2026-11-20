@@ -239,7 +239,8 @@ def lists(d, src, lib=None):
                 "mtime": s.get("mtime") or 0, "new": now - (s.get("mtime") or 0) < NEW}
         was = rec["done"].get(link)
         if was:
-            done.append({**item, "was": was.get("was", ""), "at": was.get("at", 0), "waiting": bool(was.get("rename"))})
+            done.append({**item, "was": was.get("was", ""), "said": was.get("said") or [], "at": was.get("at", 0),
+                         "waiting": bool(was.get("rename"))})
         why = sus.get(rel) or (doubt(artist, title, s, rel, cur, them.get(rel, "") if how == "soulseek" else "")
                                if how != "own" else "")
         if why and rec["keep"].get(link) != s.get("size"):
@@ -276,6 +277,7 @@ def tidy(d, src, rels=()):
             rec = load(d)
             old = rec["done"].get(t["link"]) or {}
             rec["done"][t["link"]] = {"was": old.get("was") or t["name"], "at": int(time.time()),
+                                      "said": old.get("said") or [t["artist"], t["title"]],
                                       **({"rename": True} if t["rename"] else {})}
             rec["asis"].pop(t["link"], None)
             save(d, rec)
@@ -408,6 +410,8 @@ def undo(d, src, rel):
 
 if __name__ == "__main__":
     a = sys.argv[1:]
+    if len(a) >= 3:  # the notes keep each song's full path: a music folder reached through a link is followed
+        a[2] = os.path.realpath(a[2])
     if len(a) >= 3 and a[0] == "list":
         print(json.dumps(lists(a[1], a[2]), ensure_ascii=False))
     elif len(a) >= 3 and a[0] == "tidy":
