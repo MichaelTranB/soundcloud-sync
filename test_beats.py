@@ -179,5 +179,19 @@ class Rules(unittest.TestCase):
             self.assertEqual(engine.theirs(usb, backups), {"../The Crate/b.wav": 140})
 
 
+class LeadTest(unittest.TestCase):
+    def test_info_in_the_tags_is_not_the_encoders_tag(self):
+        import tempfile
+        text = b"TXXX" + (40).to_bytes(4, "big") + b"\0\0" + b"\0Booking Info: someone@example.com".ljust(40, b" ")
+        tag = b"ID3\x04\0\0" + bytes([0, 0, 0, len(text)]) + text
+        frame = b"\xff\xfb\x90\x64" + bytes(32) + b"Xing" + bytes(116) + b"LAME3.100" + bytes(300)
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(tag + frame)
+        try:
+            self.assertEqual(beats.lead(f.name), 0.048)
+        finally:
+            os.unlink(f.name)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -223,11 +223,12 @@ def one(job):
             except Exception:
                 out["bpm2"] = 0
         if not gridded(had):
-            out.pop("grid_error", None)
+            out.pop("grid_error", None), out.pop("grid_at", None)
             try:
                 out.update(draw(path, had.get("rate", 0), home, gid))
             except Exception as e:
                 out["grid_error"] = (str(e) or type(e).__name__)[:200]
+                out["grid_at"] = int(time.time())
         return rel, out
     st = os.stat(path)
     out = {"size": st.st_size, "mtime": int(st.st_mtime), "v": VERSION}
@@ -249,6 +250,7 @@ def one(job):
         out.update(draw(path, out.get("rate", 0), home, gid))
     except Exception as e:
         out["grid_error"] = (str(e) or type(e).__name__)[:200]
+        out["grid_at"] = int(time.time())
     return rel, out
 
 
@@ -259,7 +261,7 @@ def throw(home, gid):
     at = os.path.join(home, gid)
     if not os.path.isdir(at):
         return
-    for folder in (os.path.expanduser("~/.Trash"), os.path.join(home, ".thrown")):
+    for folder in ((os.path.expanduser("~/.Trash"),) if sys.platform == "darwin" else ()) + (os.path.join(home, ".thrown"),):
         try:
             os.makedirs(folder, exist_ok=True)
             shutil.move(at, os.path.join(folder, f"dj-grid {gid} ({time.strftime('%Y-%m-%d %H%M%S')})"))
@@ -284,7 +286,7 @@ def main():
             continue
         c = cache.get(rel)
         if c and c.get("size") == st.st_size and c.get("mtime") == int(st.st_mtime) and ("bpm" in c or "listen_error" in c) and "tag_error" not in c and c.get("v") == VERSION:
-            if ("bpm" not in c or "bpm2" in c) and (gridded(c) or "grid_error" in c):
+            if ("bpm" not in c or "bpm2" in c) and (gridded(c) or "grid_error" in c and time.time() - c.get("grid_at", 0) < 86400):  # (a failed grid is tried again a day on)
                 continue
             jobs.append((root, rel, c, home, c.get("grid_id", "")))
             continue
@@ -300,8 +302,8 @@ def main():
                   f"{(out.get('grid') or {}).get('bpm', '-')}  {rel}", flush=True)
             if done % 10 == 0:
                 save(cache, cache_path)
-    for rel in list(cache):  # a track no longer in the folder leaves the cache, and its grid folder the Mac
-        if rel not in rels:
+    for rel in list(cache) if rels and os.path.isdir(root) else []:  # a track no longer in the folder leaves the
+        if rel not in rels:                                           # cache, and its grid folder the Mac
             gid = cache.pop(rel).get("grid_id", "")
             if gid and not any(c.get("grid_id") == gid for c in cache.values()):
                 throw(home, gid)

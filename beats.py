@@ -66,7 +66,12 @@ def lead(path):
             d = f.read(1 << 20)
     except OSError:
         return 0.0
-    at = [i for i in (d.find(b"Xing"), d.find(b"Info")) if i >= 0]
+    i = 0  # past the ID3 tag (its text can hold "Info"), to the first frame, where the encoder's tag sits
+    if d[:3] == b"ID3" and len(d) >= 10:
+        i = 10 + ((d[6] & 127) << 21 | (d[7] & 127) << 14 | (d[8] & 127) << 7 | (d[9] & 127)) + (10 if d[5] & 16 else 0)
+    while i + 1 < len(d) and not (d[i] == 0xFF and d[i + 1] & 0xE0 == 0xE0):
+        i += 1
+    at = [j for j in (d.find(b"Xing", i, i + 64), d.find(b"Info", i, i + 64)) if j >= 0]
     if not at:
         return 0.0
     return {b"LAME": 0.048, b"Lavc": 0.022}.get(d[min(at) + 120:min(at) + 124], 0.0)
