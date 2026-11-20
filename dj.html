@@ -321,7 +321,7 @@
     </ol>
 
     <h3>Backup and repair</h3>
-    <p>Each time you plug in your USB, what your decks saved on it (hot cues, playlists, history) is copied to this Mac first. If a library on it stops opening, this page says so and <b>Repair this USB</b> puts the backup back, songs included. Erasing a USB is never done for you.</p>
+    <p>Each time you plug in your USB, what your decks saved on it (hot cues, playlists, history) is copied to this Mac first, or to your iCloud Drive if you pick that in <b>Options</b> (it spares this Mac's room). If a library on it stops opening, this page says so and <b>Repair this USB</b> puts the backup back, songs included. Erasing a USB is never done for you.</p>
 
     <h3>Your USB is asked first</h3>
     <p>A USB that already has things on it is not touched until you press <b>Go ahead</b>. After that, songs go only into The Crate's own folder and playlists into its own <b>The Crate</b> folder. Your files, folders and playlists are never moved, renamed or deleted. You can stop any time.</p>
@@ -865,7 +865,7 @@ function draw() {
   checks.forEach(r => cl.append(el('div', { className: 'row' }, el('span', { className: 'dot' + (r.ok === true ? ' ok' : r.ok === false ? ' warn' : '') }),
     el('div', {}, r.say, r.do ? el('small', { textContent: r.do }) : ''))));
 
-  // backup and repair (backup.py): what the decks saved on the USB is kept on this Mac, and can be put back
+  // backup and repair (backup.py): what the decks saved on the USB is kept on this Mac or in iCloud Drive, and can be put back
   const bk = $('backup'), B = S.backup || { sticks: [] }, mine = B.sticks.find(s => s.name === S.usb), doing = B.doing;
   const at = t => { const d = new Date(t * 1000), n = new Date(), y = new Date(n - 864e5);
     return (d.toDateString() === n.toDateString() ? 'today' : d.toDateString() === y.toDateString() ? 'yesterday' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }))
@@ -874,8 +874,9 @@ function draw() {
     .sort((a, b) => (b.name === S.usb) - (a.name === S.usb) || b.when - a.when);
   const stickName = '"' + S.usb + '"', bkRow = (dot, say, sub) => bk.append(el('div', { className: 'row' }, dot, el('div', {}, say, sub || '')));
   bk.hidden = !S.usb; bk.textContent = '';
-  bk.append(el('h2', {}, 'Backup & repair', el('small', { textContent: 'what your decks saved on your USB, kept on this Mac' }), ask('backup', 'How backup and repair work')),
-    notes2('backup', ['Every time you plug in your USB, its rekordbox, Engine DJ and Serato libraries (hot cues, playlists, history) are copied to this Mac first. That only reads the USB.',
+  bk.append(el('h2', {}, 'Backup & repair', el('small', { textContent: 'what your decks saved on your USB, kept ' + (B.place === 'icloud' ? 'in your iCloud Drive' : 'on this Mac') }), ask('backup', 'How backup and repair work')),
+    notes2('backup', ['Every time you plug in your USB, its rekordbox, Engine DJ and Serato libraries (hot cues, playlists, history) are copied to ' + (B.place === 'icloud' ? 'your iCloud Drive' : 'this Mac') + ' first. That only reads the USB.',
+      'Options picks where backups are kept: this Mac, or your iCloud Drive, which spares this Mac\'s room. Songs go up bit by bit, then leave this Mac.',
       'Repair puts those libraries back, and any song that went missing. What is on the USB now is backed up first, and nothing else on it is touched.',
       'A USB that will not open at all has to be erased first, in Disk Utility: that step is yours. Then plug it in and repair it here.']));
   if (!doing) fixUsb = fixUsb && S.usbIn && good.length > 0;
@@ -884,15 +885,21 @@ function draw() {
   const new1 = mine && mine.snaps[0], hurt = mine && (mine.repair || (new1 && !new1.ok && mine.fine !== new1.id ? { why: new1.why } : null));
   if (hurt && !doing) {
     const back = good.find(g => g.name === S.usb && g.day === hurt.day) || good[0];
-    const sm = el('small', {}, back ? 'Repair puts back the backup from ' + at(back.when) + '.  ' : 'There is no good backup of it on this Mac yet.  ');
+    const sm = el('small', {}, back ? 'Repair puts back the backup from ' + at(back.when) + '.  ' : 'There is no good backup of it yet.  ');
     sm.append(link('It\'s fine', () => post('/api/dj/backup', { fine: mine.name })));
     bkRow(el('span', { className: 'dot warn' }), stickName + ' looks damaged: ' + (hurt.why || 'its library could not be read') + '.', sm);
   }
   const fine = mine && mine.snaps.find(x => x.ok);
   if (fine) bkRow(el('span', { className: 'dot ok' }), 'Backed up ' + at(fine.when), el('small', { textContent: [(fine.libs || []).join(', ') || 'No deck library on it yet',
-    fine.songs ? num(fine.songs) + (fine.songs === 1 ? ' song that is' : ' songs that are') + ' only on the USB' : '', size(Math.max(1, Math.round((mine.size || fine.bytes) / 1e6))) + ' on this Mac',
+    fine.songs ? num(fine.songs) + (fine.songs === 1 ? ' song that is' : ' songs that are') + ' only on the USB' : '', fine.place === 'icloud' ? size(Math.max(1, Math.round((mine.cloud || fine.bytes) / 1e6))) + ' in iCloud Drive' : size(Math.max(1, Math.round((mine.size || fine.bytes) / 1e6))) + ' on this Mac',
     fine.skipped || '', !hurt && mine.checked > fine.when + 90 ? 'nothing new since, checked ' + at(mine.checked) : '', S.usbIn ? '' : 'plug it in to back it up or repair it'].filter(Boolean).join(' · ') }));
   else if (!doing) bkRow(el('span', { className: 'dot' }), 'No backup yet', el('small', { textContent: S.usbIn ? 'It is made by itself each time your USB is plugged in. Or now.' : 'Plug in your USB: its backup is made by itself.' }));
+  // iCloud Drive: the songs that are only on the USB go up after its libraries, as this Mac has room
+  const up = new1 && new1.place === 'icloud' ? { ...(mine.up || {}), left: new1.waiting || 0 } : null;
+  if (up && (up.left || up.here) && !doing) bkRow(el('span', { className: B.going ? 'spin' : 'dot' }), 'Songs going up to iCloud Drive', el('small', { textContent: [
+    up.left ? num(up.left) + ' to go' : '', up.here ? num(up.here) + ' uploading' : '', B.free != null ? 'iCloud has ' + size(Math.round(B.free / 1e6)) + ' free' : '',
+    up.why === 'full' ? 'your iCloud is full: make room there and they carry on' : up.left && !S.usbIn ? 'plug the USB in and they carry on'
+      : up.why === 'room' ? 'more go once these are up, so this Mac keeps its room' : up.left && !B.going ? 'they carry on at the next backup' : ''].filter(Boolean).join(' · ') }));
   const now = el('button', { className: 'ghost mini', textContent: 'Back up now', disabled: !S.usbIn || !!doing }), fixB = el('button', { className: 'ghost mini', textContent: 'Repair this USB', disabled: !S.usbIn || !!doing });
   now.onclick = async () => { if (await post('/api/dj/backup', { now: true })) say('Backing up ' + stickName + '.'); };
   fixB.onclick = () => { fixUsb = true; fixPick = ''; draw(); };
@@ -1066,6 +1073,10 @@ function drawOpts() {
   const keep = (S.backup || {}).songs;
   sw('Back up USB-only songs', 'Songs on your USB that are not on this Mac are kept in its backup too. Off: only what your decks saved.', keep,
     () => setOpt({ songs: !keep }, keep ? 'Backups keep only what your decks saved.' : 'Songs only on the USB are backed up too.', '/api/dj/backup'));
+  const far = (S.backup || {}).place === 'icloud', where = el('button', { className: 'ghost mini', textContent: far ? 'iCloud' : 'This Mac' });
+  where.setAttribute('aria-label', 'Keep USB backups in: ' + (far ? 'iCloud Drive. Press for this Mac' : 'this Mac. Press for iCloud Drive'));
+  where.onclick = () => setOpt({ place: far ? 'mac' : 'icloud' }, far ? 'USB backups are kept on this Mac.' : 'USB backups go to your iCloud Drive.', '/api/dj/backup');
+  line('Keep USB backups in', 'This Mac, or your iCloud Drive: that spares this Mac\'s room. Press to switch.', where);
   go('USB folders', 'Where The Crate\'s folder sits on the USB, how songs are filed in it, and which genres count as EDM.', 'folders');
   go('Genres', 'Add or remove the genres your songs are sorted into.', 'pills');
   const home = el('a', { className: 'ghost mini', href: '/', textContent: 'Open' });

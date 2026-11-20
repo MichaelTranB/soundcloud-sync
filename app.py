@@ -1396,12 +1396,22 @@ def dj_post(path, body):
         return None
     if path in ("/api/dj/aiff", "/api/dj/details", "/api/dj/naming", "/api/dj/put", "/api/dj/usb-ok", "/api/dj/cues"):
         return fix_post(path, body)
-    if path == "/api/dj/backup":  # the USB's backups on this Mac (backup.py), each on its own: it can take a while
+    if path == "/api/dj/backup":  # the USB's backups, on this Mac or in iCloud Drive (backup.py), each on its own
         usb, kept = read("usb.txt").strip(), backup.status(DIR)["sticks"]
         at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)
         if "songs" in body:  # songs that are only on the USB are kept too, or not
             backup.save(DIR, body["songs"] is True)
             return None
+        if "place" in body:  # where the backups are kept: this Mac, or your iCloud Drive (which spares this Mac's room)
+            if body["place"] not in ("mac", "icloud"):
+                return "Not a place a backup can go."
+            if body["place"] == "icloud" and not backup.cloud():
+                return ("iCloud Drive can't be opened on this Mac. Turn it on in System Settings (or allow The Crate, "
+                        "if your Mac asks), then choose it again.")
+            backup.save(DIR, place=body["place"])
+            if not usb or not os.path.isdir(at) or backup.progress(DIR):
+                return None  # the next backup goes there
+            body = {"now": True}  # with the USB plugged in, the first backup there starts right away
         if "fine" in body:  # "It's fine": the USB once seen damaged is no longer offered a repair
             if any(s["name"] == body["fine"] for s in kept):
                 backup.fine(DIR, body["fine"])
