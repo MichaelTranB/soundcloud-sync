@@ -13,7 +13,8 @@ Standard library only. Tempo and key need the private Python dj-setup.sh sets up
 still reach the decks, which then analyse them on load."""
 import fcntl, json, os, re, subprocess, sys, time, unicodedata
 
-import friend, genres, layout, liked, recognise, usb_ask, usb_tidy
+import friend, genres, layout, liked, naming, recognise, usb_ask, usb_tidy
+import place as fold  # (place() here marks where each song sits; fold is The Crate's folder on a USB)
 
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus")
 # The private Python with Essentia, Mutagen and pyrekordbox (dj-setup.sh); the second is where the first build kept it.
@@ -260,6 +261,7 @@ def library(dir, src):
     known = recognise.load(dir)  # what each track sounds like, when recognise.py has asked
     g = genres.load(dir)
     table = genres.lookup(g["list"])
+    named = naming.was(dir)  # the names a song went by before its name was fixed (naming.py)
     came, lists_of = friend.load(dir), {}  # what was copied in from another USB (friend.py)
     for n, l in came["lists"].items():
         for r in l.get("rels", []):
@@ -281,6 +283,7 @@ def library(dir, src):
                 "sounds_like": " - ".join(x for x in ((known.get(rel) or {}).get("names") or [["", ""]])[0] if x),
                 "sc_tags": (row or {}).get("tags", []), "url": (row or {}).get("url", ""),
                 "playlist": (row or {}).get("playlist", ""), "index": (row or {}).get("index", 0),
+                "tagged": bool(a.get("title")), "named": named.get(rel) or {},
                 "was": was.get(rel, "")}  # where this file sat before it was moved: the decks' libraries follow
         f = came["songs"].get(rel) or {}  # from another USB: its name, the playlists it was in there, and what that
         song.update(friend=f.get("from", ""), lists=lists_of.get(rel, []), anlz=f.get("anlz", ""),  # USB's rekordbox
@@ -416,7 +419,7 @@ def place(dir, songs, stick, usb="", file=False):
     folder only."""
     if not stick:
         return
-    dest = os.path.join(stick, usb_ask.FOLDER)
+    dest = fold.folder(stick)
     try:
         if file:
             cfg = layout.load(dir)
@@ -440,10 +443,17 @@ def once(dir, src, volumes):
         if "waiting for your OK" not in (read(dir, "dj.log").splitlines() or [""])[-1]:
             log(dir, f'USB "{usb}" already has things on it: waiting for your OK on the page')
         stick = ""
+    if stick:  # The Crate's folder goes where you chose on the page (place.py); the decks' rows follow it below
+        try:
+            said = fold.move(stick)
+            if said:
+                log(dir, f'USB "{usb}": {said}')
+        except OSError as e:
+            log(dir, f'USB PROBLEM on "{usb}": The Crate\'s folder couldn\'t be moved ({e})')
     follow(dir, src)  # a song whose file moved on the Mac is noted first: the USB moves its copy too
     if stick:  # first, so it's right away: a song you threw back leaves the USB too (usb.sh does this as well)
         try:
-            said = usb_tidy.say(*usb_tidy.tidy(dir, src, os.path.join(stick, "SoundCloud Sync")))
+            said = usb_tidy.say(*usb_tidy.tidy(dir, src, fold.folder(stick)))
             if said:
                 log(dir, f'USB "{usb}": {said}')
         except Exception as e:  # never silent: the page shows the last lines of dj.log

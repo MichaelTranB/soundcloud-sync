@@ -596,7 +596,10 @@ def _after(d, src, rel):
         import dj_analyze
         cache = _load(d, "dj-analysis.json", {})
         if rel in cache:
-            cache[rel] = {**cache[rel], **dj_analyze.tags(path), "size": st.st_size, "mtime": int(st.st_mtime)}
+            now = dj_analyze.tags(path)  # a tag taken out (an undo) leaves the notes too, not only a new one joins
+            kept = {k: v for k, v in cache[rel].items() if k in now or k not in
+                    ("title", "artist", "album", "genre", "year", "label", "remixer", "comment")}
+            cache[rel] = {**kept, **now, "size": st.st_size, "mtime": int(st.st_mtime)}
             with open(os.path.join(d, "dj-analysis.json.tmp"), "w") as f:
                 json.dump(cache, f, ensure_ascii=False, indent=0, sort_keys=True)
             os.replace(os.path.join(d, "dj-analysis.json.tmp"), os.path.join(d, "dj-analysis.json"))

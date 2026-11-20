@@ -40,7 +40,11 @@ fail() {
   exit 1
 }
 [ -w "$DEST" ] || fail "the drive is read-only (locked, or formatted so a Mac can only read it, like NTFS). Use a drive formatted exFAT, FAT32 or Mac."
-mkdir -p "$DEST/SoundCloud Sync" 2>"$DIR/.usb-err" || fail "couldn't make the SoundCloud Sync folder on it ($(tail -1 "$DIR/.usb-err"))."
+# The Crate's own folder on the USB: "SoundCloud Sync" at its top, or where you chose on the Library Manager page
+# (place.py). A new choice moves that one folder first; the decks' lists follow in dj.py below.
+SAID="$(python3 "$DIR/place.py" move "$DEST" 2>&1)"; [ -n "$SAID" ] && echo "$(date '+%F %R')  USB \"$NAME\": $SAID" >> "$DIR/usb.log"
+CRATE="$(python3 "$DIR/place.py" where "$DEST" 2>/dev/null)"; [ -n "$CRATE" ] || CRATE="$DEST/SoundCloud Sync"
+mkdir -p "$CRATE" 2>"$DIR/.usb-err" || fail "couldn't make The Crate's folder on it ($(tail -1 "$DIR/.usb-err"))."
 # FLACs that arrived since the last time become AIFFs first (aiff.py: the same sound, in a file every deck plays), so
 # the USB gets the AIFF and never both. Not while a sync is still getting songs: that sync does it at its end.
 PY="$HOME/.local/share/crate-dj/python/bin/python3"; [ -x "$PY" ] || PY="$HOME/.local/share/crate-dj/venv/bin/python"
@@ -50,7 +54,7 @@ PY="$HOME/.local/share/crate-dj/python/bin/python3"; [ -x "$PY" ] || PY="$HOME/.
 [ -z "$MID" ] && [ -x "$PY" ] && "$PY" "$DIR/details.py" auto "$DIR" "$SRC" 2>>"$DIR/dj.log"
 # First, inside that folder only: a song you threw back on the page goes to the USB's Trash, and Soulseek songs that
 # sat in a folder of their own move in with the rest (so the copy below doesn't put them on it a second time).
-python3 "$DIR/usb_tidy.py" "$DIR" "$SRC" "$DEST/SoundCloud Sync" >>"$DIR/usb.log" 2>&1
+python3 "$DIR/usb_tidy.py" "$DIR" "$SRC" "$CRATE" >>"$DIR/usb.log" 2>&1
 # Only files that passed the safety check (safety.py) are copied. During a sync the check runs at its end.
 kill -0 "$(cat "$DIR/.running" 2>/dev/null)" 2>/dev/null || python3 "$DIR/safety.py" check "$DIR" "$SRC" 2>>"$DIR/safety.log"
 LIST="$DIR/.usb-list"
@@ -60,11 +64,11 @@ TOTAL=$(wc -l <"$LIST" | tr -d ' ')
 # Only the tracks not on the USB yet are copied, and counted for the notice below. On a USB laid out in folders
 # (layout.py: by genre, picked on the Library Manager page) a song already in its folder counts as on it; a new one
 # lands in the main folder and dj.py files it right after.
-python3 "$DIR/layout.py" missing "$DEST/SoundCloud Sync" <"$LIST" >"$LIST.new" && mv "$LIST.new" "$LIST"
+python3 "$DIR/layout.py" missing "$CRATE" <"$LIST" >"$LIST.new" && mv "$LIST.new" "$LIST"
 NEW=$(wc -l <"$LIST" | tr -d ' ')
 echo "$$ copying $NEW" >"$STATE"
-rm -f "$DEST/SoundCloud Sync/To Buy.txt"  # The Crate's own list, put there by older versions: not music
-if rsync -a --ignore-existing --out-format='%n' --files-from="$LIST" "$SRC/" "$DEST/SoundCloud Sync/" \
+rm -f "$CRATE/To Buy.txt"  # The Crate's own list, put there by older versions: not music
+if rsync -a --ignore-existing --out-format='%n' --files-from="$LIST" "$SRC/" "$CRATE/" \
      >"$DIR/.usb-progress" 2>"$DIR/.usb-err"; then
   echo "$(date '+%F %R')  copied to \"$NAME\" ($NEW new, $TOTAL on it${MID:+, sync still running})" >> "$DIR/usb.log"
   touch "$DIR/.usb-done"

@@ -19,6 +19,8 @@ Standard library only; reading a rekordbox library needs the private Python (dj-
 still be copied."""
 import fcntl, json, os, re, shutil, subprocess, sys, tempfile, time, unicodedata, zlib
 
+import place
+
 TAKEN = (".flac", ".wav", ".aiff", ".aif", ".mp3", ".m4a")  # what both the safety check and the decks' libraries take
 AUDIO = (".wav", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".ogg", ".opus", ".alac", ".aac")  # any song, for doubles
 PY = next((p for p in map(os.path.expanduser, ("~/.local/share/crate-dj/python/bin/python3",
@@ -30,7 +32,7 @@ PROGRESS = ".friend-copy.json"  # the copy running now: the page shows how far i
 CACHE = ".friend-library.json"  # the other USB's rekordbox library as last read
 BETTER = "better.tsv"          # songs you asked a better copy of: name, link, "", seconds, artist, title, the file now
 THROWN = "usb-thrown.tsv"      # as soulseek.py names it: files you threw away (never copied in again)
-MUSIC, FOLDER = "SoundCloud Sync", "The Crate"  # The Crate's own folder on a USB, and its folder in the decks' libraries
+FOLDER = "The Crate"  # its folder in the decks' libraries (its own folder on a USB: place.py)
 SKIP = {"pioneer", "engine library", "_serato_", "_serato_backup", "system volume information", "$recycle.bin",
         "thrown back by the crate", "quarantine"}
 KINDS = {1: ".mp3", 3: ".mp4", 4: ".m4a", 5: ".flac", 11: ".wav", 12: ".aiff"}  # rekordbox's own codes
@@ -207,7 +209,7 @@ def library_of(dir, vol):
 def folders(base, own, contents):
     """The folders on a USB that hold songs themselves: [(the folder inside the USB, [its songs])]. The decks' own
     folders are passed over, and on your own USB The Crate's folder too (those songs are yours already)."""
-    out = []
+    out, mine = [], place.on(base)
 
     def walk(rel, depth):
         try:
@@ -222,7 +224,7 @@ def folders(base, own, contents):
         for n in names:
             if n.startswith(".") or n.lower() in SKIP or len(out) >= 300:
                 continue
-            if not rel and (own and n == MUSIC or not contents and n == "Contents"):
+            if own and os.path.join(rel, n) == mine or not rel and not contents and n == "Contents":
                 continue
             if os.path.isdir(os.path.join(base, rel, n)):
                 walk(os.path.join(rel, n), depth + 1)
@@ -278,7 +280,7 @@ def pick(dir, vol, ids=None):
         ok = {}
         for i, t in lib["tracks"].items():
             p = t["path"]
-            if p.lower().endswith(TAKEN) and not (own and p.startswith("/" + MUSIC + "/")):
+            if p.lower().endswith(TAKEN) and not (own and p.startswith("/" + place.web(base) + "/")):
                 ok[i] = {**t, "kbps": kbps_of(t), "cues": lib["cues"].get(i, [])}
         names, ours = named(lib)
         if ok:

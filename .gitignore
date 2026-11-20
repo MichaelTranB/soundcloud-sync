@@ -35,6 +35,16 @@ safety-ok.tsv.tmp
 .usb-list.new
 usb-layout.json
 usb-layout.json.tmp
+usb-place.json
+usb-place.json.tmp
+names.json
+names.json.tmp
+.naming-progress
+usb-backups/
+usb-backup.json
+.backup.lock
+.backup-progress
+.backup-progress.tmp
 .originals
 .archive-have
 blocked-originals.txt
@@ -144,8 +154,3 @@ liked-state.json
 *.json.tmp
 .waves/
 liked-settings.json
-usb-backups/
-usb-backup.json
-.backup.lock
-.backup-progress
-.backup-progress.tmp

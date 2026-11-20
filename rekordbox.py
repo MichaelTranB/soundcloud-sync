@@ -23,6 +23,8 @@ Never deletes a track. Only when rekordbox is closed (it would write over the ch
 change waits for the next run. Before any change the library file is copied to dj-backups/ (the last 20 kept)."""
 import json, os, shutil, subprocess, sys, time, unicodedata
 
+import naming
+
 FOLDER = "The Crate"
 KINDS = (".mp3", ".m4a", ".mp4", ".flac", ".wav", ".aiff")  # what rekordbox plays and pyrekordbox can add
 TYPES = {".mp3": 1, ".mp4": 3, ".m4a": 4, ".flac": 5, ".wav": 11, ".aiff": 12}  # rekordbox's own codes
@@ -174,6 +176,9 @@ def sync(db, job, models, running, db_file):
     new = [s for s in songs if nfc(path[s["rel"]]) not in have]
     regenre = [s for s in songs if nfc(path[s["rel"]]) in have and s.get("genres")
                and genre_of(have[nfc(path[s["rel"]])]) != s["genres"][0]]
+    # a name fixed on the page (naming.py): the row follows only where it still shows the old one
+    rename = [(s, f) for s in songs for c in [have.get(nfc(path[s["rel"]]))] if c is not None
+              for f in [naming.follows(s, c.Title, c.Artist.Name if c.Artist is not None else "")] if f]
     wanted = [(nfc(n), [r for r in rels if r in path and os.path.isfile(path[r])]) for n, rels in job["lists"]]
     wanted = [(n, r) for n, r in wanted if r]
     top = db.get_playlist(Name=FOLDER, ParentID="root", Attribute=1).first()
@@ -190,7 +195,7 @@ def sync(db, job, models, running, db_file):
     # covers: tracks whose file carries one and whose row has none yet
     arts = {s["rel"]: a for s in songs if not getattr(have.get(nfc(path[s["rel"]])), "ImagePath", "")
             for a in [art(path[s["rel"]])] if a}
-    if not new and not regenre and same_lists and not stale and not arts and not moved:
+    if not new and not regenre and same_lists and not stale and not arts and not moved and not rename:
         return ""
     if running():
         return "rekordbox is open, so its library was left alone; it catches up when you close it"
@@ -203,7 +208,7 @@ def sync(db, job, models, running, db_file):
         where = cover(share, str(c.UUID), arts.pop(rel)) if c.UUID else ""
         if where:
             covers[rel] = where
-    if not new and not regenre and same_lists and not stale and not covers and not moved:
+    if not new and not regenre and same_lists and not stale and not covers and not moved and not rename:
         return ""
     saved = backup(file, job["backups"])
 
@@ -249,6 +254,12 @@ def sync(db, job, models, running, db_file):
             have[nfc(path[s["rel"]])] = c
         for s in regenre:
             have[nfc(path[s["rel"]])].GenreID = named(db.get_genre, db.add_genre, s["genres"][0])
+        for s, f in rename:
+            c = have[nfc(path[s["rel"]])]
+            if "title" in f:
+                c.Title = f["title"]
+            if "artist" in f:
+                c.ArtistID = named(db.get_artist, db.add_artist, f["artist"])
         db.flush()
         for rel, data in arts.items():  # the tracks just added
             c = have[nfc(path[rel])]
@@ -288,6 +299,8 @@ def sync(db, job, models, running, db_file):
         said += f"; {len(moved)} followed to where their file{'s are' if len(moved) != 1 else ' is'} now"
     if covers:
         said += f"; {len(covers)} cover{'s' if len(covers) != 1 else ''} added"
+    if rename:
+        said += f"; {len(rename)} name{'s' if len(rename) != 1 else ''} put right"
     if skipped:
         said += f"; {skipped} left out (a file type rekordbox doesn't play)"
     return said

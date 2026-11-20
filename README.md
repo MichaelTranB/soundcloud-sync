@@ -81,6 +81,18 @@ Never YouTube rips or recorded streams: low quality.
   in). It goes to the USB's own Trash, so you can still take it back until you empty the Trash; only The Crate's
   own folder on the USB is ever touched.
 
+### USB to SoundCloud playlists
+
+- **USB to SoundCloud** turns folders or rekordbox playlists on a USB into **private** SoundCloud playlists. Pick the
+  USB, tick what to bring, press **Make playlists**.
+- **Options:** one playlist per folder, named after it (the default), or all of them merged into one playlist you name.
+  Past 500 songs (SoundCloud's limit) a playlist carries on as "Name (2)".
+- Claude or Codex does the clicking in your own signed-in Chrome. Each song is matched by artist, title and length
+  (within 5 seconds); anything it isn't sure of, or can't find, goes to **Needs a look** on the list page with the
+  closest link, for you to decide.
+- It only ever makes private playlists and adds songs to them: it never uploads, posts, makes anything public, follows,
+  likes, deletes or pays. **Carry on** picks up where it stopped; the list page (`/to-soundcloud`) works by hand too.
+
 ## Your DJ decks (Engine DJ, rekordbox and Serato)
 
 Open **Library Manager** on the page. Every song is listed with its tempo, key and genres, and The Crate puts them
@@ -99,7 +111,9 @@ straight into your decks' libraries, with no dragging and no clicks:
   write: before a gig on those, export once from rekordbox (drag your playlists onto the USB under *Devices*).
 - **Serato:** the USB also gets Serato crates (*The Crate*, with a crate per playlist inside it), which Serato
   shows when the USB is plugged in. They point at the same files; nothing is copied.
-- **One folder, each song once:** all of The Crate's music sits in The Crate's own folder on the USB (*SoundCloud Sync*), and
+- **One folder, each song once:** all of The Crate's music sits in The Crate's own folder on the USB (*SoundCloud Sync* at its top,
+  or inside a folder you already keep music in: Library Manager > USB folders > Change; only that one folder moves, and
+  the decks' lists follow with their cues), and
   every library above points at those same files. A USB that already had some of the songs (a friend's, or one
   filled by hand) gets no doubles: a file that is another download of a song is swapped for your library's, the
   same song as another kind of file is taken off, and the songs you threw back leave it too. Those go to the
@@ -155,8 +169,14 @@ straight into your decks' libraries, with no dragging and no clicks:
   FLACs, covers and details, cues in step, Liked Songs kept apart, the USB folders and the genres. The way
   described here is how it starts; change any of them, any time.
 - **The song list:** search by artist, title, genre, key or kind of file; filter to *Needs AIFF*, *No cover*,
-  *Missing details*, *Not on USB* or *Below club quality*; tick songs (or all) and press **Convert to AIFF**,
-  **Add cover & details** or **Put on USB**. Songs you added yourself or copied from a friend's USB are in it too.
+  *Missing details*, *Names to fix*, *Not on USB* or *Below club quality*; tick songs (or all) and press
+  **Convert to AIFF**, **Add cover & details** or **Put on USB**. Songs you added yourself or copied from a friend's
+  USB are in it too.
+- **Names that are mixed up:** a title with the artist in it, or the two the wrong way round, gets a line on its
+  row with **Fix**; **Fix all names** does every one in one go. A name is written (in the file, and your decks
+  follow) only when it is plain or a music catalogue agrees; otherwise you pick between the ways it could read.
+  A Soulseek file whose own details name another song is marked "may be the wrong song": **Wrong file** sends it
+  back, or say it's the right one and its name is fixed. **Undo** on the row puts the old name back.
 - **A "?" beside each part** of both pages opens a few plain lines: how it works, what it never touches, how to
   undo. **How it works** at the top has the rest.
 - **Listen first:** ▶ beside any song plays it on the page, with its waveform: tap it to jump, and a file that

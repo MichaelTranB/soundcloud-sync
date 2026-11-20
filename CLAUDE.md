@@ -73,6 +73,11 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   (`layout.arrange`, only on a stick past the ask-first gate); every deck library keeps the song's row and is
   re-pointed, so cues and analysis stay. The page previews (`GET /api/dj/layout?mode=`, nothing touched) and
   switches only on "Use this" (`POST /api/dj/layout`). Not yet tried on a real stick or deck.
+- **Where The Crate's folder sits on a USB (`place.py`, `usb-place.json`, "Change" on the USB folders card):**
+  `SoundCloud Sync` at the top unless he picks a parent folder and a name. Every module asks `place.folder(usb)` /
+  `place.web(usb)`, never a fixed name. A new pick renames only that one folder (`usb.sh`, `dj.once()`, both after
+  the `usb_ask` gate); deck rows at a former place (`place.others`) follow with the same ids. A folder counts as
+  The Crate's only if it is the default one or carries the `.thecrate` mark: a user's folder is never taken.
 - **Waveform and Open in rekordbox (`waveform.py`, the player on `/dj`):** `afconvert` reads the file at 8 kHz
   mono into 600 slices (loudest point and average), kept in `.waves/`; `/wave?f=` serves it, music folder only.
   `POST /api/dj/rekordbox` runs `open -a <rekordbox.app> <file>` (not while the libraries are being written);
@@ -101,6 +106,11 @@ Not Almari work; nothing here touches Almari's repo, board or accounts.
   and title match, and it is the song's own page or two sources agree; else "needs a look" with up to three
   candidates (`details-ask.json`). Every change is in `details-log.json` with what the file held before
   (`details-undo/`), one Undo each. Only artist and title (and a fingerprint) leave the Mac.
+- **Names (`naming.py`):** a title and artist that are mixed up, put right in the file's own tags; time, tempo, key
+  and everything else stay. `look()` only reads; `one()` writes when the fix is plain (the artist twice, a version
+  after a dash) or iTunes/MusicBrainz confirms ONE reading, and never from the file's name alone; else the ways wait
+  for a pick (`names.json`: fixed with its undo, ask, fine, and the names each song went by). A deck's row follows
+  only where it still shows a name the song went by (`naming.follows`): a name typed on a deck stays.
 - **Liked Songs on the decks (`dj.liked_songs`, the SoundCloud side files them: `liked.py`):** a Liked Song is
   `liked` in `dj.library()` and `apart` (no genre reaches a deck, its guess kept as `guess`) until his own pick;
   apart songs skip the genre lists, "No genre yet", "Newest 50" and `layout.arrange`, and all sit on one playlist
