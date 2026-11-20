@@ -145,7 +145,10 @@ straight into your decks' libraries, with no dragging and no clicks:
   USB is laid out; the music folder on the Mac stays as it is.
 - **Backup and repair:** every time the USB is plugged in, what your decks saved on it (the rekordbox, Engine DJ
   and Serato libraries: hot cues, playlists, history) is copied to this Mac first, along with any song that is
-  only on the USB (a switch under **Options**). That only reads the USB, and the last 10 backups are kept. If a
+  only on the USB (a switch under **Options**). That only reads the USB, and the last 10 backups are kept.
+  **Options** also picks where they are kept: this Mac, or your iCloud Drive (in *The Crate/USB backups* there),
+  which spares this Mac's room: the libraries go up at plug-in, the songs after them bit by bit, and each song
+  leaves this Mac once iCloud has it. If a
   library on it stops opening, the Library Manager says so, and **Repair this USB** puts a backup back: the
   libraries, and any song that went missing. What is on the USB at that moment is backed up first, and nothing
   else on it is touched. The Crate never erases a USB: one that won't open at all is erased by you in Disk
