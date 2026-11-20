@@ -296,11 +296,20 @@ def was(d):
     return load(d)["was"]
 
 
+def _tags(f):
+    """(the kind of tags this file has, {field: the title and artist it holds now}). An Ogg or Opus file keeps them
+    the way a FLAC does."""
+    if type(f).__name__.startswith("Ogg"):
+        t = f.tags
+        return "flac", {x: str((t.get(details.VORBIS[x]) or [""])[0]) for x in ("title", "artist")} if t is not None else {}
+    return details._kind(f), details._now(f)
+
+
 def _set(path, fields):
     """Writes these title and artist tags over what is there ("" takes the tag out). Returns what each held."""
     from mutagen import id3
     f = details._open(path)
-    k, now = details._kind(f), details._now(f)
+    k, now = _tags(f)
     had = f.tags is not None
     if f.tags is None:
         f.add_tags()
@@ -369,7 +378,7 @@ def undo(d, src, rel):
         if not fixed:
             return 0
         path = os.path.join(src, rel)
-        now = details._now(details._open(path))
+        now = _tags(details._open(path))[1]
         back = {f: fixed[f][0] for f in ("title", "artist") if fixed.get(f) and (now.get(f) or "") == fixed[f][1]}
         with details._same_time(path):
             n = len(_set(path, back))
@@ -415,10 +424,15 @@ def _heard(song):
     return [(a, t)] if sep else []
 
 
-def one(d, src, song, mine, ask=True):
-    """Checks one song and fixes it when sure. "fixed", "ask" (it waits for your pick), or "" (nothing to do)."""
+def one(d, src, song, mine, ask=True, seen=None):
+    """Checks one song and fixes it when sure. "fixed", "ask" (it waits for your pick), or "" (nothing to do).
+    seen: what the record held about it when a job listed it (_mark); none given: what it holds now. What you do to
+    the song after that stays (asking a catalogue takes a while, and a job over many songs longer)."""
     rec = load(d)
-    seen = _mark(rec, song["rel"])  # (asking a catalogue takes a while: what you do to the song meanwhile stays)
+    if seen is None:
+        seen = _mark(rec, song["rel"])
+    elif _mark(rec, song["rel"]) != seen:
+        return ""
     l = look(song, song["rel"] in mine, rec)
     if not l or l["kind"] == "wrong":
         return ""
@@ -464,12 +478,13 @@ def fix(d, src, rels):
     """Every named song (none named: every song whose name looks off) is checked and, when sure, fixed."""
     songs, mine, rec = _songs(d, src), got(d, src), load(d)
     todo = [r for r in (rels or sorted(songs)) if r in songs and (look(songs[r], r in mine, rec) or {}).get("kind") == "fix"]
+    marks = {r: _mark(rec, r) for r in todo}  # as the songs were listed: one you act on while the job runs is yours
     done = {"fixed": 0, "ask": 0}
     try:
         for i, rel in enumerate(todo):
             note(d, i, len(todo))
             try:
-                r = one(d, src, songs[rel], mine)
+                r = one(d, src, songs[rel], mine, seen=marks[rel])
             except Exception as e:
                 details.tell(d, f"NAMES PROBLEM: {os.path.basename(rel)}: {str(e)[:120]}")
                 continue
