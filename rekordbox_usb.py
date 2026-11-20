@@ -758,7 +758,7 @@ def older(job, is_open=running):
     lib = opened(db_file)
     try:
         roots = tuple("/" + m + "/" for m in [place.web(usb)] + place.others(usb))
-        want = mirror(lambda sql, **p: lib.session.execute(text(sql), p), roots)
+        want = rekordbox_pdb.fitted(mirror(lambda sql, **p: lib.session.execute(text(sql), p), roots))
     finally:
         lib.close()
     path = {t["id"]: nfc(t["path"]) for t in want["tracks"]}

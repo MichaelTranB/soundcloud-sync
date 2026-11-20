@@ -67,12 +67,27 @@ def read(d, o):
     n = struct.unpack_from("<H", d, o + 1)[0]
     if k == 0x40:
         return d[o + 4:o + n].decode("ascii", "replace"), n
-    if k == 0x90:
-        raw = bytes(d[o + 4:o + n])
-        if raw[:1] == b"\x03":  # an ISRC
-            return raw[1:].rstrip(b"\0").decode("ascii", "replace"), n
-        return raw.decode("utf-16-le", "replace"), n
+    if k == 0x90:  # (a track's ISRC is kept this way too, with its own layout: never read here)
+        return bytes(d[o + 4:o + n]).decode("utf-16-le", "replace"), n
     raise Bad(f"a string of a kind not seen before ({k:#x})")
+
+
+LONGEST = 255  # letters in a name, a title or a comment: a row has to fit in one page of the file
+
+
+def clip(s):
+    return nfc(s or "")[:LONGEST]
+
+
+def fitted(want):
+    """`want` with every free-text field cut to LONGEST letters (a 4,000-letter comment tag would not fit a page).
+    Paths and file names are never cut: they have to match the file."""
+    out = dict(want)
+    out["tracks"] = [dict(t, title=clip(t.get("title")), comment=clip(t.get("comment"))) for t in want["tracks"]]
+    for key in ("artists", "albums", "keys", "genres", "labels"):
+        out[key] = {i: dict(r, name=clip(r.get("name"))) for i, r in want.get(key, {}).items()}
+    out["lists"] = [(key, clip(title), members) for key, title, members in want["lists"]]
+    return out
 
 
 # ---- rows: each maker returns the whole slot (padded the way rekordbox pads its own) ----
@@ -251,6 +266,8 @@ class Pdb:
         b = pg * PAGE
         n, live = self.counts(pg)
         used, free = self.u16(b + 0x1E), self.u16(b + 0x1C)
+        if free < size + 2 + (4 if n % 16 == 0 else 0):  # (a path far longer than any disk allows)
+            raise Bad("a row is too long to fit in the older library")
         row = make(0x20 * n & 0xFFFF)
         self.d[b + HEAP + used:b + HEAP + used + size] = row
         end = b + PAGE - (n // 16) * 0x24
@@ -377,7 +394,7 @@ def lists(data, folder):
 def sync(data, want):
     """The file's bytes with The Crate's part brought in step with `want` (see rekordbox_usb.mirror()), and what
     was done: {"new", "changed", "gone", "lists"}. Returns (None, {}) when it is in step already."""
-    p = Pdb(data)
+    p, want = Pdb(data), fitted(want)
     roots = tuple(nfc(r) for r in want["roots"])
     did = {"new": 0, "changed": 0, "gone": 0, "lists": 0}
 
@@ -405,7 +422,7 @@ def sync(data, want):
             r = dict(r, id=i)
             if i not in have:
                 put(kind, r)
-            elif have[i][3] != nfc(r["name"]):
+            elif clip(have[i][3]) != nfc(r["name"]):
                 raise Bad(f"the two libraries on the USB name {word} {i} differently "
                           f"({have[i][3]!r} and {nfc(r['name'])!r})")
 
