@@ -5,7 +5,9 @@ on that USB is touched: no song copied, no list written, nothing moved to its Tr
   an empty USB needs no asking: there is nothing of anyone's on it to change;
   a USB with files, folders or a DJ library on it is asked about once. The yes is remembered for that very stick (a
     small note, .thecrate, in The Crate's own folder on it, so another stick with the same name is asked about too);
-  a new kind of change (KINDS grows with the app) asks again, and "Stop" on the page takes the yes back.
+  a new kind of change (KINDS grows with the app) asks again, and "Stop" on the page takes the yes back;
+  a USB The Crate was already copying your songs to before it asked at all is not asked about now: you set it up
+    as The Crate's USB and its songs are on it (used()). "Stop" on the page still stops it, like any other.
 
   usb_ask.py check DIR USB    exit 0: go ahead; exit 3: waiting for your OK (USB: the drive, e.g. /Volumes/Lexar)
 
@@ -72,25 +74,55 @@ def content(usb):
     return bool(top)
 
 
+def used(dir, usb):
+    """The Crate was copying to this USB before it asked about a USB at all: its copy log on this Mac says so for
+    a USB of this name, the stick carries no note of an answer, and The Crate's own folder on it holds this
+    library's songs (most of what is in there, by name)."""
+    name = os.path.basename(os.path.normpath(usb))
+    try:
+        with open(os.path.join(dir, "usb.log"), errors="replace") as f:
+            if not any(f'  copied to "{name}" (' in l for l in f):
+                return False
+    except OSError:
+        return False
+    at = place.folder(usb, dir)
+    if mark(usb) or not place.ours(usb, place.on(usb, dir)):
+        return False
+    stem = lambda n: place.cf(os.path.splitext(n)[0])
+    try:
+        with open(os.path.join(dir, usb_tidy.CHECKED), errors="replace") as f:
+            mine = {stem(os.path.basename(l.rstrip("\n").split("\t")[0])) for l in f}
+    except OSError:
+        return False
+    songs = [f for _, _, files in os.walk(at) for f in files
+             if not f.startswith(".") and f.lower().endswith(usb_tidy.AUDIO)]
+    hits = sum(1 for f in songs if stem(f) in mine)
+    return hits > 0 and hits * 2 >= len(songs)
+
+
 def state(dir, usb):
-    """"ok": allowed (or empty); "ask": has content, not asked yet; "no": you said Not now."""
+    """"ok": allowed (or empty, or already The Crate's USB before it asked: used()); "ask": has content, not asked
+    yet; "no": you said Not now."""
     rec, i = load(dir), mark(usb)
     if i and rec.get(i, {}).get("yes") and set(KINDS) <= set(rec[i].get("kinds", [])):
         return "ok"
     if not content(usb):
         return "ok"
-    return "no" if rec.get(paused(usb)) else "ask"
+    if rec.get(paused(usb)):
+        return "no"
+    return "ok" if not i and used(dir, usb) else "ask"
 
 
-def answer(dir, usb, yes):
-    """Your answer on the page. A yes leaves the stick's note in The Crate's folder on it; a no writes nothing there."""
+def answer(dir, usb, yes, how=""):
+    """Your answer on the page. A yes leaves the stick's note in The Crate's folder on it; a no writes nothing there.
+    how: why it is allowed without your answer (ready())."""
     rec = load(dir)
     if yes:
         i = mark(usb) or uuid.uuid4().hex
         os.makedirs(place.folder(usb), exist_ok=True)
         place.noted(place.folder(usb), i, place.note(usb)[1])  # (the places the folder had on this USB stay noted)
         rec[i] = {"yes": True, "kinds": KINDS, "name": os.path.basename(os.path.normpath(usb)),
-                  "day": time.strftime("%Y-%m-%d")}
+                  "day": time.strftime("%Y-%m-%d"), **({"how": how} if how else {})}
         rec.pop(paused(usb), None)
     else:
         if mark(usb) in rec:
@@ -100,14 +132,24 @@ def answer(dir, usb, yes):
 
 
 def ready(dir, usb):
-    """True when The Crate may change this USB now. An empty stick is noted as allowed on the way."""
+    """True when The Crate may change this USB now. An empty stick is noted as allowed on the way, and so is one
+    The Crate was already copying to before it asked (used())."""
     s = state(dir, usb)
     if s == "ok" and not mark(usb) and os.access(usb, os.W_OK):
         try:
-            answer(dir, usb, True)
+            answer(dir, usb, True, "already The Crate's USB" if content(usb) else "")
         except OSError:
             pass
     return s == "ok"
+
+
+def how(dir, usb):
+    """Why this USB is allowed without your answer on the page ("" when you answered, or it isn't allowed)."""
+    i = mark(usb)
+    if i:
+        r = load(dir).get(i, {})
+        return r.get("how", "") if r.get("yes") else ""
+    return "already The Crate's USB" if not load(dir).get(paused(usb)) and used(dir, usb) else ""
 
 
 def what(dir, src, usb):

@@ -81,7 +81,8 @@ Never YouTube rips or recorded streams: low quality.
   just pull it out (off unless you tick it; never while a sync is still adding tracks).
 - **A USB that already has things on it is asked about first.** The page shows what would be added, what is never
   touched and how to undo, with **Go ahead** or **Not now**. Until you say so, nothing on it is changed. The yes is
-  remembered for that stick (**Stop** on the Library Manager page takes it back); an empty USB needs no asking.
+  remembered for that stick (**Stop** on the Library Manager page takes it back); an empty USB needs no asking,
+  and neither does one The Crate was already copying your songs to before it started asking (**Stop** works there too).
 - It only adds files. Nothing on the USB is ever deleted or overwritten. The one exception: a song you threw back
   with **Wrong or bad file** leaves the USB as well (right away if it's plugged in, else the next time you plug it
   in). It goes to the USB's own Trash, so you can still take it back until you empty the Trash; only The Crate's
