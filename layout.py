@@ -10,16 +10,20 @@ Three ways to lay the songs out, picked on the Library Manager page (usb-layout.
     genre   EDM/<genre> / Other/<genre> / No genre yet      (a song sits in its first genre's folder; one with
             any EDM genre is EDM, under its first EDM genre, so the folders match the "EDM (all)" playlist)
 
-With group or genre, "All songs" can be ticked too: an "All songs" folder beside them holds a copy of every song,
-so a phone app or a deck that browses folders finds everything in one place as well (all_songs(); it needs room on
-the USB for a second copy, and is left out, and said, when there isn't). The decks' libraries list each song once,
-from its own folder.
+With group or genre, "All songs" can be ticked too. Kept as one copy ("one": true, the way it is set when ticked
+from now on) it is a list, "All songs.m3u8" beside the folders, naming every song where it sits: each song is stored
+once (onecopy()). As copies (how it was first made) an "All songs" folder holds a second copy of every song
+(all_songs(); it needs room on the USB, and is left out, and said, when there isn't). Going from copies to one copy
+takes the copies off only after your Go ahead for that stick (usb_ask "one"), and only a copy whose twin in its own
+folder is the same file byte for byte. The decks' libraries list each song once, from its own folder, either way.
+
+    python3 layout.py onecopy USB_FOLDER     # what keeping one copy would do there (only reads): kept, off, GB
 
 Only the USB is laid out: the music folder on the Mac stays as it is. Only songs from this library are ever moved,
 and only inside The Crate's own folder; nothing is copied twice and nothing is deleted. The USB itself is the
 record of where each song sits, so there is no list to fall out of step: where() looks. Picking "flat" again puts
 every song back in the one folder. Standard library only."""
-import json, os, shutil, sys, unicodedata
+import hashlib, json, os, shutil, sqlite3, subprocess, sys, tempfile, unicodedata
 
 import genres, usb_tidy
 
@@ -28,6 +32,8 @@ EDM, REST = "EDM", "Other"
 OTHER = ["Hip Hop", "R&B", "Pop", "Rock"]  # the genres that aren't EDM, unless you say otherwise
 MODES = ("flat", "group", "genre")
 ALL = "All songs"  # the folder of copies, when "All songs" is ticked
+LIST = ALL + ".m3u8"  # the list instead, with one copy of each song (onecopy())
+OURS = "#THECRATE"  # a line in that list: The Crate wrote it (a list of that name without it is someone's: untouched)
 STAMP = ".all-songs.json"  # in that folder: what each copy was made from (mark())
 ROOM = 5 << 30  # what the USB keeps free when it makes those copies (the decks need room for their own files too)
 LEFT = (".DS_Store", "._.DS_Store")  # what macOS leaves in a folder: it doesn't make the folder "not empty"
@@ -48,15 +54,17 @@ def load(dir):
     other = got.get("other") if isinstance(got.get("other"), list) else OTHER
     return {"mode": got.get("mode") if got.get("mode") in MODES else "flat",
             "other": [x for x in other if isinstance(x, str) and x.strip()],
-            "all": got.get("all") is True}
+            "all": got.get("all") is True, "one": got.get("one") is True}
 
 
-def save(dir, mode=None, other=None, all=None):
+def save(dir, mode=None, other=None, all=None, one=None):
     cfg = load(dir)
     if mode in MODES:
         cfg["mode"] = mode
     if isinstance(all, bool):
         cfg["all"] = all
+    if isinstance(one, bool):
+        cfg["one"] = one
     if other is not None:
         cfg["other"] = list(dict.fromkeys(x.strip() for x in other if isinstance(x, str) and x.strip()))
     tmp = os.path.join(dir, FILE + ".tmp")
@@ -104,7 +112,12 @@ def tops():
 
 def copies(cfg):
     """Whether the USB gets the "All songs" folder of copies."""
-    return cfg.get("all") is True and cfg["mode"] != "flat"
+    return cfg.get("all") is True and cfg["mode"] != "flat" and cfg.get("one") is not True
+
+
+def listed(cfg):
+    """Whether "All songs" is a list (All songs.m3u8) naming each song where it is stored, once."""
+    return cfg.get("all") is True and cfg["mode"] != "flat" and cfg.get("one") is True
 
 
 def mark(p):
@@ -138,7 +151,7 @@ def keep(made_from, home):
         return False
 
 
-def all_songs(dest, at, cfg, dry=False):
+def all_songs(dest, at, cfg, dry=False, ok=False, usb=""):
     """Keeps the "All songs" folder in step: a copy of each song from where it sits (at: {song: where, inside The
     Crate's folder}), made again when the song's file changed, and taken off when the song left the USB or the
     folder isn't wanted. A copy is only ever taken off while the song's own file is still on the USB (else it goes
@@ -148,7 +161,11 @@ def all_songs(dest, at, cfg, dry=False):
         # songs of their own already sit in a folder of that name (one you picked for your Liked Songs, say): it isn't
         # The Crate's to fill or clear, so the copies are left off
         return 0, 0, (f'"{ALL}" is the name of a folder your own songs sit in, so the copies are left off: pick another '
-                      "name for that folder to have them") if copies(cfg) else ""
+                      "name for that folder to have them") if copies(cfg) or listed(cfg) else ""
+    if listed(cfg):
+        return onecopy(dest, at, cfg, ok, usb, dry)
+    if not dry:
+        unlist(dest)
     want = {}
     if copies(cfg):
         for rel, where in at.items():
@@ -265,6 +282,231 @@ def all_songs(dest, at, cfg, dry=False):
         said = "; ".join(([f'{made} song{s(made)} copied into "{ALL}"'] if made else []) +
                          ([f'{off} taken off "{ALL}"'] if off else []))
     return made, off, said
+
+
+def digest(p):
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
+def stamped(home):
+    """The copies The Crate made in "All songs" (STAMP) and the ones of them still there: (made_from, {key: name})."""
+    try:
+        with open(os.path.join(home, STAMP)) as f:
+            made_from = json.load(f)
+        made_from = made_from if isinstance(made_from, dict) else {}
+    except (OSError, ValueError):
+        made_from = {}
+    try:
+        there = [f for f in os.listdir(home) if not f.startswith(".") and f.lower().endswith(usb_tidy.AUDIO)]
+    except OSError:
+        there = []
+    return made_from, {cf(f): f for f in there if cf(f) in made_from}
+
+
+def twins(dest):
+    """Every song file in The Crate's folder outside "All songs" (the files the decks' libraries list): {key: [path]}."""
+    out = {}
+    for root, dirs, files in os.walk(dest):
+        dirs[:] = sorted(d for d in dirs if not d.startswith(".") and not (root == dest and cf(d) == cf(ALL)))
+        for f in sorted(files):
+            if not f.startswith(".") and f.lower().endswith(usb_tidy.AUDIO):
+                out.setdefault(cf(f), []).append(os.path.join(root, f))
+    return out
+
+
+ANALYSER = os.environ.get("CRATE_DJ_PY") or next(
+    (p for p in map(os.path.expanduser, ("~/.local/share/crate-dj/python/bin/python3",
+                                         "~/.local/share/crate-dj/venv/bin/python")) if os.path.exists(p)), "")
+READ_OL = ("import logging, sys\nlogging.disable(logging.CRITICAL)\nfrom pyrekordbox.onelibrary import OneLibrary\n"
+           "db = OneLibrary(sys.argv[1])\n"
+           "print(sum(sys.argv[2] in (c.path or '').replace('\\\\', '/') for c in db.get_content().all()))\n")
+
+
+def onelibrary(lib, needle):
+    """True: the USB's rekordbox library (exportLibrary.db) lists a file whose path holds needle; "unread": it
+    couldn't be read (no analyser Python, or an error), which counts as a yes; False: it doesn't."""
+    if not ANALYSER or not os.path.exists(ANALYSER):
+        return "unread"
+    tmp = tempfile.mkdtemp()
+    try:
+        for x in ("", "-wal", "-shm"):
+            if os.path.isfile(lib + x):
+                shutil.copy2(lib + x, os.path.join(tmp, "exportLibrary.db" + x))
+        r = subprocess.run([ANALYSER, "-c", READ_OL, os.path.join(tmp, "exportLibrary.db"), needle],
+                           capture_output=True, text=True, timeout=300)
+        n = r.stdout.strip().splitlines()[-1] if r.returncode == 0 and r.stdout.strip() else ""
+        return "unread" if not n.isdigit() else int(n) > 0
+    except (OSError, subprocess.SubprocessError):
+        return "unread"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def pointed(usb):
+    """The deck libraries on the USB that list a file inside an "All songs" folder (or couldn't be read): while
+    any does, no copy there is taken off, so no deck loses a track."""
+    who, needle = [], "/" + ALL + "/"
+    db = os.path.join(usb, "Engine Library", "Database2", "m.db")
+    if os.path.isfile(db):
+        tmp = tempfile.mkdtemp()
+        try:  # (read from a copy on the Mac, with its journal: the USB's file is never opened for writing)
+            for x in ("", "-wal"):
+                if os.path.isfile(db + x):
+                    shutil.copy2(db + x, os.path.join(tmp, "m.db" + x))
+            c = sqlite3.connect(os.path.join(tmp, "m.db"))
+            try:
+                if c.execute("SELECT count(*) FROM Track WHERE replace(path, '\\', '/') LIKE ?",
+                             ("%" + needle + "%",)).fetchone()[0]:
+                    who.append("Engine DJ")
+            finally:
+                c.close()
+        except (OSError, sqlite3.Error):
+            who.append("Engine DJ (couldn't be read)")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    lib = os.path.join(usb, "PIONEER", "rekordbox", "exportLibrary.db")
+    if os.path.isfile(lib):  # (the newest decks' library is locked: read through pyrekordbox, from a copy on the Mac)
+        hit = onelibrary(lib, needle)
+        if hit:
+            who.append("rekordbox" if hit is True else "rekordbox (couldn't be read)")
+    files = [("rekordbox", os.path.join(usb, "PIONEER", "rekordbox", "export.pdb")),
+             ("rekordbox", os.path.join(usb, "PIONEER", "rekordbox", "exportExt.pdb")),
+             ("Serato", os.path.join(usb, "_Serato_", "database V2"))]
+    crates = os.path.join(usb, "_Serato_", "Subcrates")
+    files += [("Serato", os.path.join(crates, f)) for f in (sorted(os.listdir(crates)) if os.path.isdir(crates) else [])
+              if f.endswith(".crate")]
+    for name, f in files:  # (paths sit in these as plain text: the needle in any of the ways they spell it)
+        if name in who or not os.path.isfile(f):
+            continue
+        try:
+            with open(f, "rb") as h:
+                b = h.read()
+        except OSError:
+            who.append(name + " (couldn't be read)")
+            continue
+        if any(needle.encode(e) in b for e in ("utf-8", "utf-16-le", "utf-16-be")):
+            who.append(name)
+    return who
+
+
+def doubles(dest, dry=True):
+    """The copies in "All songs" that have a twin in their own folder, the same file byte for byte (a dry look only
+    weighs size, for the page: quick). Not dry: those copies are taken off. Returns (taken off, left, bytes freed)."""
+    home = os.path.join(dest, ALL)
+    made_from, mine = stamped(home)
+    tw = twins(dest) if mine else {}
+    off = left = freed = 0
+    for k, f in sorted(mine.items()):
+        p = os.path.join(home, f)
+        s = usb_tidy.size(p)
+        cands = [q for q in tw.get(k, []) if s >= 0 and usb_tidy.size(q) == s and not same_file(home, p, q)]
+        try:
+            sum_ = digest(p) if cands and dry != "quick" else ""
+            twin = cands[0] if cands and dry == "quick" else next((q for q in cands if digest(q) == sum_), None)
+        except OSError:
+            twin = None
+        if not twin:  # no verified twin: this copy stays, whatever happens
+            left += 1
+            continue
+        if not dry:
+            try:
+                os.remove(p)
+                if usb_tidy.size(usb_tidy.shadow(p)) >= 0:
+                    os.remove(usb_tidy.shadow(p))
+            except OSError:
+                left += 1
+                continue
+        off += 1
+        freed += s
+    if not dry and os.path.isdir(home):
+        for f in os.listdir(home):
+            if f.startswith(".crate-"):  # a copy cut short, The Crate's own
+                try:
+                    os.remove(os.path.join(home, f))
+                except OSError:
+                    pass
+        made_from, mine = stamped(home)
+        keep({k: v for k, v in made_from.items() if k in mine}, home)
+        if empty(home):
+            gone(home)
+    return off, left, freed
+
+
+def mine_list(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return any(l.strip() == OURS for l in f)
+    except OSError:
+        return False
+
+
+def write_list(dest):
+    """All songs.m3u8: every song in The Crate's folder, where it is stored, as paths from the list itself."""
+    path = os.path.join(dest, LIST)
+    if os.path.lexists(path) and not mine_list(path):
+        return f'a "{LIST}" of someone else\'s is there, so it was left as it is'
+    songs = sorted((p for ps in twins(dest).values() for p in ps), key=lambda p: cf(os.path.relpath(p, dest)))
+    text = "#EXTM3U\n#PLAYLIST:" + ALL + "\n" + OURS + "\n" + \
+           "".join(("./" if os.path.relpath(p, dest).startswith("#") else "") +  # (a line starting # is a comment)
+                   os.path.relpath(p, dest).replace(os.sep, "/") + "\n" for p in songs)
+    try:
+        with open(path, encoding="utf-8") as f:
+            if f.read() == text:
+                return ""
+    except OSError:
+        pass
+    try:
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(path + ".tmp", path)
+    except OSError as e:
+        return f'PROBLEM: "{LIST}" couldn\'t be written ({e.strerror})'
+    return ""
+
+
+def unlist(dest):
+    """The list goes when "All songs" isn't wanted as one (only The Crate's own)."""
+    path = os.path.join(dest, LIST)
+    if mine_list(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def gb(n):
+    return f"{n / (1 << 30):.1f} GB"
+
+
+def onecopy(dest, at, cfg, ok, usb, dry=False):
+    """"All songs" as one copy of each song: the list, and the copies The Crate made in the "All songs" folder taken
+    off, each only once its twin in its own folder is the same file byte for byte. ok: your Go ahead for this stick
+    (usb_ask "one"); until then a USB that has the copies keeps them, kept in step as before."""
+    home = os.path.join(dest, ALL)
+    if stamped(home)[1] and not ok and not dry:
+        made, off, said = all_songs(dest, at, {**cfg, "one": False})
+        wait = f'"{ALL}" stays as copies until you say Go ahead on the page'
+        return made, off, "; ".join(x for x in (said, wait) if x)
+    said = []
+    off = 0
+    if stamped(home)[1]:
+        who = pointed(usb) if usb else []
+        if who:  # (the copies stay and are kept in step as before; no list is written)
+            made, off, said = all_songs(dest, at, {**cfg, "one": False})
+            stop = f'PROBLEM: {", ".join(who)} on the USB lists songs in "{ALL}", so its copies stay'
+            return made, off, "; ".join(x for x in (said, stop) if x)
+        off, left, freed = doubles(dest, dry=dry)
+        if off:
+            said.append(f'one copy of each song: {off} double{"" if off == 1 else "s"} taken off "{ALL}" ({gb(freed)} freed)')
+        if left:
+            said.append(f'{left} left in "{ALL}": no twin the same byte for byte in its own folder')
+    if not dry:
+        said.append(write_list(dest))
+    return 0, off, "; ".join(x for x in said if x)
 
 
 def where(dest):
@@ -451,17 +693,41 @@ def plan(dest, songs, cfg):
         f = folder(s.get("genres") or [], cfg) if s["rel"] in can and not s.get("apart") else os.path.dirname(s["rel"])
         folders[f] = folders.get(f, 0) + 1
     order = lambda f: (f.split(os.sep)[0] == safe(genres.NONE), f.split(os.sep)[0] != EDM, f.lower())
-    out = {"mode": cfg["mode"], "all": copies(cfg), "songs": len(songs),
+    out = {"mode": cfg["mode"], "all": copies(cfg) or listed(cfg), "one": listed(cfg), "songs": len(songs),
            "folders": [{"name": f.replace(os.sep, "/"), "songs": n} for f, n in sorted(folders.items(), key=lambda x: order(x[0])) if f]}
-    if copies(cfg):
-        out["folders"].insert(0, {"name": ALL, "songs": len(songs), "copies": True})
+    if copies(cfg) or listed(cfg):
+        out["folders"].insert(0, {"name": LIST if listed(cfg) else ALL, "songs": len(songs), "copies": copies(cfg)})
     if dest and os.path.isdir(dest):
         out.update(move=arrange(dest, songs, cfg, dry=True)[0],
                    on=len(songs) - len(missing(dest, [s["rel"] for s in songs])))
     return out
 
 
+def usb_of(path):
+    path = os.path.abspath(path)
+    while not os.path.ismount(path) and os.path.dirname(path) != path:
+        path = os.path.dirname(path)
+    return path
+
+
+def dry_run(dest):
+    """What keeping one copy would do on this USB, read only: songs kept, doubles off, space freed."""
+    home = os.path.join(dest, ALL)
+    who = pointed(usb_of(dest)) if stamped(home)[1] else []
+    off, left, freed = doubles(dest, dry=True)
+    kept = sum(len(v) for v in twins(dest).values())
+    lines = [f"songs kept (one copy each, in their own folders): {kept}",
+             f'doubles taken off "{ALL}" (same byte for byte as their twin): {off}',
+             f"space freed: {gb(freed)}",
+             f'left in "{ALL}" (no identical twin, never taken off): {left}']
+    if who:
+        lines.append(f'PROBLEM: {", ".join(who)} lists songs in "{ALL}": nothing would be taken off until that changes')
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "onecopy":
+        sys.exit(print(dry_run(sys.argv[2])))
     if len(sys.argv) != 3 or sys.argv[1] != "missing":
         sys.exit(__doc__)
     lines = [l.rstrip("\n") for l in sys.stdin]

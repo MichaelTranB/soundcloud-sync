@@ -509,7 +509,7 @@ def place(dir, songs, stick, usb="", file=False):
             said = layout.say(moved, stuck, twice, cfg["mode"] == "flat")
             if said:
                 log(dir, f'USB "{usb}": {said}')
-            said = layout.all_songs(dest, at, cfg)[2]  # the "All songs" folder of copies, when it's ticked
+            said = layout.all_songs(dest, at, cfg, ok=usb_ask.allows(dir, stick, "one"), usb=stick)[2]  # "All songs"
             if said:
                 log(dir, f'USB "{usb}": {said}')
         else:
