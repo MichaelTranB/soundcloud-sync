@@ -54,7 +54,8 @@ def load(dir):
     except (OSError, ValueError):
         rec = {}
     rec = rec if isinstance(rec, dict) else {}
-    return {"auto": rec.get("auto", True) is not False, "before": rec.get("before"), "skip": rec.get("skip") or {}}
+    return {"auto": rec.get("auto", True) is not False, "before": rec.get("before"), "skip": rec.get("skip") or {},
+            "wavs": rec.get("wavs") is True}
 
 
 def save(dir, rec):
@@ -600,9 +601,12 @@ def waiting(dir, src):
     checked = usb_tidy.checked(dir, src)
     flacs = [r for r in checked if r.lower().endswith(".flac")]
     if rec["before"] is None:  # the first look: what is already here is yours to pick on the page
-        rec["before"] = flacs + deep_wavs(src, checked)
+        rec["before"], rec["wavs"] = flacs + deep_wavs(src, checked), True
         save(dir, rec)
         return []
+    if not rec["wavs"]:  # (a list from before 32-bit WAVs were looked at: the ones already here stay yours to pick)
+        rec["before"], rec["wavs"] = rec["before"] + [r for r in deep_wavs(src, checked) if r not in rec["before"]], True
+        save(dir, rec)
     if not rec["auto"]:
         return []
     kept = set(rec["before"]) | set(rec["skip"])
