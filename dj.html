@@ -828,6 +828,8 @@ function row(song) {
   }
   if (song.back) li.append(el('div', { className: 'fix' }, 'Now an AIFF. The original is in the Trash.',
     link('Undo', () => post('/api/dj/aiff', { undo: [song.file] }))));
+  if (song.mp3back) li.append(el('div', { className: 'fix' }, 'Now a 320 MP3. The lossless original is in iCloud.',
+    link('Undo', () => post('/api/dj/mp3', { undo: [song.file] }))));
   if (song.deep) li.append(el('div', { className: 'fix' }, '32-bit: no club deck plays it.',
     link('Make a 24-bit copy', () => post('/api/dj/aiff', { files: [song.file], deep: true }).then(ok => ok &&
       say('Making a 24-bit copy: no difference you can hear. The original goes to the Trash; Undo brings it back.')))));
@@ -1106,16 +1108,18 @@ function drawDoit(rows, songs) {
   nb.onclick = () => { post('/api/dj/naming', on.some(odd) ? { files: toName.map(s => s.file) } : { all: true }).then(ok => ok &&
     say('Checking ' + num(toName.length) + (toName.length === 1 ? ' name' : ' names') + '. Only the sure ones are written; the rest wait for your pick.')); picks.clear(); };
   $('doFill').onclick = () => { say('Looking up ' + num(toFill.length) + (toFill.length === 1 ? ' song' : ' songs') + ': a few seconds each.'); post('/api/dj/details', { files: toFill.map(s => s.file) }); picks.clear(); };
-  const d = $('doing'); d.textContent = ''; d.hidden = !f.aiff && !f.details && !f.naming;
+  const d = $('doing'); d.textContent = ''; d.hidden = !f.aiff && !f.mp3Busy && !f.details && !f.naming;
   if (f.naming) d.append(el('span', { className: 'spin' }), 'Checking names: ' + num(f.naming[0]) + ' of ' + num(f.naming[1]) + '. ');
   if (f.aiff) d.append(el('span', { className: 'spin' }), 'Converting to AIFF: ' + num(f.aiff[0]) + ' of ' + num(f.aiff[1]) + '. ');
+  if (f.mp3Busy) d.append(el('span', { className: 'spin' }), 'Making 320 MP3s: ' + num(f.mp3Busy[0]) + ' of ' + num(f.mp3Busy[1]) + '. ');
   if (f.details) d.append(el('span', { className: 'spin' }), 'Looking up covers and details: ' + num(f.details[0]) + ' of ' + num(f.details[1]) + '.');
   // a job that has just ended says how it went
   const said = l => (l || '').replace(/^\S+ \S+\s+/, '').replace(/^[^:]*:\s*/, '');
   if (jobs.aiff && !f.aiff && f.lastAiff) say('AIFF: ' + said(f.lastAiff), /PROBLEM/.test(f.lastAiff));
+  if (jobs.mp3 && !f.mp3Busy && f.lastMp3) say('MP3: ' + said(f.lastMp3), /PROBLEM/.test(f.lastMp3));
   if (jobs.details && !f.details && f.lastDetails) say('Cover and details: ' + said(f.lastDetails), /PROBLEM/.test(f.lastDetails));
   if (jobs.naming && !f.naming && f.lastNames) say('Names: ' + said(f.lastNames), /PROBLEM/.test(f.lastNames));
-  jobs = { aiff: !!f.aiff, details: !!f.details, naming: !!f.naming };
+  jobs = { aiff: !!f.aiff, mp3: !!f.mp3Busy, details: !!f.details, naming: !!f.naming };
   const auto = $('autoSay'); auto.textContent = '';
   auto.append(f.auto ? 'New FLACs convert by themselves. ' : 'New FLACs are left as they are. ',
     link(f.auto ? 'Switch off' : 'Switch on', () => post('/api/dj/aiff', { auto: !f.auto })));
@@ -1139,6 +1143,8 @@ function drawOpts() {
     b.onclick = () => { $('opts').close(); const d = $(to).closest('details'); if (d) d.open = true; $(to).scrollIntoView({ block: 'start' }); };
     line(name, what, b);
   };
+  sw('320 MP3s on this Mac and USB', 'A quarter of the room. Each lossless original is kept in iCloud Drive; Undo is on the song.', f.mp3,
+    () => setOpt({ on: !f.mp3 }, f.mp3 ? 'Your lossless songs stay as they are.' : 'Making 320 MP3s. The originals go to iCloud Drive.', '/api/dj/mp3'));
   sw('Convert new FLACs to AIFF', 'The same sound, in a file every club deck plays. Undo is on each song.', f.auto,
     () => setOpt({ auto: !f.auto }, f.auto ? 'New FLACs are left as they are.' : 'New FLACs convert by themselves.', '/api/dj/aiff'));
   sw('Fill in covers and details', 'Only what is empty, and only when it\'s sure.', f.autoDetails,

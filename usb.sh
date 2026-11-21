@@ -49,6 +49,9 @@ mkdir -p "$CRATE" 2>"$DIR/.usb-err" || fail "couldn't make The Crate's folder on
 # the USB gets the AIFF and never both. Not while a sync is still getting songs: that sync does it at its end.
 PY="$HOME/.local/share/crate-dj/python/bin/python3"; [ -x "$PY" ] || PY="$HOME/.local/share/crate-dj/venv/bin/python"
 [ -z "$MID" ] && [ -x "$PY" ] && "$PY" "$DIR/aiff.py" auto "$DIR" "$SRC" 2>>"$DIR/dj.log"
+# Your lossless songs become 320 MP3s when switched on (mp3.py: the original kept in iCloud Drive), so the USB gets
+# the MP3 and never both.
+[ -z "$MID" ] && [ -x "$PY" ] && "$PY" "$DIR/mp3.py" auto "$DIR" "$SRC" 2>>"$DIR/dj.log"
 # Then a new song's missing cover and details are filled in (details.py: only empty fields, each one undoable), so
 # the USB gets the finished file.
 [ -z "$MID" ] && [ -x "$PY" ] && "$PY" "$DIR/details.py" auto "$DIR" "$SRC" 2>>"$DIR/dj.log"

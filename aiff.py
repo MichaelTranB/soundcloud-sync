@@ -210,13 +210,23 @@ def sound(path):
 
 def details(src, out, info):
     """The song's details and cover, copied into the AIFF."""
-    from mutagen import id3
     from mutagen.aiff import AIFF
     a = AIFF(out)
     if a.tags is None:
         a.add_tags()
-    t = a.tags
-    if src.lower().endswith(".flac"):
+    fill(a.tags, src, info)
+    a.save(v2_version=3)  # the older spelling: every deck and DJ program reads it
+
+
+def fill(t, src, info):
+    """The song's details and cover, copied into the ID3 tags t (an AIFF's here, an MP3's in mp3.py). info: a WAV's
+    wav_info()."""
+    from mutagen import id3
+    if src.lower().endswith((".aiff", ".aif")):  # already ID3: each frame as it is
+        from mutagen.aiff import AIFF
+        for frame in (AIFF(src).tags or {}).values():
+            t.add(frame)
+    elif src.lower().endswith(".flac"):
         from mutagen.flac import FLAC
         f = FLAC(src)
         got = {k.lower(): [v for v in vs if v] for k, vs in (f.tags.as_dict() if f.tags else {}).items()}
@@ -249,7 +259,6 @@ def details(src, out, info):
                 t.add(getattr(id3, frame)(encoding=3, text=[info["info"][k]]))
         if info.get("info", {}).get(b"ICMT") and not t.getall("COMM"):
             t.add(id3.COMM(encoding=3, lang="eng", desc="", text=[info["info"][b"ICMT"]]))
-    a.save(v2_version=3)  # the older spelling: every deck and DJ program reads it
 
 
 def ffmpeg():
@@ -597,6 +606,9 @@ def deep_wavs(src, rels):
 def waiting(dir, src):
     """The songs to convert by themselves now: the FLACs that arrived after the first look, and the 32-bit WAVs
     (no club deck plays one) that aren't ones you brought back."""
+    import mp3
+    if mp3.load(dir)["on"]:  # your songs become MP3s (mp3.py), straight from the FLAC
+        return []
     rec = load(dir)
     checked = usb_tidy.checked(dir, src)
     flacs = [r for r in checked if r.lower().endswith(".flac")]

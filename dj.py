@@ -489,7 +489,8 @@ def convert(dir, src):
     if (pid and not os.environ.get("CRATE_FINAL") and os.getppid() != pid) or not os.path.exists(PY):
         return
     here = os.path.dirname(os.path.abspath(__file__))
-    for job, name in (("aiff.py", "AIFF"), ("details.py", "DETAILS")):  # then their missing cover and details
+    for job, name in (("aiff.py", "AIFF"), ("mp3.py", "MP3"), ("details.py", "DETAILS")):  # then MP3s (when
+        # switched on: mp3.py), then their missing cover and details
         r = subprocess.run([PY, os.path.join(here, job), "auto", dir, src], capture_output=True, text=True)
         if r.returncode:
             log(dir, f"{name} PROBLEM: {(r.stderr.strip().splitlines() or ['it stopped'])[-1]}"[:300])
