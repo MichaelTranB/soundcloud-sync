@@ -83,6 +83,15 @@ class Mp3(unittest.TestCase):
         subprocess.run([FF, "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=220:d=6", "-ac", "2", b], check=True)
         self.assertFalse(mp3.same(a, b))  # the same length, but not the same swell
 
+    def test_smaller_mp3_by_that_name_is_not_taken(self):
+        mp3.save(self.dir, {"on": True})
+        subprocess.run([FF, "-v", "error", "-y", "-i", os.path.join(self.src, "c.aiff"), "-b:a", "128k",
+                        os.path.join(self.src, "c.mp3")], check=True)
+        done, why = mp3.run(self.dir, self.src, ["c.aiff"])
+        self.assertEqual(done, [])
+        self.assertIn("already an MP3", why["c.aiff"])
+        self.assertTrue(os.path.isfile(os.path.join(self.src, "c.aiff")))  # the original stays
+
     def test_without_icloud_kept_on_this_mac(self):
         mp3.save(self.dir, {"on": True})
         with mock.patch.object(backup, "cloud", lambda wait=8: ""):

@@ -106,6 +106,15 @@ def same(path, out):
     return la > 0 and abs(la - lb) <= AFTER and alike(ea, eb) >= ALIKE
 
 
+def full(out):
+    """Is the MP3 at out a 320 one (not an older, smaller copy of the song)?"""
+    from mutagen.mp3 import MP3
+    try:
+        return round(MP3(out).info.bitrate / 1000) >= 320
+    except Exception:
+        return False
+
+
 def details(src, out):
     from mutagen.mp3 import MP3
     m = MP3(out)
@@ -233,7 +242,7 @@ def run(dir, src, rels, back=False, show=False):
                 if not rel.lower().endswith(KINDS) or not os.path.isfile(path):
                     continue
                 if os.path.lexists(out):  # made on an earlier run that was cut short, or another song by that name
-                    if not same(path, out):
+                    if not full(out) or not same(path, out):
                         raise aiff.Problem("another file by that name is already an MP3", True)
                 else:
                     room = shutil.disk_usage(src).free

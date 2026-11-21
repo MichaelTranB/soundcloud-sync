@@ -190,6 +190,7 @@ def follow(dir, src):
                 json.dump(got, f, ensure_ascii=False, indent=0)
             os.replace(os.path.join(dir, name + ".tmp"), os.path.join(dir, name))
     relist("aiff.json", ("before", "skip"))
+    relist("mp3.json", ("kept",))  # a song you brought back to lossless stays so where it moved (mp3.py)
     relist("details.json", ("seen",), lambda r: os.path.splitext(r)[0])
     rename(CACHE)
     rename(tempo.NOTE)
