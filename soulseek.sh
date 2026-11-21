@@ -4,6 +4,9 @@
 # sockseek only downloads; it shares nothing. When the artist's own file arrives later, the Soulseek copy on
 # the Mac is removed (usb.sh never deletes, so the USB keeps what it already has).
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+# A background job on a Mac may only have 256 files open at once (launchctl limit maxfiles): sockseek's searches
+# and downloads go past that, and it stopped with "Too many open files" before every song was looked for.
+ulimit -n 8192 2>/dev/null || ulimit -n 4096 2>/dev/null
 DIR="${0:A:h}"
 SLSK="${SLSK:-$HOME/Music/SoundCloud Sync}"   # the music folder itself; overridable for tests
 SOCKSEEK="${SOCKSEEK:-$HOME/.local/bin/sockseek}"
