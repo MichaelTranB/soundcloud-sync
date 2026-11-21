@@ -954,11 +954,24 @@ def alive(dir, name=None):
     for n in found:
         try:
             with open(os.path.join(dir, n)) as f:
-                os.kill(int(f.read()), 0)
+                os.kill(int(f.read().split("\t")[0]), 0)  # (the pass's pid, then the USB it reads: held())
             return True
         except (OSError, ValueError):
             pass
     return False
+
+
+def held(dir, name, usb):
+    """This USB's songs are in the hands of a pass at work: one reading it where it is now, or where it was (still
+    there). One left with the path the USB had before it was renamed is not: a new pass takes over from it."""
+    if not alive(dir, name):
+        return False
+    try:
+        with open(os.path.join(dir, ".backup-songs-" + safe(name))) as f:
+            at = (f.read().split("\t") + [""])[1]
+    except OSError:
+        return True
+    return not at or at == usb or os.path.isdir(at)
 
 
 def songs(dir, usb, src=""):
@@ -969,10 +982,17 @@ def songs(dir, usb, src=""):
     iCloud is waited for that long: room made there is seen within minutes, and the songs carry on)."""
     name = named(dir, usb)
     p = os.path.join(dir, ".backup-songs-" + safe(name))
-    if alive(dir, name):
+    if held(dir, name, usb):
         return
-    with open(p, "w") as f:
-        f.write(str(os.getpid()))
+    with open(p, "w") as f:  # (a pass at work with the USB's old path sees it is taken over and stops)
+        f.write(f"{os.getpid()}\t{usb}")
+
+    def mine():
+        try:
+            with open(p) as f:
+                return f.read().split("\t")[0] == str(os.getpid())
+        except OSError:
+            return False
     try:
         idle, skip, start = 0, set(), ((snaps(dir, name) or [{}])[0]).get("waiting")
         with open(os.path.join(dir, ".backup.lock"), "w") as lock:
@@ -984,6 +1004,8 @@ def songs(dir, usb, src=""):
         while idle < 2880:
             with open(os.path.join(dir, ".backup.lock"), "w") as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
+                if not mine():  # taken over by a pass for this USB under its new name
+                    return
                 moved, left = _songs(dir, usb, name, skip)
             why = (note(dir, name).get("up") or {}).get("why")
             if not left or why == "signin":  # (a sign-in only you can give: the next plug-in tries again)
@@ -1005,9 +1027,7 @@ def songs(dir, usb, src=""):
             homeward(dir, name)
     finally:
         try:
-            with open(p) as f:
-                mine = f.read() == str(os.getpid())
-            if mine:
+            if mine():
                 os.remove(p)
         except OSError:
             pass
@@ -1269,7 +1289,7 @@ def after(dir, usb, src):
     name = named(dir, usb)
     last = (snaps(dir, name) or [None])[0]
     place = load(dir)["place"]
-    if place not in FAR or not last or last.get("place") != place or alive(dir, name):
+    if place not in FAR or not last or last.get("place") != place or held(dir, name, usb):
         return
     # (an older backup kept there can still wait for a song too: one the copy to the USB replaced before it went up)
     # (and once after each backup, so macOS is asked what of it is up, and what is gives its room on this Mac back)

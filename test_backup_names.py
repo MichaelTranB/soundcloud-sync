@@ -107,6 +107,19 @@ class Names(unittest.TestCase):
         self.assertNotIn("carries on", said)
         self.assertEqual(backup.named(self.dir, mine), "Mine")
 
+    def test_a_pass_left_with_the_old_path_is_taken_over(self):
+        m = os.path.join(self.dir, ".backup-songs-" + backup.safe("Lexar"))
+        dj = self.rename("DJ")
+        for at, held in ((self.usb, False), (dj, True), (os.path.join(self.vol, "other"), False)):
+            with open(m, "w") as f:
+                f.write(f"{os.getpid()}\t{at}")
+            self.assertEqual(backup.held(self.dir, "Lexar", dj), held, at)
+        os.makedirs(os.path.join(self.vol, "other"))  # (a path still there: that pass is still at work)
+        self.assertTrue(backup.held(self.dir, "Lexar", dj))
+        with open(m, "w") as f:
+            f.write(str(os.getpid()))  # (an older version's marker: just the pid)
+        self.assertTrue(backup.held(self.dir, "Lexar", dj))
+
 
 class Follow(unittest.TestCase):
     def test_follows_the_renamed_usb_by_its_id(self):
