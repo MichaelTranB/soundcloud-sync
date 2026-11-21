@@ -934,7 +934,7 @@ function draw() {
     return (d.toDateString() === n.toDateString() ? 'today' : d.toDateString() === y.toDateString() ? 'yesterday' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }))
       + ', ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
   // a backup with no deck library in it (a new, blank USB's first) has nothing to put back: never offered for a repair
-  const good = B.sticks.flatMap(s => s.snaps.filter(x => x.ok && (x.libs || []).length).map(x => ({ name: s.name, day: x.id, when: x.when, libs: x.libs })))
+  const good = B.sticks.flatMap(s => s.snaps.filter(x => x.ok && ((x.libs || []).length || x.songs)).map(x => ({ name: s.name, day: x.id, when: x.when, libs: x.libs || [], songs: x.songs || 0 })))
     .sort((a, b) => (b.name === S.usb) - (a.name === S.usb) || b.when - a.when);
   const stickName = '"' + S.usb + '"', bkRow = (dot, say, sub) => bk.append(el('div', { className: 'row' }, dot, el('div', {}, say, sub || '')));
   bk.hidden = !S.usb; bk.textContent = '';
@@ -986,7 +986,7 @@ function draw() {
   else {
     const first = hurt && hurt.day ? good.find(g => g.name === S.usb && g.day === hurt.day) : null, key = g => g.name + '\n' + g.day;
     if (!good.some(g => key(g) === fixPick)) fixPick = key(first || good[0]);
-    const sel = el('select', {}, ...good.map(g => el('option', { value: key(g), textContent: at(g.when) + (g.name === S.usb ? '' : ' ("' + g.name + '")') + ' · ' + g.libs.join(', '), selected: key(g) === fixPick })));
+    const sel = el('select', {}, ...good.map(g => el('option', { value: key(g), textContent: at(g.when) + (g.name === S.usb ? '' : ' ("' + g.name + '")') + ' · ' + g.libs.concat(g.songs ? [g.songs.toLocaleString() + (g.songs === 1 ? ' song' : ' songs')] : []).join(', '), selected: key(g) === fixPick })));
     sel.setAttribute('aria-label', 'Which backup'); sel.onchange = () => { fixPick = sel.value; };
     const yes = el('button', { className: 'mini', textContent: 'Put it back' }), no = el('button', { className: 'ghost mini', textContent: 'Cancel' });
     yes.onclick = async () => { const [name, day] = fixPick.split('\n'); fixUsb = false; if (await post('/api/dj/backup', { restore: { name, day } })) say('Putting the backup back on ' + stickName + '. Keep it plugged in.'); else draw(); };
