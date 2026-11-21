@@ -6,7 +6,7 @@ in the browser cannot press the buttons.
 """
 import glob, json, os, plistlib, re, shlex, shutil, subprocess, sys, threading, time, unicodedata, urllib.parse
 import audio, freedl, links, playlists, safety, soulseek, tour
-import aiff, club, details, dj, friend, genres, layout, liked, recognise, scplaylists, usb_ask, waveform
+import aiff, club, details, dj, friend, genres, layout, liked, mp3, recognise, scplaylists, usb_ask, waveform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import backup, naming, owncloud, place, tempo
 
@@ -1198,8 +1198,11 @@ def dj_state():
     at = os.path.join(os.environ.get("VOLUMES") or "/Volumes", usb)  # as usb.sh and dj.py: overridable for tests
     plugged = bool(usb) and os.path.isdir(at)
     rec, lacks, det, back, on = aiff.load(DIR), details.have(DIR), details.status(DIR), aiff.undoable(DIR), on_usb(at, plugged)
+    lossy = mp3.undoable(DIR)  # now a 320 MP3, its lossless original kept in iCloud (mp3.py)
     for s in songs:
         s.update(fix_song(s["file"], lacks, det, back, rec["skip"], on))
+        if s["file"] in lossy:
+            s["mp3back"] = True
         if club.deep(os.path.join(OUT, s["file"])):
             s["deep"] = True  # 32-bit: no club deck plays it; its row offers a 24-bit copy
     off = naming.status(DIR, OUT, lib)  # a title and artist that look mixed up, or that The Crate put right
@@ -1212,6 +1215,7 @@ def dj_state():
             "analyser": os.path.exists(dj.PY), "usb": usb, "usbIn": plugged, "usbAsk": usb_asking(),
             "fix": {"auto": rec["auto"], "autoDetails": details.load(DIR)["auto"],
                     "aiff": progress(".aiff-progress"), "details": progress(".details-progress"),
+                    "mp3": mp3.load(DIR)["on"], "mp3Busy": progress(".mp3-progress"), "lastMp3": last("MP3: ", "MP3 PROBLEM"),
                     "naming": progress(".naming-progress"), "lastNames": last("names: ", "NAMES PROBLEM"),
                     "lastAiff": last("AIFF: ", "AIFF PROBLEM"), "lastDetails": last("details: ", "DETAILS PROBLEM"),
                     "lastCues": last("cues: ", "cues put back: ", "CUES PROBLEM"),
@@ -1430,6 +1434,13 @@ def fix_post(path, body):
         rec["auto"] = bool(body["auto"])
         aiff.save(DIR, rec)
         return None
+    if kind == "mp3" and "on" in body:  # your songs as 320 MP3s, the lossless originals in iCloud (mp3.py)
+        rec = mp3.load(DIR)
+        rec["on"] = bool(body["on"])
+        mp3.save(DIR, rec)
+        if rec["on"]:
+            fix_start("mp3", "pick", json.dumps(mp3.waiting(DIR, OUT)))  # the ones already here, now
+        return None
     if kind == "details" and "auto" in body:
         details.save(DIR, {**details.load(DIR), "auto": bool(body["auto"])})
         return None
@@ -1478,8 +1489,9 @@ def fix_post(path, body):
         except subprocess.TimeoutExpired:
             return "That took too long. Try fewer songs at once."
         return follow()
-    how = ("undo" if back else "deep" if body.get("deep") is True else "pick") if kind == "aiff" else "fill"
-    if not fix_start(kind, how, json.dumps(rels) if kind == "aiff" else "\n".join(rels)):
+    how = ("undo" if back else "deep" if body.get("deep") is True else "pick") if kind == "aiff" else \
+        ("undo" if back else "pick") if kind == "mp3" else "fill"
+    if not fix_start(kind, how, json.dumps(rels) if kind in ("aiff", "mp3") else "\n".join(rels)):
         return "Still working on the last ones. Try again when it's done."
     return None
 
@@ -1532,7 +1544,7 @@ def dj_post(path, body):
         p.stdin.close()
         threading.Thread(target=p.wait, daemon=True).start()
         return None
-    if path in ("/api/dj/aiff", "/api/dj/details", "/api/dj/naming", "/api/dj/put", "/api/dj/usb-ok", "/api/dj/cues"):
+    if path in ("/api/dj/aiff", "/api/dj/mp3", "/api/dj/details", "/api/dj/naming", "/api/dj/put", "/api/dj/usb-ok", "/api/dj/cues"):
         return fix_post(path, body)
     if path == "/api/dj/backup":  # the USB's backups, on this Mac or in iCloud Drive (backup.py), each on its own
         usb, kept = read("usb.txt").strip(), backup.status(DIR)["sticks"]
@@ -1849,7 +1861,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {"error": "wrong origin"})
         try:
             # a pasted song list is ~55 bytes a song; the playlists and folders ticked to copy from another USB
-            cap = 600_000 if self.path in ("/api/spotify-songs", "/api/liked", "/api/dj/aiff", "/api/dj/details", "/api/dj/naming", "/api/review") else \
+            cap = 600_000 if self.path in ("/api/spotify-songs", "/api/liked", "/api/dj/aiff", "/api/dj/mp3", "/api/dj/details", "/api/dj/naming", "/api/review") else \
                 200_000 if self.path in ("/api/dj/copy", "/api/dj/layout", "/api/scpl/start") else 4096
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
         except ValueError:
