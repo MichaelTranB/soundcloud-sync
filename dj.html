@@ -927,15 +927,16 @@ function draw() {
 
   // backup and repair (backup.py): what the decks saved on the USB is kept on this Mac, in iCloud Drive or in your own
   // cloud (owncloud.py), and can be put back
-  const bk = $('backup'), B = S.backup || { sticks: [] }, mine = B.sticks.find(s => s.name === S.usb), doing = B.doing;
+  const bk = $('backup'), B = S.backup || { sticks: [] }, ours = B.mine || S.usb, mine = B.sticks.find(s => s.name === ours), doing = B.doing;
   const own = B.own || {}, ownName = own.label || 'your own cloud';
   const placeIs = { icloud: 'in your iCloud Drive', own: 'in your ' + ownName, off: 'nowhere: backup is off in Options' }[B.place] || 'on this Mac';
   const at = t => { const d = new Date(t * 1000), n = new Date(), y = new Date(n - 864e5);
     return (d.toDateString() === n.toDateString() ? 'today' : d.toDateString() === y.toDateString() ? 'yesterday' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }))
       + ', ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
-  // a backup with no deck library in it (a new, blank USB's first) has nothing to put back: never offered for a repair
-  const good = B.sticks.flatMap(s => s.snaps.filter(x => x.ok && ((x.libs || []).length || x.songs)).map(x => ({ name: s.name, day: x.id, when: x.when, libs: x.libs || [], songs: x.songs || 0 })))
-    .sort((a, b) => (b.name === S.usb) - (a.name === S.usb) || b.when - a.when);
+  // a backup with no deck library in it (a new, blank USB's first) has nothing to put back: never offered for a repair.
+  // mine: this USB's own, kept under the name it has now or an old one (renamed, or it took over from another USB)
+  const good = B.sticks.flatMap(s => s.snaps.filter(x => x.ok && ((x.libs || []).length || x.songs)).map(x => ({ name: s.name, mine: s.name === ours, day: x.id, when: x.when, libs: x.libs || [], songs: x.songs || 0 })))
+    .sort((a, b) => b.mine - a.mine || b.when - a.when);
   const stickName = '"' + S.usb + '"', bkRow = (dot, say, sub) => bk.append(el('div', { className: 'row' }, dot, el('div', {}, say, sub || '')));
   bk.hidden = !S.usb; bk.textContent = '';
   bk.append(el('h2', {}, 'Backup & repair', el('small', { textContent: 'what your decks saved on your USB, kept ' + placeIs }), ask('backup', 'How backup and repair work')),
@@ -948,7 +949,7 @@ function draw() {
     el('small', { textContent: doing.what === 'restore' ? 'Keep the USB plugged in until it is done.' : doing.of ? num(doing.done) + ' of ' + num(doing.of) + ' files' : 'Reading what is on it.' }));
   const new1 = mine && mine.snaps[0], hurt = mine && (mine.repair || (new1 && !new1.ok && mine.fine !== new1.id ? { why: new1.why } : null));
   if (hurt && !doing) {
-    const back = good.find(g => g.name === S.usb && g.day === hurt.day) || good[0];
+    const back = good.find(g => g.mine && g.day === hurt.day) || good[0];
     const sm = el('small', {}, back ? 'Repair puts back the backup from ' + at(back.when) + '.  ' : 'There is no good backup of it yet.  ');
     sm.append(link('It\'s fine', () => post('/api/dj/backup', { fine: mine.name })));
     bkRow(el('span', { className: 'dot warn' }), stickName + ' looks damaged: ' + (hurt.why || 'its library could not be read') + '.', sm);
@@ -984,15 +985,19 @@ function draw() {
   fixB.onclick = () => { fixUsb = true; fixPick = ''; draw(); };
   if (!fixUsb) bk.append(el('div', { className: 'acts' }, now, good.length ? fixB : ''));
   else {
-    const first = hurt && hurt.day ? good.find(g => g.name === S.usb && g.day === hurt.day) : null, key = g => g.name + '\n' + g.day;
+    const first = hurt && hurt.day ? good.find(g => g.mine && g.day === hurt.day) : null, key = g => g.name + '\n' + g.day;
     if (!good.some(g => key(g) === fixPick)) fixPick = key(first || good[0]);
-    const sel = el('select', {}, ...good.map(g => el('option', { value: key(g), textContent: at(g.when) + (g.name === S.usb ? '' : ' ("' + g.name + '")') + ' · ' + g.libs.concat(g.songs ? [g.songs.toLocaleString() + (g.songs === 1 ? ' song' : ' songs')] : []).join(', '), selected: key(g) === fixPick })));
-    sel.setAttribute('aria-label', 'Which backup'); sel.onchange = () => { fixPick = sel.value; };
+    const sel = el('select', {}, ...good.map(g => el('option', { value: key(g), textContent: at(g.when) + (g.mine ? '' : ' ("' + g.name + '")') + ' · ' + g.libs.concat(g.songs ? [g.songs.toLocaleString() + (g.songs === 1 ? ' song' : ' songs')] : []).join(', '), selected: key(g) === fixPick })));
+    sel.setAttribute('aria-label', 'Which backup'); sel.onchange = () => { fixPick = sel.value; draw(); };
+    // another USB's backup on a USB with no history of its own: this one takes over (backup.restore), so its songs
+    // already kept are never uploaded again
+    const pick = good.find(g => key(g) === fixPick), takes = pick && !pick.mine && (!mine || mine.snaps.length <= 1);
     const yes = el('button', { className: 'mini', textContent: 'Put it back' }), no = el('button', { className: 'ghost mini', textContent: 'Cancel' });
     yes.onclick = async () => { const [name, day] = fixPick.split('\n'); fixUsb = false; if (await post('/api/dj/backup', { restore: { name, day } })) say('Putting the backup back on ' + stickName + '. Keep it plugged in.'); else draw(); };
     no.onclick = () => { fixUsb = false; draw(); };
     bk.append(el('div', { className: 'acts' }, 'Put back the backup from', sel, 'onto ' + stickName + '?', yes, no),
-      el('small', { textContent: 'What is on the USB now is backed up first. Nothing else on it is touched.' }));
+      el('small', { textContent: 'What is on the USB now is backed up first. Nothing else on it is touched.'
+        + (takes ? ' It then takes over from "' + pick.name + '": its backups carry on, and nothing is uploaded again.' : '') }));
   }
 
   // another USB with songs on it (friend.py): one line each until you open it; what it offers is asked only when

@@ -1232,7 +1232,7 @@ def dj_state():
             "lastRekordboxUsb": last('rekordbox on "', "REKORDBOX USB PROBLEM"),
             "lastSerato": last("Serato on", "SERATO PROBLEM"),
             # another USB with songs on it: the page asks what's on each (/api/dj/usbs) only when this list changes
-            "backup": {**backup.status(DIR), "last": last("backup: ", "BACKUP PROBLEM")},
+            "backup": {**backup.status(DIR, at if usb else ""), "last": last("backup: ", "BACKUP PROBLEM")},
             "others": friend.volumes(), "copy": friend.progress(DIR), "lastFriend": last("USB copy from", "COPY PROBLEM"),
             "problem": dj_problem(log[-6:])}
 
@@ -2119,6 +2119,24 @@ def newer(a, b):
         return os.path.exists(os.path.join(DIR, a))
 
 
+def usb_renamed():
+    """The USB you chose, plugged in under a new name (renamed in Finder): The Crate follows it there, known by the
+    id it left on it (usb_ask.py), and carries on copying to it and backing it up as before."""
+    usb = read("usb.txt").strip()
+    root = os.environ.get("VOLUMES") or "/Volumes"
+    if not usb or os.path.isdir(os.path.join(root, usb)):
+        return
+    new = usb_ask.follow(DIR, usb, root)
+    if not new:
+        return
+    with open(os.path.join(DIR, "usb.txt"), "w") as f:
+        f.write(new + "\n")
+    with open(os.path.join(DIR, "usb.log"), "a") as f:
+        f.write(f'{time.strftime("%F %R")}  USB "{usb}" is called "{new}" now: The Crate follows it\n')
+    subprocess.Popen([os.path.join(DIR, "usb.sh")], start_new_session=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def usb_follow():
     """While a sync runs and the USB is plugged in, tracks that passed the safety check since the last copy go on it
     as they arrive (usb.sh doesn't eject mid-sync; the sync's own last copy does, or this once the sync is over)."""
@@ -2145,6 +2163,10 @@ def watch_downloads():
         _watch.wait(3 if freedl.claims(DIR) else 30 if sync_running() else 60)
         _watch.clear()
         reload_jobs()
+        try:
+            usb_renamed()
+        except OSError:
+            pass
         usb_follow()
         if sync_phase() == "soundcloud":
             continue

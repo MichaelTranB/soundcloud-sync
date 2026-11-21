@@ -154,7 +154,8 @@ straight into your decks' libraries, with no dragging and no clicks:
   library on it stops opening, the Library Manager says so, and **Repair this USB** puts a backup back: the
   libraries, and any song that went missing. What is on the USB at that moment is backed up first, and nothing
   else on it is touched. The Crate never erases a USB: one that won't open at all is erased by you in Disk
-  Utility, then repaired here.
+  Utility, then repaired here. A USB renamed in Finder is followed and keeps its backups, and a new USB that
+  gets an old one's backup with **Repair** takes over from it: its backups carry on and nothing goes up again.
 - **Spotify Liked Songs:** they keep their own folder (on the Mac and on the USB) and their own playlist on
   every deck, newest like first. They stay out of the genre playlists and folders until you file one: open the
   **Spotify Liked Songs** list and press **Add to playlist**. It joins that genre's playlist and stays on the
