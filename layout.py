@@ -186,7 +186,7 @@ def all_songs(dest, at, cfg, dry=False, ok=False, usb=""):
         to = os.path.basename(want.get(k, ""))  # a USB can't hold, now its look-alike) takes the song's spelling
         if to and to != f and not (os.path.lexists(os.path.join(home, to)) and not same_file(home, f, to)):
             try:
-                os.rename(os.path.join(home, f), os.path.join(home, to))  # (a "._" twin left: usbsafe.clean)
+                usb_tidy.rename(os.path.join(home, f), os.path.join(home, to))  # (a "._" twin left: usbsafe.clean)
                 mine[k] = there[k] = to
             except OSError:
                 pass
@@ -656,9 +656,9 @@ def arrange(dest, songs, cfg, dry=False):
                     raise OSError("something is there already")
                 else:
                     os.makedirs(os.path.dirname(b), exist_ok=True)
-                    os.rename(a, b)
+                    usb_tidy.rename(a, b)
                     if os.path.isfile(usb_tidy.shadow(a)):
-                        os.rename(usb_tidy.shadow(a), usb_tidy.shadow(b))
+                        usb_tidy.rename(usb_tidy.shadow(a), usb_tidy.shadow(b))
                 moved += 1
                 got, have, real = (want, rel), have[1:], a if dry else b
             except OSError:

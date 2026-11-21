@@ -48,6 +48,19 @@ def size(p):
         return -1
 
 
+def rename(a, b):
+    """os.rename for a file on the USB. macOS's FAT32 and exFAT driver lists a name with an accent (INÉZ) in its
+    decomposed spelling, then can't find it by that spelling when asked to move it: tried again by the composed
+    spelling, which it can."""
+    try:
+        os.rename(a, b)
+    except FileNotFoundError:
+        c = unicodedata.normalize("NFC", a)
+        if c == a or not os.path.lexists(c):
+            raise
+        os.rename(c, b)
+
+
 def shadow(p):
     """The "._name" file macOS keeps beside a file on a USB that isn't Mac-formatted: it goes where its file goes."""
     return os.path.join(os.path.dirname(p), "._" + os.path.basename(p))
@@ -194,9 +207,9 @@ def tidy(d, src, dest):
         try:
             if not os.path.exists(pb):
                 os.makedirs(os.path.dirname(pb), exist_ok=True)
-                os.rename(pa, pb)
+                rename(pa, pb)
                 if os.path.isfile(shadow(pa)):
-                    os.rename(shadow(pa), shadow(pb))
+                    rename(shadow(pa), shadow(pb))
                 moved += 1
             elif size(pb) == size(pa) and not trash(dest, pa):  # there twice: one is enough
                 stuck += 1
@@ -220,9 +233,9 @@ def tidy(d, src, dest):
             continue
         try:
             os.makedirs(os.path.dirname(pb), exist_ok=True)
-            os.rename(pa, pb)
+            rename(pa, pb)
             if os.path.isfile(shadow(pa)):
-                os.rename(shadow(pa), shadow(pb))
+                rename(shadow(pa), shadow(pb))
             moved += 1
         except OSError:
             stuck += 1
