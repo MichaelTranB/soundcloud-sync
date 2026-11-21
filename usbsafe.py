@@ -64,9 +64,13 @@ def rename(dir, src):
                     continue
             except OSError:
                 continue
-            if os.path.lexists(b):  # (one of that name is there already: left as it is, and said)
-                print(f'"{f}" has a sign a USB can\'t hold, and "{safe(f)}" is taken', file=sys.stderr)
-                continue
+            if os.path.lexists(b):  # another song has that name already: this one becomes "name (2)", "(3)", ...
+                stem, ext = os.path.splitext(safe(f))
+                b = next((c for c in (os.path.join(root, f"{stem} ({i}){ext}") for i in range(2, 10))
+                          if not os.path.lexists(c)), "")
+                if not b:
+                    print(f'"{f}" has a sign a USB can\'t hold, and "{safe(f)}" is taken', file=sys.stderr)
+                    continue
             try:
                 os.rename(a, b)
             except OSError as e:
