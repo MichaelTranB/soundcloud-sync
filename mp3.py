@@ -268,6 +268,11 @@ def run(dir, src, rels, back=False, show=False):
                 for rel, new in ready:
                     if new not in ok:
                         why[rel] = "the new file hasn't passed the safety check yet: both stay for now"
+                        if back:  # the original goes back where it was kept, so Undo is still there next time
+                            try:
+                                backup.into(os.path.join(src, new), there[rel])
+                            except OSError as e:
+                                aiff.log(dir, f"MP3 PROBLEM: {new} couldn't go back to iCloud ({e!r})"[:300])
                         continue
                     try:
                         to = aiff.trash(dir, os.path.join(src, rel), "undone") if back else keep(dir, os.path.join(src, rel), rel)

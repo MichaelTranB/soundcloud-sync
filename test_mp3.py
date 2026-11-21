@@ -92,6 +92,17 @@ class Mp3(unittest.TestCase):
         self.assertIn("already an MP3", why["c.aiff"])
         self.assertTrue(os.path.isfile(os.path.join(self.src, "c.aiff")))  # the original stays
 
+    def test_undo_waits_for_the_safety_check(self):
+        mp3.save(self.dir, {"on": True})
+        mp3.run(self.dir, self.src, ["c.aiff"])
+        kept = mp3.undoable(self.dir)["c.mp3"]
+        with mock.patch.object(aiff, "safe", lambda d, s: {"c.mp3"}):  # the check couldn't run this time
+            done, why = mp3.run(self.dir, self.src, ["c.mp3"], back=True)
+        self.assertEqual(done, [])
+        self.assertTrue(os.path.isfile(kept))  # still kept, and Undo still offered
+        self.assertFalse(os.path.exists(os.path.join(self.src, "c.aiff")))
+        self.assertEqual(mp3.undoable(self.dir), {"c.mp3": kept})
+
     def test_without_icloud_kept_on_this_mac(self):
         mp3.save(self.dir, {"on": True})
         with mock.patch.object(backup, "cloud", lambda wait=8: ""):
