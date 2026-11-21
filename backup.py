@@ -408,7 +408,14 @@ def named(dir, usb):
             if (isinstance(was, str) and was and key(was) != key(here) and snaps(dir, was)
                     and not any(v == was for v in got["ids"].values())):
                 return was
-    return here
+    # another USB's backups already carry this name (it was called this before it was renamed): this one starts its
+    # own, as "<name> 2" (and so on), never sharing the other's (only a Repair hands backups over: restore())
+    taken = {key(v) for k, v in got["ids"].items() if k != i}
+    n, mine = 1, here
+    while key(mine) in taken or (n > 1 and snaps(dir, mine)):
+        n += 1
+        mine = f"{here} {n}"
+    return mine
 
 
 def library(src):
@@ -731,7 +738,7 @@ def run(dir, usb, src, keep="", fail=None):
         fcntl.flock(deck, fcntl.LOCK_SH)
         try:
             here, name, i = os.path.basename(os.path.normpath(usb)), named(dir, usb), usb_ask.mark(usb)
-            was = note(dir, name).get("now") or name
+            was = note(dir, name).get("now") or here  # (what it was called at its last backup)
             got = _run(dir, usb, src, name, keep, [] if fail is None else fail)
             if os.path.isdir(home(dir, name)):  # (known from now on by its id, and by the name it has now)
                 if i and names(dir)["ids"].get(i) != name or key(here) in names(dir)["names"]:

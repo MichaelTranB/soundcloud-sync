@@ -107,6 +107,21 @@ class Names(unittest.TestCase):
         self.assertNotIn("carries on", said)
         self.assertEqual(backup.named(self.dir, mine), "Mine")
 
+    def test_a_new_usb_with_a_renamed_ones_old_name_keeps_its_own(self):
+        self.allow(self.usb, "a" * 32)
+        backup.run(self.dir, self.usb, self.src)
+        dj = self.rename("DJ")
+        backup.run(self.dir, dj, self.src)  # (its id now carries the "Lexar" backups)
+        other = os.path.join(self.vol, "Lexar")  # a different stick, called what the first one was
+        self.put(other, "PIONEER/rekordbox/export.pdb", b"o" * 100)
+        self.allow(other, "9" * 32)
+        self.assertEqual(backup.named(self.dir, other), "Lexar 2")
+        backup.run(self.dir, other, self.src)
+        self.assertEqual(len(backup.snaps(self.dir, "Lexar")), 1)  # the first stick's backups are its own
+        self.assertEqual(len(backup.snaps(self.dir, "Lexar 2")), 1)
+        self.assertEqual(backup.named(self.dir, other), "Lexar 2")
+        self.assertEqual(backup.named(self.dir, dj), "Lexar")
+
     def test_a_pass_left_with_the_old_path_is_taken_over(self):
         m = os.path.join(self.dir, ".backup-songs-" + backup.safe("Lexar"))
         dj = self.rename("DJ")
