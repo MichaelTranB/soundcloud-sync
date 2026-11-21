@@ -645,7 +645,9 @@ def tally(dir, name, up, pool, lists, free=True, every=300):
     got = {"sent": sum(size[p] for p, v in said.items() if v in "cue"), "freed": sum(v == "e" for v in said.values()),
            "unsent": sum(size[p] for p, v in said.items() if v not in "cue"),
            "out": sum(size[p] for p, v in said.items() if v == "x"),
-           "here": 0 if own else sum(v not in "ce" for p, v in said.items() if p not in lib), "asked": int(time.time())}
+           "here": 0 if own else sum(v not in ("cue" if p in lib else "ce") for p, v in said.items()),
+           "asked": int(time.time())}
+    # (a library file counts until it is up: it stays on this Mac then)
     # ("here" counts every file not yet off this Mac, one iCloud hasn't registered yet ("-") or couldn't say ("?")
     # included: the songs job keeps asking until each is up and gone from here, or a day passes with no change)
     for s in pool:

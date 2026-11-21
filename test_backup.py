@@ -49,6 +49,9 @@ class Libraries(unittest.TestCase):
         self.assertIn((["song.mp3"], True), asked)
         self.assertIn((["exportLibrary.db"], False), asked)
         self.assertEqual(got["here"], 1)  # the song still waits to leave; the library is where it belongs
+        with tempfile.TemporaryDirectory() as t, mock.patch.object(backup, "look", lambda d, ps, free=False: {p: "w" for p in ps}):
+            backup._ASKED.pop("Lexar", None)
+            self.assertEqual(backup.tally(t, "Lexar", t, [{"id": "d1"}], {"d1": rows})["here"], 2)  # not up yet: both wait
 
 
 class Restore(unittest.TestCase):
