@@ -71,6 +71,8 @@ class Names(unittest.TestCase):
         usb_ask.save(self.dir, {i: {"yes": True, "kinds": usb_ask.KINDS, "name": "Lexar"}})
         dj = self.rename("DJ")
         self.assertEqual(backup.named(self.dir, dj), "Lexar")
+        self.assertEqual(usb_ask.follow(self.dir, "Lexar", self.vol), "DJ")  # The Crate follows it first
+        self.assertEqual(backup.named(self.dir, dj), "Lexar")  # ... and its backups still carry on
 
     def test_another_stick_with_a_new_name_starts_its_own(self):
         backup.run(self.dir, self.usb, self.src)

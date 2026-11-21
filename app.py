@@ -2165,8 +2165,9 @@ def watch_downloads():
         reload_jobs()
         try:
             usb_renamed()
-        except OSError:
-            pass
+        except Exception as e:  # never stop this watch; the error goes to usb.log
+            with open(os.path.join(DIR, "usb.log"), "a") as f:
+                f.write(f"{time.strftime('%F %R')}  USB rename check FAILED: {e!r}\n")
         usb_follow()
         if sync_phase() == "soundcloud":
             continue

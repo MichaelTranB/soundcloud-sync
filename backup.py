@@ -399,11 +399,15 @@ def named(dir, usb):
         return got["ids"][i]
     if not i or got["names"].get(key(here)):  # (with no id yet when it took over: its name till then)
         return got["names"].get(key(here)) or here
-    # allowed before its backups knew its id: the name it had when you allowed it, when only its backups are there
-    was = (usb_ask.load(dir).get(i) or {}).get("name")
-    if (isinstance(was, str) and was and key(was) != key(here) and snaps(dir, was) and not snaps(dir, here)
-            and not any(v == was for v in got["ids"].values())):
-        return was
+    # allowed before its backups knew its id: a name it had when you allowed it (or before The Crate followed it to
+    # a new one: usb_ask.follow), when only that name has its backups
+    rec = usb_ask.load(dir).get(i) or {}
+    olds = [rec.get("name")] + (rec.get("was")[::-1] if isinstance(rec.get("was"), list) else [])
+    if not snaps(dir, here):
+        for was in olds:
+            if (isinstance(was, str) and was and key(was) != key(here) and snaps(dir, was)
+                    and not any(v == was for v in got["ids"].values())):
+                return was
     return here
 
 

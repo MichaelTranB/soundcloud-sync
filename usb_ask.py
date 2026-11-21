@@ -144,6 +144,8 @@ def follow(dir, name, root):
     if len(hits) != 1:
         return ""
     v, i = hits[0]
+    was = [w for w in rec[i].get("was", []) if isinstance(w, str)] if isinstance(rec[i].get("was"), list) else []
+    rec[i]["was"] = list(dict.fromkeys(was + [str(rec[i].get("name") or name)]))[-8:]  # (backup.named reads them)
     rec[i]["name"] = v
     save(dir, rec)
     return v
