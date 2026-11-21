@@ -83,11 +83,13 @@ class Names(unittest.TestCase):
 
     def test_new_usb_takes_over_after_a_repair(self):
         got = backup.run(self.dir, self.usb, self.src)
+        backup.note(self.dir, "Lexar", repair={"day": got["id"], "why": "damaged", "when": 1})  # the old one broke
         new = os.path.join(self.vol, "NewStick")
         os.makedirs(new)
         said = backup.restore(self.dir, new, self.src, "Lexar", got["id"])
         self.assertIn('carries on the backups of "Lexar"', said)
         self.assertEqual(backup.named(self.dir, new), "Lexar")  # (no id on it yet: known by its name)
+        self.assertIsNone(backup.note(self.dir, "Lexar").get("repair"))  # put back: no repair asked any more
         backup.run(self.dir, new, self.src)  # the same files: nothing new to keep, nothing goes up again
         self.assertEqual(len(backup.snaps(self.dir, "Lexar")), 1)
         self.assertEqual(backup.snaps(self.dir, "NewStick"), [])

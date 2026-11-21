@@ -1502,11 +1502,13 @@ def restore(dir, usb, src, name, day):
             usb_ask.answer(dir, usb, True)
         except OSError:
             pass
-    note(dir, here, repair=None, **({"damaged": None, "sums": None} if bad and not done["away"] and not done["lost"] else {}))
+    fixed = {"damaged": None, "sums": None} if bad and not done["away"] and not done["lost"] else {}
+    note(dir, here, repair=None, **fixed)
     stamp = time.strftime("%b %-d, %H:%M", time.localtime(when(day)))
     if fresh:
         i = usb_ask.mark(usb)
         carry(dir, name, i, shown)
+        note(dir, name, repair=None, **fixed)  # (the backups it carries on: no repair asked of them now)
     return (f'backup: "{shown}" put back from the backup of {stamp}'
             + (f' of "{name}"' if name != here else "")
             + f" ({done['lib']} library {'file' if done['lib'] == 1 else 'files'}, {done['song']} "
