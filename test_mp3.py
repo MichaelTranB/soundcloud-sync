@@ -11,6 +11,7 @@ CLOUD = tempfile.mkdtemp()
 os.environ["CRATE_ICLOUD"] = CLOUD
 
 import aiff, backup, mp3  # noqa: E402
+backup.CLOUD = CLOUD  # (also when backup.py was imported first, by another test file: never your real iCloud Drive)
 
 FF = mp3.tool("ffmpeg")
 
