@@ -4,7 +4,7 @@ USB goes wrong.
 
   Every time the USB is plugged in (usb.sh runs this first, before anything on it is changed), the USB's DJ libraries
   are copied to usb-backups/<the USB's name>/<day and time>/ (a USB renamed since, or a new one that took over
-  from an old one with a Repair, carries on under the old name: named(), names.json): rekordbox's (PIONEER: its lists, its history and the
+  from an old one with a Repair, carries on under the old name: named(), .names.json): rekordbox's (PIONEER: its lists, its history and the
   analysis files a club deck saves hot cues and memory cues in), Engine DJ's (Engine Library: the database a Prime
   saves cues, loops and playlists in) and Serato's (_Serato_). With them go the songs that are only on the USB (not
   in your music folder on this Mac), so a lost USB can be made whole again; your library's own songs come back from
