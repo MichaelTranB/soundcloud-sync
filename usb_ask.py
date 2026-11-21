@@ -131,6 +131,26 @@ def answer(dir, usb, yes, how=""):
     save(dir, rec)
 
 
+def follow(dir, name, root):
+    """The USB you chose as NAME, plugged in under another name (renamed in Finder): that name, else "". It is known
+    by the id The Crate left on it, never by its name; the name it goes by now is noted with its yes."""
+    rec = load(dir)
+    ids = {i for i, r in rec.items() if isinstance(r, dict) and place.cf(str(r.get("name") or "")) == place.cf(name)}
+    try:
+        vols = [v for v in os.listdir(root) if not v.startswith(".") and place.cf(v) != place.cf(name)]
+    except OSError:
+        return ""
+    hits = [(v, i) for v in vols for i in [mark(os.path.join(root, v))] if i and i in ids]
+    if len(hits) != 1:
+        return ""
+    v, i = hits[0]
+    was = [w for w in rec[i].get("was", []) if isinstance(w, str)] if isinstance(rec[i].get("was"), list) else []
+    rec[i]["was"] = list(dict.fromkeys(was + [str(rec[i].get("name") or name)]))[-8:]  # (backup.named reads them)
+    rec[i]["name"] = v
+    save(dir, rec)
+    return v
+
+
 def allows(dir, usb, kind):
     """Your Go ahead on this stick covers this one change too (a change asked about on its own, like "one": keep one
     copy of each song, taking The Crate's own doubles off)."""
