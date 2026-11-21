@@ -54,7 +54,7 @@ from concurrent.futures import ThreadPoolExecutor
 import owncloud, usb_ask, usb_tidy
 
 ROOT, SET, KEEP, BAD = "usb-backups", "usb-backup.json", 10, 2
-NAMES = "names.json"  # in ROOT: whose backups a renamed USB, or one that took over from another, carries on (named())
+NAMES = ".names.json"  # in ROOT (a dot: no USB's folder can be called that, safe()): whose backups a renamed USB, or one that took over from another, carries on (named())
 PLACES, FAR = ("mac", "icloud", "own", "off"), ("icloud", "own")  # FAR: kept away from this Mac
 WHERE = {"icloud": "iCloud Drive", "own": "your own cloud", "mac": "this Mac"}
 RESERVE = int(os.environ.get("CRATE_BACKUP_RESERVE") or 20 * 1024 ** 3)  # the room that always stays free on this Mac
