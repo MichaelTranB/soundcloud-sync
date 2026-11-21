@@ -617,30 +617,35 @@ _REFUSED = set()  # (USB, song) the own cloud refused this run: logged once
 
 def tally(dir, name, up, pool, lists, free=True, every=300):
     """What of a USB's backups in iCloud Drive is really in iCloud, asked of macOS (look), never assumed: every file a
-    kept backup counts on. Each one that is up gives its room on this Mac back (free). Each backup's about.json gets
+    kept backup counts on. Each song that is up gives its room on this Mac back (free). Each backup's about.json gets
     "sent" (bytes in iCloud) and "unsent" (bytes only on this Mac so far). Returns {"sent", "unsent", "out": bytes
     macOS keeps out of iCloud, "here": files still to go up or to leave this Mac, "freed", "asked": when}, or None
     when it was asked less than `every` seconds ago (asking takes a while on many files)."""
     if time.time() - _ASKED.get(name, 0) < every:
         return None
     _ASKED[name] = time.time()
-    size = {}
+    size, lib = {}, set()
     for s in pool:
         for rel, row in lists[s["id"]].items():
             if len(row) > 3:
                 size[spot(dir, name, s["id"], rel, row, up)] = row[0]
+                if row[2] != "song":
+                    lib.add(spot(dir, name, s["id"], rel, row, up))
     own = owncloud.ours(up)
     if own:  # your own cloud: what its own listing shows, at the size the backup lists ("u"), or not yet ("w")
         there = owncloud.listing(dir, os.path.join(up, safe(name)), fresh=True)
         said = {p: "?" if there is None else "u" if there.get(owncloud.nfc(p)) == n else "w" for p, n in size.items()}
     else:
-        said = look(dir, list(size), free=free)
+        # Only songs give their room back: the decks' libraries (under a GB, but thousands of small files that iCloud
+        # hands back slowly) stay on this Mac too, so a repair takes minutes, not hours
+        said = look(dir, [p for p in size if p not in lib], free=free)
+        said.update(look(dir, [p for p in size if p in lib]))
     if size and all(v == "?" for v in said.values()):
         return None  # macOS can't be asked now: what was said last stands
     got = {"sent": sum(size[p] for p, v in said.items() if v in "cue"), "freed": sum(v == "e" for v in said.values()),
            "unsent": sum(size[p] for p, v in said.items() if v not in "cue"),
            "out": sum(size[p] for p, v in said.items() if v == "x"),
-           "here": 0 if own else sum(v not in "ce" for v in said.values()), "asked": int(time.time())}
+           "here": 0 if own else sum(v not in "ce" for p, v in said.items() if p not in lib), "asked": int(time.time())}
     # ("here" counts every file not yet off this Mac, one iCloud hasn't registered yet ("-") or couldn't say ("?")
     # included: the songs job keeps asking until each is up and gone from here, or a day passes with no change)
     for s in pool:
@@ -942,6 +947,8 @@ def songs(dir, usb, src=""):
             log(dir, f'backup: "{name}": every song that is only on it is in {WHERE[end["place"]]} now ({end.get("songs", 0)}).')
         if end.get("place") == "own" and not end.get("waiting") and why != "signin":
             check(dir, usb, name)
+        if end.get("place") == "icloud":
+            homeward(dir, name)
     finally:
         try:
             with open(p) as f:
@@ -950,6 +957,20 @@ def songs(dir, usb, src=""):
                 os.remove(p)
         except OSError:
             pass
+
+
+def homeward(dir, name):
+    """The newest iCloud backup's library files that are in iCloud only (an older version, or macOS short of room,
+    gave their room back) come back onto this Mac, a few at a time: a repair then needs nothing from iCloud but the
+    songs. Returns how many came back."""
+    up = cloud()
+    last = next((s for s in snaps(dir, name) if s.get("place") == "icloud"), None)
+    if not up or not last:
+        return 0
+    away = [a for a in (spot(dir, name, last["id"], rel, row, up) for rel, row in files_of(dir, name, last["id"]).items()
+                        if len(row) > 3 and row[2] != "song") if os.path.isfile(a) and not local(a)]
+    with ThreadPoolExecutor(16) as pool:
+        return sum(pool.map(fetch, away))
 
 
 def fits(free, size, queued):

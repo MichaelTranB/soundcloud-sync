@@ -33,6 +33,24 @@ class Default(unittest.TestCase):
                 self.assertEqual(backup.load(t)["place"], "own")  # a choice made stands
 
 
+class Libraries(unittest.TestCase):
+    """Only songs leave this Mac once in iCloud: the decks' libraries (small, but thousands of files iCloud hands back
+    slowly) stay, so a repair takes minutes."""
+
+    def test_only_songs_are_freed(self):
+        asked = []
+        def look(dir, paths, free=False):
+            asked.append((sorted(os.path.basename(p) for p in paths), free))
+            return {p: "u" for p in paths}
+        rows = {"PIONEER/rekordbox/exportLibrary.db": [10, 1, "rekordbox", "d1"], "Mix/song.mp3": [20, 1, "song", "d1"]}
+        with tempfile.TemporaryDirectory() as t, mock.patch.object(backup, "look", look):
+            backup._ASKED.pop("Lexar", None)
+            got = backup.tally(t, "Lexar", t, [{"id": "d1"}], {"d1": rows})
+        self.assertIn((["song.mp3"], True), asked)
+        self.assertIn((["exportLibrary.db"], False), asked)
+        self.assertEqual(got["here"], 1)  # the song still waits to leave; the library is where it belongs
+
+
 class Restore(unittest.TestCase):
     """A USB with its decks' libraries and a song only it has is backed up; a blank stick, even one with another
     name, gets all of it back."""
